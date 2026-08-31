@@ -1,0 +1,201 @@
+"""
+Django settings for the Wholesale Accounting & Business Management System.
+
+Every environment-specific value comes from the environment, loaded from a .env
+file in development. Nothing secret is committed: `.env` is gitignored and
+`.env.example` documents the keys. See CONTRIBUTING.md.
+"""
+
+import os
+from pathlib import Path
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+
+
+# ---------------------------------------------------------------------------
+# .env loading
+#
+# A deliberately tiny reader rather than a dependency: it keeps `pip install`
+# to two packages, and it cannot surprise anyone with precedence rules.
+# Real environment variables always win over the file, so production just sets
+# them and never ships a .env at all.
+# ---------------------------------------------------------------------------
+def load_dotenv(path):
+    if not path.exists():
+        return
+    for raw in path.read_text().splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key, value = key.strip(), value.strip().strip('"').strip("'")
+        os.environ.setdefault(key, value)
+
+
+load_dotenv(BASE_DIR / ".env")
+
+
+def env(key, default=None, required=False):
+    value = os.environ.get(key, default)
+    if required and not value:
+        raise RuntimeError(
+            f"{key} is not set. Copy .env.example to .env and fill it in "
+            f"(see the Setup section of README.md)."
+        )
+    return value
+
+
+def env_bool(key, default=False):
+    return str(os.environ.get(key, str(default))).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def env_list(key, default=""):
+    return [item.strip() for item in os.environ.get(key, default).split(",") if item.strip()]
+
+
+DEBUG = env_bool("DJANGO_DEBUG", True)
+
+# In development a throwaway key is fine; in production the app refuses to start
+# without a real one rather than running on a key that is public on GitHub.
+SECRET_KEY = env(
+    "DJANGO_SECRET_KEY",
+    default="dev-only-insecure-key-do-not-use-in-production" if DEBUG else None,
+    required=not DEBUG,
+)
+
+ALLOWED_HOSTS = env_list("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1")
+CSRF_TRUSTED_ORIGINS = env_list("DJANGO_CSRF_TRUSTED_ORIGINS")
+
+INSTALLED_APPS = [
+    "django.contrib.admin",
+    "django.contrib.auth",
+    "django.contrib.contenttypes",
+    "django.contrib.sessions",
+    "django.contrib.messages",
+    "django.contrib.staticfiles",
+    "django.contrib.postgres",
+    # Domain apps (BRD 11.2). Order matters only for readability.
+    "apps.core",
+    "apps.accounts",
+    "apps.ledger",
+    "apps.parties",
+    "apps.catalog",
+    "apps.inventory",
+    "apps.sales",
+    "apps.purchases",
+    "apps.payments",
+    "apps.reports",
+]
+
+MIDDLEWARE = [
+    "django.middleware.security.SecurityMiddleware",
+    "django.contrib.sessions.middleware.SessionMiddleware",
+    "django.middleware.common.CommonMiddleware",
+    "django.middleware.csrf.CsrfViewMiddleware",  # ACC-007
+    "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "django.contrib.messages.middleware.MessageMiddleware",
+    "django.middleware.clickjacking.XFrameOptionsMiddleware",
+]
+
+ROOT_URLCONF = "config.urls"
+WSGI_APPLICATION = "config.wsgi.application"
+
+TEMPLATES = [
+    {
+        "BACKEND": "django.template.backends.django.DjangoTemplates",
+        "DIRS": [BASE_DIR / "templates"],
+        "APP_DIRS": True,
+        "OPTIONS": {
+            "context_processors": [
+                "django.template.context_processors.request",
+                "django.contrib.auth.context_processors.auth",
+                "django.contrib.messages.context_processors.messages",
+            ]
+        },
+    }
+]
+
+# NFR-002: PostgreSQL in every deployed environment. SQLite is not an option —
+# the schema uses exclusion constraints, partial indexes, trigram indexes and
+# plpgsql triggers, none of which SQLite has.
+DATABASES = {
+    "default": {
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": env("PGDATABASE", "wams"),
+        "USER": env("PGUSER", "postgres"),
+        "PASSWORD": env("PGPASSWORD", ""),
+        "HOST": env("PGHOST", "127.0.0.1"),
+        "PORT": env("PGPORT", "5432"),
+        # Posting services open their own transaction.atomic() blocks (BR-005),
+        # so wrapping every request in a transaction would nest pointlessly.
+        "ATOMIC_REQUESTS": False,
+        "CONN_MAX_AGE": 60,
+    }
+}
+
+AUTH_USER_MODEL = "accounts.User"
+
+AUTH_PASSWORD_VALIDATORS = [
+    {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
+    {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
+    {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
+    {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
+]
+
+# ---------------------------------------------------------------------------
+# Authentication (ACC-001, ACC-002)
+# ---------------------------------------------------------------------------
+LOGIN_URL = "login"
+LOGIN_REDIRECT_URL = "/"
+LOGOUT_REDIRECT_URL = "login"
+SESSION_COOKIE_AGE = int(env("DJANGO_SESSION_AGE", "43200"))  # 12 hours
+SESSION_EXPIRE_AT_BROWSER_CLOSE = False
+
+# ---------------------------------------------------------------------------
+# Locale (CFG-001, NFR-018). The company row carries the business timezone and
+# base currency; these are the framework defaults behind it.
+# ---------------------------------------------------------------------------
+LANGUAGE_CODE = "en-us"
+TIME_ZONE = env("DJANGO_TIME_ZONE", "UTC")
+USE_I18N = True
+USE_TZ = True
+
+STATIC_URL = "static/"
+STATIC_ROOT = BASE_DIR / "staticfiles"
+STATICFILES_DIRS = [BASE_DIR / "static"] if (BASE_DIR / "static").exists() else []
+MEDIA_URL = "media/"
+MEDIA_ROOT = BASE_DIR / "media"
+DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+# ---------------------------------------------------------------------------
+# Logging (NFR-016): application errors and posting failures are logged with
+# their correlation id; passwords and secrets never are.
+# ---------------------------------------------------------------------------
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "standard": {"format": "{asctime} {levelname} {name} {message}", "style": "{"},
+    },
+    "handlers": {
+        "console": {"class": "logging.StreamHandler", "formatter": "standard"},
+    },
+    "root": {"handlers": ["console"], "level": env("DJANGO_LOG_LEVEL", "INFO")},
+    "loggers": {
+        "apps": {"handlers": ["console"], "level": env("APP_LOG_LEVEL", "DEBUG"),
+                 "propagate": False},
+    },
+}
+
+# ---------------------------------------------------------------------------
+# NFR-005 / ACC-007 production hardening. Automatic when DEBUG is off, so
+# nobody has to remember to switch it on at deployment time.
+# ---------------------------------------------------------------------------
+if not DEBUG:
+    SECURE_SSL_REDIRECT = True
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_HSTS_SECONDS = 31536000
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    X_FRAME_OPTIONS = "DENY"

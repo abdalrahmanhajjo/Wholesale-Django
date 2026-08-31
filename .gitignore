@@ -1,0 +1,50 @@
+# --- Secrets and local configuration --------------------------------------
+# .env holds database passwords and the secret key. It must never be committed.
+# .env.example is committed and documents the keys.
+.env
+.env.*
+!.env.example
+
+# --- Python ---------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# --- Virtual environments -------------------------------------------------
+.venv/
+venv/
+env/
+ENV/
+
+# --- Django ---------------------------------------------------------------
+# Never commit a database. Migrations are the shared artefact, not the data.
+*.sqlite3
+*.sqlite3-journal
+media/
+staticfiles/
+*.log
+
+# Local database dumps
+*.dump
+*.sql.gz
+
+# --- Tooling --------------------------------------------------------------
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+
+# --- Editors and OS -------------------------------------------------------
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db

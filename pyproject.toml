@@ -1,0 +1,36 @@
+# Shared tooling configuration.
+#
+# The point of this file is that four people's editors format code the same
+# way, so pull-request diffs show behaviour changes rather than whitespace
+# arguments. Run before committing:
+#
+#     ruff format .
+#     ruff check .
+
+[tool.ruff]
+line-length = 95
+target-version = "py311"
+extend-exclude = ["*/migrations/*"]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "F",    # pyflakes
+    "I",    # import sorting
+    "UP",   # pyupgrade
+    "B",    # bugbear (likely bugs)
+    "DJ",   # Django-specific checks
+]
+ignore = [
+    "E501",    # line length is handled by the formatter
+    "B905",    # zip() strict= is not needed on our Python floor
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Migrations are generated; verify_schema.py deliberately imports after
+# django.setup(), which the import-order rule cannot know about.
+"*/migrations/*" = ["E", "F", "I", "UP", "B", "DJ"]
+"verify_schema.py" = ["E402", "F401"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["apps", "config"]

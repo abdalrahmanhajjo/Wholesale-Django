@@ -8,6 +8,7 @@ file in development. Nothing secret is committed: `.env` is gitignored and
 
 import os
 from pathlib import Path
+from urllib.parse import parse_qs, unquote, urlsplit
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -129,19 +130,38 @@ TEMPLATES = [
 # NFR-002: PostgreSQL in every deployed environment. SQLite is not an option —
 # the schema uses exclusion constraints, partial indexes, trigram indexes and
 # plpgsql triggers, none of which SQLite has.
-DATABASES = {
-    "default": {
+database_url = env("DATABASE_URL")
+if database_url:
+    parsed_database_url = urlsplit(database_url)
+    if parsed_database_url.scheme not in {"postgres", "postgresql"}:
+        raise RuntimeError("DATABASE_URL must use the postgres:// or postgresql:// scheme.")
+
+    query_options = parse_qs(parsed_database_url.query)
+    database_config = {
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": unquote(parsed_database_url.path.lstrip("/")) or "postgres",
+        "USER": unquote(parsed_database_url.username or ""),
+        "PASSWORD": unquote(parsed_database_url.password or ""),
+        "HOST": parsed_database_url.hostname or "",
+        "PORT": str(parsed_database_url.port or 5432),
+        "OPTIONS": {"sslmode": query_options.get("sslmode", ["require"])[-1]},
+    }
+else:
+    database_config = {
         "ENGINE": "django.db.backends.postgresql",
         "NAME": env("PGDATABASE", "wams"),
         "USER": env("PGUSER", "postgres"),
         "PASSWORD": env("PGPASSWORD", ""),
         "HOST": env("PGHOST", "127.0.0.1"),
         "PORT": env("PGPORT", "5432"),
-        # Posting services open their own transaction.atomic() blocks (BR-005),
-        # so wrapping every request in a transaction would nest pointlessly.
-        "ATOMIC_REQUESTS": False,
-        "CONN_MAX_AGE": 60,
+        "OPTIONS": {"sslmode": env("PGSSLMODE", "prefer")},
     }
+
+# Posting services open their own transaction.atomic() blocks (BR-005), so
+# wrapping every request in a transaction would nest pointlessly.
+database_config.update({"ATOMIC_REQUESTS": False, "CONN_MAX_AGE": 60})
+DATABASES = {
+    "default": database_config,
 }
 
 AUTH_USER_MODEL = "accounts.User"

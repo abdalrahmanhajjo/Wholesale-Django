@@ -96,10 +96,15 @@ class Account(TimeStampedModel):
         ),
     )
     requires_party = models.BooleanField(
-        default=False, help_text="AR/AP lines must carry a party for the subledger to reconcile."
+        default=False,
+        help_text="AR/AP lines must carry a party for the subledger to reconcile.",
     )
     currency = models.ForeignKey(
-        "core.Currency", null=True, blank=True, on_delete=models.PROTECT, related_name="+",
+        "core.Currency",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="+",
         help_text="Set only for single-currency accounts such as a foreign bank account.",
     )
     is_active = models.BooleanField(default=True)
@@ -160,7 +165,10 @@ class Account(TimeStampedModel):
             # Subtype must belong to the account type.
             models.CheckConstraint(
                 condition=(
-                    (Q(account_type="ASSET") & Q(subtype__in=["CURRENT_ASSET", "NONCURRENT_ASSET"]))
+                    (
+                        Q(account_type="ASSET")
+                        & Q(subtype__in=["CURRENT_ASSET", "NONCURRENT_ASSET"])
+                    )
                     | (
                         Q(account_type="LIABILITY")
                         & Q(subtype__in=["CURRENT_LIABILITY", "NONCURRENT_LIABILITY"])
@@ -177,9 +185,7 @@ class Account(TimeStampedModel):
         ]
         indexes = [
             models.Index(fields=["account_type", "code"], name="ix_account_type_code"),
-            models.Index(
-                fields=["is_postable", "is_active"], name="ix_account_selectable"
-            ),
+            models.Index(fields=["is_postable", "is_active"], name="ix_account_selectable"),
         ]
 
     def __str__(self):
@@ -305,7 +311,10 @@ class JournalEntry(TimeStampedModel):
 
     posted_at = models.DateTimeField(null=True, blank=True)
     posted_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT,
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
         related_name="posted_journals",
     )
 
@@ -375,7 +384,9 @@ class JournalLine(models.Model):
 
     entry = models.ForeignKey(JournalEntry, on_delete=models.PROTECT, related_name="lines")
     line_no = models.PositiveSmallIntegerField()
-    account = models.ForeignKey(Account, on_delete=models.PROTECT, related_name="journal_lines")
+    account = models.ForeignKey(
+        Account, on_delete=models.PROTECT, related_name="journal_lines"
+    )
     description = models.CharField(max_length=255, blank=True)
 
     debit_base = models.DecimalField(**MONEY, default=ZERO)
@@ -396,20 +407,30 @@ class JournalLine(models.Model):
         "catalog.Product", null=True, blank=True, on_delete=models.PROTECT, related_name="+"
     )
     warehouse = models.ForeignKey(
-        "inventory.Warehouse", null=True, blank=True, on_delete=models.PROTECT, related_name="+"
+        "inventory.Warehouse",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="+",
     )
     tax_code = models.ForeignKey(
         "core.TaxCode", null=True, blank=True, on_delete=models.PROTECT, related_name="+"
     )
     money_account = models.ForeignKey(
-        "payments.MoneyAccount", null=True, blank=True, on_delete=models.PROTECT, related_name="+"
+        "payments.MoneyAccount",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="+",
     )
 
     class Meta:
         db_table = "journal_line"
         ordering = ["entry", "line_no"]
         constraints = [
-            models.UniqueConstraint(fields=["entry", "line_no"], name="journal_line_unique_no"),
+            models.UniqueConstraint(
+                fields=["entry", "line_no"], name="journal_line_unique_no"
+            ),
             models.CheckConstraint(
                 condition=(
                     Q(debit_base__gte=0)
@@ -471,7 +492,10 @@ class OpeningBalanceBatch(TimeStampedModel):
     as_of_date = models.DateField()
     description = models.CharField(max_length=255, blank=True)
     journal_entry = models.OneToOneField(
-        JournalEntry, null=True, blank=True, on_delete=models.PROTECT,
+        JournalEntry,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
         related_name="opening_batch",
     )
     is_posted = models.BooleanField(default=False)
@@ -519,11 +543,17 @@ class PostingLink(models.Model):
 
     effect_type = models.CharField(max_length=8, choices=PostingEffect.choices)
     journal_entry = models.ForeignKey(
-        JournalEntry, null=True, blank=True, on_delete=models.PROTECT,
+        JournalEntry,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
         related_name="posting_links",
     )
     stock_movement = models.ForeignKey(
-        "inventory.StockMovement", null=True, blank=True, on_delete=models.PROTECT,
+        "inventory.StockMovement",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
         related_name="posting_links",
     )
     idempotency_key = models.CharField(max_length=120, unique=True)

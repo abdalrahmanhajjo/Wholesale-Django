@@ -34,7 +34,9 @@ class PartyBase(TimeStampedModel):
     website = models.CharField(max_length=200, blank=True)
 
     currency = models.ForeignKey(
-        "core.Currency", on_delete=models.PROTECT, related_name="+",
+        "core.Currency",
+        on_delete=models.PROTECT,
+        related_name="+",
         help_text="Default transaction currency for this party (FTD-004).",
     )
     payment_term = models.ForeignKey(
@@ -70,7 +72,11 @@ class Customer(PartyBase):
         "core.TaxCode", null=True, blank=True, on_delete=models.PROTECT, related_name="+"
     )
     default_warehouse = models.ForeignKey(
-        "inventory.Warehouse", null=True, blank=True, on_delete=models.PROTECT, related_name="+"
+        "inventory.Warehouse",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="+",
     )
     salesperson = models.ForeignKey(
         "accounts.User", null=True, blank=True, on_delete=models.PROTECT, related_name="+"
@@ -188,12 +194,12 @@ class Address(models.Model):
             ),
         ]
 
+    def __str__(self):
+        return self.label or self.line1
+
     def as_text(self):
         parts = [self.line1, self.line2, self.city, self.state, self.postal_code, self.country]
         return "\n".join(p for p in parts if p)
-
-    def __str__(self):
-        return self.label or self.line1
 
 
 class Contact(models.Model):

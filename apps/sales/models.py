@@ -16,7 +16,6 @@ from apps.core.models import (
     MONEY,
     PCT,
     QTY,
-    RATE,
     DocumentLineBase,
     DocumentStatus,
     FinancialDocumentBase,
@@ -52,7 +51,10 @@ class SalesOrder(FinancialDocumentBase):
     billing_address_text = models.TextField(blank=True)
     shipping_address_text = models.TextField(blank=True)
     salesperson = models.ForeignKey(
-        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT,
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
         related_name="+",
     )
 
@@ -65,9 +67,7 @@ class SalesOrder(FinancialDocumentBase):
         db_table = "sales_order"
         ordering = ["-document_date", "-id"]
         constraints = [
-            models.CheckConstraint(
-                condition=Q(exchange_rate__gt=0), name="so_rate_positive"
-            ),
+            models.CheckConstraint(condition=Q(exchange_rate__gt=0), name="so_rate_positive"),
             models.CheckConstraint(
                 condition=Q(total_txn__gte=0) & Q(total_base__gte=0), name="so_total_nonneg"
             ),
@@ -82,12 +82,18 @@ class SalesOrder(FinancialDocumentBase):
 class SalesOrderLine(DocumentLineBase):
     order = models.ForeignKey(SalesOrder, on_delete=models.CASCADE, related_name="lines")
     product = models.ForeignKey("catalog.Product", on_delete=models.PROTECT, related_name="+")
-    unit = models.ForeignKey("catalog.UnitOfMeasure", on_delete=models.PROTECT, related_name="+")
+    unit = models.ForeignKey(
+        "catalog.UnitOfMeasure", on_delete=models.PROTECT, related_name="+"
+    )
     tax_code = models.ForeignKey(
         "core.TaxCode", null=True, blank=True, on_delete=models.PROTECT, related_name="+"
     )
     warehouse = models.ForeignKey(
-        "inventory.Warehouse", null=True, blank=True, on_delete=models.PROTECT, related_name="+"
+        "inventory.Warehouse",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="+",
     )
     # SAL-005 / SAL-006 fulfilment counters
     quantity_delivered = models.DecimalField(**QTY, default=ZERO)
@@ -125,7 +131,11 @@ class SalesInvoice(FinancialDocumentBase):
         "parties.Customer", on_delete=models.PROTECT, related_name="invoices"
     )
     warehouse = models.ForeignKey(
-        "inventory.Warehouse", null=True, blank=True, on_delete=models.PROTECT, related_name="+"
+        "inventory.Warehouse",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="+",
     )
     sales_order = models.ForeignKey(
         SalesOrder, null=True, blank=True, on_delete=models.PROTECT, related_name="invoices"
@@ -151,7 +161,11 @@ class SalesInvoice(FinancialDocumentBase):
     )
     is_reversed = models.BooleanField(default=False)
     reversed_by_journal = models.ForeignKey(
-        "ledger.JournalEntry", null=True, blank=True, on_delete=models.PROTECT, related_name="+"
+        "ledger.JournalEntry",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="+",
     )
 
     class Meta:
@@ -206,18 +220,27 @@ class SalesInvoice(FinancialDocumentBase):
 class SalesInvoiceLine(DocumentLineBase):
     invoice = models.ForeignKey(SalesInvoice, on_delete=models.CASCADE, related_name="lines")
     product = models.ForeignKey("catalog.Product", on_delete=models.PROTECT, related_name="+")
-    unit = models.ForeignKey("catalog.UnitOfMeasure", on_delete=models.PROTECT, related_name="+")
+    unit = models.ForeignKey(
+        "catalog.UnitOfMeasure", on_delete=models.PROTECT, related_name="+"
+    )
     tax_code = models.ForeignKey(
         "core.TaxCode", null=True, blank=True, on_delete=models.PROTECT, related_name="+"
     )
     warehouse = models.ForeignKey(
-        "inventory.Warehouse", null=True, blank=True, on_delete=models.PROTECT, related_name="+"
+        "inventory.Warehouse",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="+",
     )
     sales_order_line = models.ForeignKey(
         SalesOrderLine, null=True, blank=True, on_delete=models.PROTECT, related_name="+"
     )
     delivery_line = models.ForeignKey(
-        "inventory.DeliveryNoteLine", null=True, blank=True, on_delete=models.PROTECT,
+        "inventory.DeliveryNoteLine",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
         related_name="invoice_lines",
     )
     # Posting targets snapshotted at posting (CFG-007).
@@ -233,7 +256,9 @@ class SalesInvoiceLine(DocumentLineBase):
         constraints = [
             models.UniqueConstraint(fields=["invoice", "line_no"], name="si_line_unique_no"),
             models.CheckConstraint(condition=Q(quantity__gt=0), name="si_line_qty_positive"),
-            models.CheckConstraint(condition=Q(unit_price__gte=0), name="si_line_price_nonneg"),
+            models.CheckConstraint(
+                condition=Q(unit_price__gte=0), name="si_line_price_nonneg"
+            ),
             models.CheckConstraint(
                 condition=Q(line_discount_txn__gte=0)
                 & Q(allocated_document_discount_txn__gte=0),
@@ -285,7 +310,10 @@ class SalesReturn(TimeStampedModel):
         SalesInvoice, null=True, blank=True, on_delete=models.PROTECT, related_name="returns"
     )
     original_delivery = models.ForeignKey(
-        "inventory.DeliveryNote", null=True, blank=True, on_delete=models.PROTECT,
+        "inventory.DeliveryNote",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
         related_name="returns",
     )
     status = models.CharField(
@@ -294,11 +322,18 @@ class SalesReturn(TimeStampedModel):
     reason = models.TextField(help_text="Mandatory (RET-008).")
     total_cost_base = models.DecimalField(**MONEY, default=ZERO)
     journal_entry = models.ForeignKey(
-        "ledger.JournalEntry", null=True, blank=True, on_delete=models.PROTECT, related_name="+"
+        "ledger.JournalEntry",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="+",
     )
     posted_at = models.DateTimeField(null=True, blank=True)
     posted_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT,
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
         related_name="+",
     )
 
@@ -308,7 +343,8 @@ class SalesReturn(TimeStampedModel):
         constraints = [
             # RET-001: a return must reference an eligible source document.
             models.CheckConstraint(
-                condition=Q(original_invoice__isnull=False) | Q(original_delivery__isnull=False),
+                condition=Q(original_invoice__isnull=False)
+                | Q(original_delivery__isnull=False),
                 name="sales_return_has_source",
             ),
             models.CheckConstraint(
@@ -329,11 +365,17 @@ class SalesReturnLine(models.Model):
     )
     line_no = models.PositiveSmallIntegerField()
     invoice_line = models.ForeignKey(
-        SalesInvoiceLine, null=True, blank=True, on_delete=models.PROTECT,
+        SalesInvoiceLine,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
         related_name="return_lines",
     )
     delivery_line = models.ForeignKey(
-        "inventory.DeliveryNoteLine", null=True, blank=True, on_delete=models.PROTECT,
+        "inventory.DeliveryNoteLine",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
         related_name="return_lines",
     )
     product = models.ForeignKey("catalog.Product", on_delete=models.PROTECT, related_name="+")
@@ -355,6 +397,9 @@ class SalesReturnLine(models.Model):
             models.CheckConstraint(condition=Q(quantity__gt=0), name="sr_line_qty_positive"),
         ]
 
+    def __str__(self):
+        return f"{self.sales_return_id}/{self.line_no} {self.quantity}"
+
 
 # ---------------------------------------------------------------------------
 # Sales credit note (RET-003, RET-004, SAL-007)
@@ -370,10 +415,18 @@ class SalesCreditNote(FinancialDocumentBase):
         "parties.Customer", on_delete=models.PROTECT, related_name="credit_notes"
     )
     original_invoice = models.ForeignKey(
-        SalesInvoice, null=True, blank=True, on_delete=models.PROTECT, related_name="credit_notes"
+        SalesInvoice,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="credit_notes",
     )
     sales_return = models.ForeignKey(
-        SalesReturn, null=True, blank=True, on_delete=models.PROTECT, related_name="credit_notes"
+        SalesReturn,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="credit_notes",
     )
     reason = models.TextField(help_text="Mandatory (RET-008).")
     customer_name_snapshot = models.CharField(max_length=200, blank=True)
@@ -388,9 +441,7 @@ class SalesCreditNote(FinancialDocumentBase):
         ordering = ["-document_date", "-id"]
         constraints = [
             models.CheckConstraint(condition=Q(exchange_rate__gt=0), name="cn_rate_positive"),
-            models.CheckConstraint(
-                condition=Q(total_txn__gte=0), name="cn_total_nonneg"
-            ),
+            models.CheckConstraint(condition=Q(total_txn__gte=0), name="cn_total_nonneg"),
             # BR-016 / RET-009: applied + refunded can never exceed the credit.
             models.CheckConstraint(
                 condition=Q(allocated_txn__gte=0)
@@ -428,13 +479,20 @@ class SalesCreditNoteLine(DocumentLineBase):
         "catalog.Product", null=True, blank=True, on_delete=models.PROTECT, related_name="+"
     )
     unit = models.ForeignKey(
-        "catalog.UnitOfMeasure", null=True, blank=True, on_delete=models.PROTECT, related_name="+"
+        "catalog.UnitOfMeasure",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="+",
     )
     tax_code = models.ForeignKey(
         "core.TaxCode", null=True, blank=True, on_delete=models.PROTECT, related_name="+"
     )
     invoice_line = models.ForeignKey(
-        SalesInvoiceLine, null=True, blank=True, on_delete=models.PROTECT,
+        SalesInvoiceLine,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
         related_name="credit_lines",
     )
     return_line = models.ForeignKey(

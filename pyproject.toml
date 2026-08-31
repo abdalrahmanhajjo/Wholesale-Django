@@ -30,7 +30,7 @@ ignore = [
 # Migrations are generated; verify_schema.py deliberately imports after
 # django.setup(), which the import-order rule cannot know about.
 "*/migrations/*" = ["E", "F", "I", "UP", "B", "DJ"]
-"verify_schema.py" = ["E402", "F401"]
+"verify_schema.py" = ["E402", "F401", "I001"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["apps", "config"]

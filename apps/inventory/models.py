@@ -25,7 +25,10 @@ class Warehouse(TimeStampedModel):
     name = models.CharField(max_length=100)
     address = models.TextField(blank=True)
     manager = models.ForeignKey(
-        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT,
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
         related_name="+",
     )
     # Optional per-warehouse inventory account (CFG-007).
@@ -129,9 +132,13 @@ class StockMovement(models.Model):
     product = models.ForeignKey(
         "catalog.Product", on_delete=models.PROTECT, related_name="movements"
     )
-    warehouse = models.ForeignKey(Warehouse, on_delete=models.PROTECT, related_name="movements")
+    warehouse = models.ForeignKey(
+        Warehouse, on_delete=models.PROTECT, related_name="movements"
+    )
     quantity = models.DecimalField(**QTY)
-    unit_cost = models.DecimalField(**COST, help_text="Weighted-average cost at movement time.")
+    unit_cost = models.DecimalField(
+        **COST, help_text="Weighted-average cost at movement time."
+    )
     total_cost = models.DecimalField(**MONEY)
 
     # Running values captured at posting so the stock card needs no recomputation.
@@ -149,7 +156,10 @@ class StockMovement(models.Model):
     source_doc_number = models.CharField(max_length=32, blank=True)
 
     journal_entry = models.ForeignKey(
-        "ledger.JournalEntry", null=True, blank=True, on_delete=models.PROTECT,
+        "ledger.JournalEntry",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
         related_name="stock_movements",
     )
     # GL-002 idempotency for the stock side of a post.
@@ -161,7 +171,10 @@ class StockMovement(models.Model):
     notes = models.CharField(max_length=255, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     created_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT,
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
         related_name="+",
     )
 
@@ -225,7 +238,9 @@ class StockMovement(models.Model):
             models.Index(
                 fields=["source_content_type", "source_object_id"], name="ix_movement_source"
             ),
-            models.Index(fields=["movement_type", "movement_date"], name="ix_movement_type_date"),
+            models.Index(
+                fields=["movement_type", "movement_date"], name="ix_movement_type_date"
+            ),
             models.Index(fields=["journal_entry"], name="ix_movement_journal"),
         ]
 
@@ -248,11 +263,17 @@ class StockDocumentBase(TimeStampedModel):
 
     posted_at = models.DateTimeField(null=True, blank=True)
     posted_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT,
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
         related_name="+",
     )
     journal_entry = models.ForeignKey(
-        "ledger.JournalEntry", null=True, blank=True, on_delete=models.PROTECT,
+        "ledger.JournalEntry",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
         related_name="+",
     )
     total_cost_base = models.DecimalField(**MONEY, default=ZERO)
@@ -272,12 +293,19 @@ class GoodsReceipt(StockDocumentBase):
         "parties.Vendor", on_delete=models.PROTECT, related_name="goods_receipts"
     )
     purchase_order = models.ForeignKey(
-        "purchases.PurchaseOrder", null=True, blank=True, on_delete=models.PROTECT,
-        related_name="receipts", help_text="Null for an authorised direct receipt (INV-006).",
+        "purchases.PurchaseOrder",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="receipts",
+        help_text="Null for an authorised direct receipt (INV-006).",
     )
     vendor_delivery_note = models.CharField(max_length=64, blank=True)
     received_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT,
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
         related_name="+",
     )
 
@@ -305,12 +333,17 @@ class GoodsReceiptLine(models.Model):
     receipt = models.ForeignKey(GoodsReceipt, on_delete=models.CASCADE, related_name="lines")
     line_no = models.PositiveSmallIntegerField()
     purchase_order_line = models.ForeignKey(
-        "purchases.PurchaseOrderLine", null=True, blank=True, on_delete=models.PROTECT,
+        "purchases.PurchaseOrderLine",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
         related_name="receipt_lines",
     )
     product = models.ForeignKey("catalog.Product", on_delete=models.PROTECT, related_name="+")
     description = models.CharField(max_length=255, blank=True)
-    unit = models.ForeignKey("catalog.UnitOfMeasure", on_delete=models.PROTECT, related_name="+")
+    unit = models.ForeignKey(
+        "catalog.UnitOfMeasure", on_delete=models.PROTECT, related_name="+"
+    )
 
     quantity_received = models.DecimalField(**QTY)
     quantity_accepted = models.DecimalField(**QTY)  # PUR-004
@@ -350,6 +383,9 @@ class GoodsReceiptLine(models.Model):
         ]
         indexes = [models.Index(fields=["product"], name="ix_gr_line_product")]
 
+    def __str__(self):
+        return f"{self.receipt_id}/{self.line_no} {self.quantity_received}"
+
 
 # ---------------------------------------------------------------------------
 # Delivery note (SAL-005, INV-007, SAL-010)
@@ -359,14 +395,21 @@ class DeliveryNote(StockDocumentBase):
         "parties.Customer", on_delete=models.PROTECT, related_name="deliveries"
     )
     sales_order = models.ForeignKey(
-        "sales.SalesOrder", null=True, blank=True, on_delete=models.PROTECT,
-        related_name="deliveries", help_text="Null for an authorised direct delivery (INV-007).",
+        "sales.SalesOrder",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="deliveries",
+        help_text="Null for an authorised direct delivery (INV-007).",
     )
     shipping_address_text = models.TextField(blank=True)  # PTY-003 snapshot
     carrier = models.CharField(max_length=100, blank=True)
     tracking_reference = models.CharField(max_length=64, blank=True)
     delivered_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT,
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
         related_name="+",
     )
 
@@ -395,12 +438,17 @@ class DeliveryNoteLine(models.Model):
     delivery = models.ForeignKey(DeliveryNote, on_delete=models.CASCADE, related_name="lines")
     line_no = models.PositiveSmallIntegerField()
     sales_order_line = models.ForeignKey(
-        "sales.SalesOrderLine", null=True, blank=True, on_delete=models.PROTECT,
+        "sales.SalesOrderLine",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
         related_name="delivery_lines",
     )
     product = models.ForeignKey("catalog.Product", on_delete=models.PROTECT, related_name="+")
     description = models.CharField(max_length=255, blank=True)
-    unit = models.ForeignKey("catalog.UnitOfMeasure", on_delete=models.PROTECT, related_name="+")
+    unit = models.ForeignKey(
+        "catalog.UnitOfMeasure", on_delete=models.PROTECT, related_name="+"
+    )
 
     quantity = models.DecimalField(**QTY)
     unit_cost = models.DecimalField(**COST, default=ZERO, help_text="Average cost at posting.")
@@ -426,6 +474,9 @@ class DeliveryNoteLine(models.Model):
         ]
         indexes = [models.Index(fields=["product"], name="ix_dn_line_product")]
 
+    def __str__(self):
+        return f"{self.delivery_id}/{self.line_no} {self.quantity}"
+
 
 # ---------------------------------------------------------------------------
 # Transfers (INV-008)
@@ -446,11 +497,19 @@ class StockTransfer(TimeStampedModel):
     notes = models.TextField(blank=True)
     total_cost_base = models.DecimalField(**MONEY, default=ZERO)
     journal_entry = models.ForeignKey(
-        "ledger.JournalEntry", null=True, blank=True, on_delete=models.PROTECT, related_name="+"
+        "ledger.JournalEntry",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="+",
     )
     posted_at = models.DateTimeField(null=True, blank=True)
     posted_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT, related_name="+"
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="+",
     )
 
     class Meta:
@@ -483,6 +542,9 @@ class StockTransferLine(models.Model):
             models.CheckConstraint(condition=Q(quantity__gt=0), name="st_line_qty_positive"),
         ]
 
+    def __str__(self):
+        return f"{self.transfer_id}/{self.line_no} {self.quantity}"
+
 
 # ---------------------------------------------------------------------------
 # Adjustments (INV-009)
@@ -508,7 +570,9 @@ class AdjustmentReason(models.Model):
 class StockAdjustment(TimeStampedModel):
     number = models.CharField(max_length=32, unique=True)
     document_date = models.DateField(db_index=True)
-    warehouse = models.ForeignKey(Warehouse, on_delete=models.PROTECT, related_name="adjustments")
+    warehouse = models.ForeignKey(
+        Warehouse, on_delete=models.PROTECT, related_name="adjustments"
+    )
     reason = models.ForeignKey(AdjustmentReason, on_delete=models.PROTECT, related_name="+")
     status = models.CharField(
         max_length=10, choices=DocumentStatus.choices, default=DocumentStatus.DRAFT
@@ -519,14 +583,26 @@ class StockAdjustment(TimeStampedModel):
 
     approved_at = models.DateTimeField(null=True, blank=True)
     approved_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT, related_name="+"
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="+",
     )
     journal_entry = models.ForeignKey(
-        "ledger.JournalEntry", null=True, blank=True, on_delete=models.PROTECT, related_name="+"
+        "ledger.JournalEntry",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="+",
     )
     posted_at = models.DateTimeField(null=True, blank=True)
     posted_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT, related_name="+"
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="+",
     )
 
     class Meta:
@@ -562,6 +638,11 @@ class StockAdjustmentLine(models.Model):
         db_table = "stock_adjustment_line"
         ordering = ["adjustment", "line_no"]
         constraints = [
-            models.UniqueConstraint(fields=["adjustment", "line_no"], name="sa_line_unique_no"),
+            models.UniqueConstraint(
+                fields=["adjustment", "line_no"], name="sa_line_unique_no"
+            ),
             models.CheckConstraint(condition=~Q(quantity_delta=0), name="sa_line_qty_nonzero"),
         ]
+
+    def __str__(self):
+        return f"{self.adjustment_id}/{self.line_no} {self.quantity_delta}"

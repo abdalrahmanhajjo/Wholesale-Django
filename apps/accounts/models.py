@@ -34,7 +34,10 @@ class User(AbstractUser):
 
     # Scoping hooks for object-aware checks (BRD 4.1 "Visibility" column).
     default_warehouse = models.ForeignKey(
-        "inventory.Warehouse", null=True, blank=True, on_delete=models.SET_NULL,
+        "inventory.Warehouse",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
         related_name="+",
     )
 

@@ -42,7 +42,9 @@ class Command(BaseCommand):
 
     # -- output helpers ----------------------------------------------------
     def ok(self, label, detail=""):
-        self.stdout.write(f"  {GREEN}PASS{RESET}  {label}" + (f"  {DIM}{detail}{RESET}" if detail else ""))
+        self.stdout.write(
+            f"  {GREEN}PASS{RESET}  {label}" + (f"  {DIM}{detail}{RESET}" if detail else "")
+        )
 
     def fail(self, label, fix):
         self.failures += 1
@@ -165,8 +167,7 @@ class Command(BaseCommand):
             else:
                 self.fail(
                     f"extension {ext} is missing",
-                    "run: python manage.py migrate   "
-                    "(it is created by core.0001_extensions)",
+                    "run: python manage.py migrate   (it is created by core.0001_extensions)",
                 )
 
     def check_migrations(self):

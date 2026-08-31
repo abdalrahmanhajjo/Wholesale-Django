@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 from typing import TYPE_CHECKING, Generic, Protocol, TypeVar
@@ -21,17 +21,30 @@ from typing import TYPE_CHECKING, Generic, Protocol, TypeVar
 from django.contrib.auth.models import AbstractBaseUser
 from django.db import models, transaction
 
-from apps.ledger.models import JournalEntry, JournalType
+from apps.ledger.models import Account, JournalEntry, JournalType
+from apps.ledger.services.exceptions import PostingContractError, PostingEngineUnavailable
 
 if TYPE_CHECKING:
     from apps.catalog.models import Product
     from apps.core.models import Currency, TaxCode
     from apps.inventory.models import Warehouse
-    from apps.ledger.models import Account
     from apps.parties.models import Customer, Vendor
     from apps.payments.models import MoneyAccount
 
 SourceT = TypeVar("SourceT", bound=models.Model)
+
+
+def _is_saved_model(value: object, model_type: type[models.Model] = models.Model) -> bool:
+    return isinstance(value, model_type) and value.pk is not None and not value._state.adding
+
+
+def _validate_decimal(value: object, field_name: str) -> None:
+    if not isinstance(value, Decimal):
+        raise PostingContractError(f"{field_name} must be Decimal")
+    if not value.is_finite():
+        raise PostingContractError(f"{field_name} must be finite")
+    if value < 0:
+        raise PostingContractError(f"{field_name} cannot be negative")
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -56,6 +69,34 @@ class JournalLineDraft:
     tax_code: TaxCode | None = None
     money_account: MoneyAccount | None = None
 
+    def __post_init__(self) -> None:
+        if not _is_saved_model(self.account, Account):
+            raise PostingContractError("Journal line account must be saved")
+        if len(self.description) > 255:
+            raise PostingContractError("Journal line description exceeds 255 characters")
+
+        amount_fields = (
+            "debit_base",
+            "credit_base",
+            "debit_txn",
+            "credit_txn",
+        )
+        for field_name in amount_fields:
+            _validate_decimal(getattr(self, field_name), field_name)
+
+        has_debit = self.debit_base > 0 and self.credit_base == 0
+        has_credit = self.credit_base > 0 and self.debit_base == 0
+        if not (has_debit ^ has_credit):
+            raise PostingContractError(
+                "Journal line must contain exactly one positive base-currency side"
+            )
+        if has_debit and self.credit_txn != 0:
+            raise PostingContractError("Debit line cannot contain transaction credit")
+        if has_credit and self.debit_txn != 0:
+            raise PostingContractError("Credit line cannot contain transaction debit")
+        if self.customer is not None and self.vendor is not None:
+            raise PostingContractError("Journal line cannot reference customer and vendor")
+
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class JournalDraft:
@@ -69,15 +110,27 @@ class JournalDraft:
     source_doc_type: str
     source_doc_number: str
     lines: tuple[JournalLineDraft, ...]
-    metadata: dict[str, object] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
+        if not isinstance(self.entry_date, date):
+            raise PostingContractError("entry_date must be a date")
         if self.journal_type not in JournalType.values:
-            raise ValueError(f"Unsupported journal type: {self.journal_type!r}")
-        if not isinstance(self.exchange_rate, Decimal):
-            raise TypeError("exchange_rate must be Decimal")
+            raise PostingContractError(f"Unsupported journal type: {self.journal_type!r}")
+        if not _is_saved_model(self.currency):
+            raise PostingContractError("Journal currency must be saved")
+        _validate_decimal(self.exchange_rate, "exchange_rate")
+        if self.exchange_rate == 0:
+            raise PostingContractError("exchange_rate must be greater than zero")
+        if not 1 <= len(self.source_doc_type) <= 4:
+            raise PostingContractError("source_doc_type must contain 1 to 4 characters")
+        if not 1 <= len(self.source_doc_number) <= 32:
+            raise PostingContractError("source_doc_number must contain 1 to 32 characters")
         if not self.lines:
-            raise ValueError("A journal draft needs at least one line")
+            raise PostingContractError("A journal draft needs at least one line")
+        if not isinstance(self.lines, tuple):
+            raise PostingContractError("Journal draft lines must be an immutable tuple")
+        if not all(isinstance(line, JournalLineDraft) for line in self.lines):
+            raise PostingContractError("Journal draft contains an invalid line")
 
 
 class JournalBuilder(Protocol[SourceT]):
@@ -106,10 +159,20 @@ class PostingRequest(Generic[SourceT]):
     reason: str = ""
 
     def __post_init__(self) -> None:
-        if self.source.pk is None:
-            raise ValueError("The posting source must be saved before posting")
+        if not _is_saved_model(self.source):
+            raise PostingContractError("The posting source must be saved before posting")
+        if not _is_saved_model(self.user, AbstractBaseUser):
+            raise PostingContractError("Posting requires a saved, authenticated user")
+        if not self.user.is_authenticated:
+            raise PostingContractError("Posting requires a saved, authenticated user")
+        if self.idempotency_key != self.idempotency_key.strip():
+            raise PostingContractError("idempotency_key cannot have surrounding whitespace")
         if not self.idempotency_key or len(self.idempotency_key) > 120:
-            raise ValueError("idempotency_key must contain 1 to 120 characters")
+            raise PostingContractError("idempotency_key must contain 1 to 120 characters")
+        if not callable(self.build_journal):
+            raise PostingContractError("build_journal must be callable")
+        if not isinstance(self.reason, str):
+            raise PostingContractError("reason must be text")
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -144,6 +207,24 @@ class PostingService(ABC, Generic[SourceT]):
         source: SourceT,
     ) -> PostingResult:
         """Persist one post; called only by the atomic, locking wrapper."""
+
+
+class PostingEngineStub(PostingService[SourceT]):
+    """Fail-fast Day-1 implementation used until the real engine lands.
+
+    It deliberately writes nothing.  Integrating teams can construct and test
+    requests now, while accidental production calls receive a precise error
+    instead of silently pretending a journal was posted.
+    """
+
+    def _post_locked(
+        self,
+        request: PostingRequest[SourceT],
+        source: SourceT,
+    ) -> PostingResult:
+        raise PostingEngineUnavailable(
+            "Posting persistence is not available in the Day-1 engine stub"
+        )
 
 
 # Useful for annotations on registries which select a builder by source type.

@@ -26,10 +26,10 @@ urlpatterns = [
         name="password_change",
     ),
     path("parties/", include("apps.parties.urls")),
+    path("purchases/", include("apps.purchases.urls")),
     path("admin/", admin.site.urls),
-    # Members 2-4 add their includes here:
+    # Members 3-4 add their includes here:
     # path("sales/", include("apps.sales.urls")),
-    # path("purchases/", include("apps.purchases.urls")),
     # path("payments/", include("apps.payments.urls")),
 ]
 

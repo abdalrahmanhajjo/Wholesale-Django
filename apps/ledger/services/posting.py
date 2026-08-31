@@ -11,9 +11,11 @@ Day-2 implementation can grow behind this interface without changing callers.
 
 from __future__ import annotations
 
+import logging
+import uuid
 from abc import ABC, abstractmethod
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
 from typing import TYPE_CHECKING, Generic, Protocol, TypeVar
@@ -22,7 +24,11 @@ from django.contrib.auth.models import AbstractBaseUser
 from django.db import models, transaction
 
 from apps.ledger.models import Account, JournalEntry, JournalType
-from apps.ledger.services.exceptions import PostingContractError, PostingEngineUnavailable
+from apps.ledger.services.exceptions import (
+    PostingContractError,
+    PostingEngineUnavailable,
+    PostingErrorCode,
+)
 
 if TYPE_CHECKING:
     from apps.catalog.models import Product
@@ -32,6 +38,8 @@ if TYPE_CHECKING:
     from apps.payments.models import MoneyAccount
 
 SourceT = TypeVar("SourceT", bound=models.Model)
+BuilderSourceT = TypeVar("BuilderSourceT", bound=models.Model, contravariant=True)
+logger = logging.getLogger(__name__)
 
 
 def _is_saved_model(value: object, model_type: type[models.Model] = models.Model) -> bool:
@@ -40,11 +48,17 @@ def _is_saved_model(value: object, model_type: type[models.Model] = models.Model
 
 def _validate_decimal(value: object, field_name: str) -> None:
     if not isinstance(value, Decimal):
-        raise PostingContractError(f"{field_name} must be Decimal")
+        raise PostingContractError(
+            f"{field_name} must be Decimal", code=PostingErrorCode.INVALID_AMOUNT
+        )
     if not value.is_finite():
-        raise PostingContractError(f"{field_name} must be finite")
+        raise PostingContractError(
+            f"{field_name} must be finite", code=PostingErrorCode.INVALID_AMOUNT
+        )
     if value < 0:
-        raise PostingContractError(f"{field_name} cannot be negative")
+        raise PostingContractError(
+            f"{field_name} cannot be negative", code=PostingErrorCode.INVALID_AMOUNT
+        )
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -71,7 +85,9 @@ class JournalLineDraft:
 
     def __post_init__(self) -> None:
         if not _is_saved_model(self.account, Account):
-            raise PostingContractError("Journal line account must be saved")
+            raise PostingContractError(
+                "Journal line account must be saved", code=PostingErrorCode.UNSAVED_OBJECT
+            )
         if len(self.description) > 255:
             raise PostingContractError("Journal line description exceeds 255 characters")
 
@@ -133,7 +149,7 @@ class JournalDraft:
             raise PostingContractError("Journal draft contains an invalid line")
 
 
-class JournalBuilder(Protocol[SourceT]):
+class JournalBuilder(Protocol[BuilderSourceT]):
     """Signature Members 2 and 3 implement for bills and invoices.
 
     Builders calculate a draft only.  They do not save models, change source
@@ -142,7 +158,7 @@ class JournalBuilder(Protocol[SourceT]):
 
     def __call__(
         self,
-        source: SourceT,
+        source: BuilderSourceT,
         *,
         user: AbstractBaseUser,
     ) -> JournalDraft: ...
@@ -157,14 +173,24 @@ class PostingRequest(Generic[SourceT]):
     idempotency_key: str
     build_journal: JournalBuilder[SourceT]
     reason: str = ""
+    correlation_id: uuid.UUID = field(default_factory=uuid.uuid4)
 
     def __post_init__(self) -> None:
         if not _is_saved_model(self.source):
-            raise PostingContractError("The posting source must be saved before posting")
+            raise PostingContractError(
+                "The posting source must be saved before posting",
+                code=PostingErrorCode.UNSAVED_OBJECT,
+            )
         if not _is_saved_model(self.user, AbstractBaseUser):
-            raise PostingContractError("Posting requires a saved, authenticated user")
+            raise PostingContractError(
+                "Posting requires a saved, authenticated user",
+                code=PostingErrorCode.UNAUTHENTICATED_ACTOR,
+            )
         if not self.user.is_authenticated:
-            raise PostingContractError("Posting requires a saved, authenticated user")
+            raise PostingContractError(
+                "Posting requires a saved, authenticated user",
+                code=PostingErrorCode.UNAUTHENTICATED_ACTOR,
+            )
         if self.idempotency_key != self.idempotency_key.strip():
             raise PostingContractError("idempotency_key cannot have surrounding whitespace")
         if not self.idempotency_key or len(self.idempotency_key) > 120:
@@ -173,6 +199,8 @@ class PostingRequest(Generic[SourceT]):
             raise PostingContractError("build_journal must be callable")
         if not isinstance(self.reason, str):
             raise PostingContractError("reason must be text")
+        if not isinstance(self.correlation_id, uuid.UUID):
+            raise PostingContractError("correlation_id must be a UUID")
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -186,11 +214,42 @@ class PostingResult:
 class PostingService(ABC, Generic[SourceT]):
     """Atomic template for the centralized posting engine.
 
-    ``post`` is intentionally final-by-convention.  Implementations override
+    ``post`` and ``preview`` are protected template methods. Implementations override
     :meth:`_post_locked`, which always receives a freshly loaded, row-locked
     source inside the same outer database transaction as every posting effect.
     Exceptions propagate and roll back the complete unit of work (BR-005).
     """
+
+    def __init_subclass__(cls, **kwargs: object) -> None:
+        super().__init_subclass__(**kwargs)
+        protected = {"post", "preview"}.intersection(cls.__dict__)
+        if protected:
+            names = ", ".join(sorted(protected))
+            raise TypeError(f"Override _post_locked(), not protected method(s): {names}")
+
+    def preview(self, request: PostingRequest[SourceT]) -> JournalDraft:
+        """Build a validated draft and guarantee that the preview writes nothing.
+
+        The rollback-only atomic block protects the database even if a team member
+        accidentally puts a save inside a builder. Preview does not lock the source
+        because it creates no financial effect and is allowed to be advisory.
+        """
+        with transaction.atomic():
+            source_type = type(request.source)
+            fresh_source = source_type._default_manager.get(pk=request.source.pk)
+            draft = request.build_journal(fresh_source, user=request.user)
+            if not isinstance(draft, JournalDraft):
+                raise PostingContractError(
+                    "Journal builder must return JournalDraft",
+                    code=PostingErrorCode.INVALID_BUILDER_RESULT,
+                )
+            transaction.set_rollback(True)
+
+        logger.info(
+            "Posting preview built",
+            extra=self._log_context(request, source=fresh_source),
+        )
+        return draft
 
     @transaction.atomic
     def post(self, request: PostingRequest[SourceT]) -> PostingResult:
@@ -198,7 +257,32 @@ class PostingService(ABC, Generic[SourceT]):
         locked_source = source_type._default_manager.select_for_update().get(
             pk=request.source.pk
         )
-        return self._post_locked(request, locked_source)
+        context = self._log_context(request, source=locked_source)
+        logger.info("Posting started", extra=context)
+        try:
+            result = self._post_locked(request, locked_source)
+            if not isinstance(result, PostingResult):
+                raise PostingContractError(
+                    "Posting implementation must return PostingResult",
+                    code=PostingErrorCode.INVALID_SERVICE_RESULT,
+                )
+        except Exception:
+            logger.exception("Posting failed", extra=context)
+            raise
+        logger.info("Posting completed", extra=context)
+        return result
+
+    @staticmethod
+    def _log_context(
+        request: PostingRequest[SourceT], *, source: SourceT
+    ) -> dict[str, object]:
+        """Non-sensitive structured context shared by all posting log records."""
+        return {
+            "correlation_id": str(request.correlation_id),
+            "posting_source_type": source._meta.label_lower,
+            "posting_source_id": source.pk,
+            "posting_actor_id": request.user.pk,
+        }
 
     @abstractmethod
     def _post_locked(

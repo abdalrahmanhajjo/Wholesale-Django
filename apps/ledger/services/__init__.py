@@ -1,6 +1,11 @@
 """Public service API for ledger posting."""
 
-from .exceptions import PostingContractError, PostingEngineUnavailable, PostingError
+from .exceptions import (
+    PostingContractError,
+    PostingEngineUnavailable,
+    PostingError,
+    PostingErrorCode,
+)
 from .posting import (
     JournalBuilder,
     JournalDraft,
@@ -19,6 +24,7 @@ __all__ = [
     "PostingEngineStub",
     "PostingEngineUnavailable",
     "PostingError",
+    "PostingErrorCode",
     "PostingRequest",
     "PostingResult",
     "PostingService",

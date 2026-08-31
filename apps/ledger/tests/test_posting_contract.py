@@ -19,6 +19,7 @@ from apps.ledger.services import (
     PostingContractError,
     PostingEngineStub,
     PostingEngineUnavailable,
+    PostingErrorCode,
     PostingRequest,
     PostingResult,
     PostingService,
@@ -32,6 +33,19 @@ class ExplodingPostingService(PostingService[DocumentSequence]):
             series="ROLLBACK-PROBE",
         )
         raise RuntimeError("posting failed")
+
+
+class CapturingPostingService(PostingService[DocumentSequence]):
+    locked_source = None
+
+    def _post_locked(self, request, source):
+        self.locked_source = source
+        return PostingResult(journal_entry=JournalEntry(), created=True)
+
+
+class InvalidResultPostingService(PostingService[DocumentSequence]):
+    def _post_locked(self, request, source):
+        return None
 
 
 class PostingContractTests(TestCase):
@@ -92,6 +106,39 @@ class PostingContractTests(TestCase):
         with self.assertRaises(AttributeError):
             draft.narration = "changed"
 
+    def test_preview_builds_draft_without_persisting_builder_writes(self):
+        def impure_builder(source, *, user):
+            DocumentSequence.objects.create(
+                document_type=DocumentType.JOURNAL_ENTRY,
+                series="PREVIEW-WRITE",
+            )
+            return self.build_journal(source, user=user)
+
+        request = PostingRequest(
+            source=self.source,
+            user=self.user,
+            idempotency_key="test:preview",
+            build_journal=impure_builder,
+        )
+
+        draft = PostingEngineStub().preview(request)
+
+        self.assertIsInstance(draft, JournalDraft)
+        self.assertFalse(DocumentSequence.objects.filter(series="PREVIEW-WRITE").exists())
+
+    def test_preview_rejects_wrong_builder_return_type_with_stable_code(self):
+        request = PostingRequest(
+            source=self.source,
+            user=self.user,
+            idempotency_key="test:invalid-builder",
+            build_journal=lambda source, *, user: object(),
+        )
+
+        with self.assertRaises(PostingContractError) as raised:
+            PostingEngineStub().preview(request)
+
+        self.assertEqual(raised.exception.code, PostingErrorCode.INVALID_BUILDER_RESULT)
+
     def test_line_rejects_float_amounts(self):
         with self.assertRaisesMessage(PostingContractError, "must be Decimal"):
             JournalLineDraft(account=self.account, debit_base=1.0)
@@ -126,6 +173,50 @@ class PostingContractTests(TestCase):
             PostingEngineStub().post(request)
 
         self.assertFalse(JournalEntry.objects.exists())
+
+    def test_post_passes_fresh_row_locked_source_to_implementation(self):
+        request = PostingRequest(
+            source=self.source,
+            user=self.user,
+            idempotency_key="test:locked-source",
+            build_journal=self.build_journal,
+        )
+        service = CapturingPostingService()
+
+        result = service.post(request)
+
+        self.assertTrue(result.created)
+        self.assertIsNot(service.locked_source, self.source)
+        self.assertEqual(service.locked_source.pk, self.source.pk)
+
+    def test_template_methods_cannot_be_overridden(self):
+        with self.assertRaisesMessage(TypeError, "protected method"):
+
+            class InvalidPostingService(PostingService[DocumentSequence]):
+                def post(self, request):
+                    return None
+
+                def _post_locked(self, request, source):
+                    return None
+
+    def test_post_rejects_invalid_implementation_result(self):
+        request = PostingRequest(
+            source=self.source,
+            user=self.user,
+            idempotency_key="test:invalid-result",
+            build_journal=self.build_journal,
+        )
+
+        with self.assertRaises(PostingContractError) as raised:
+            InvalidResultPostingService().post(request)
+
+        self.assertEqual(raised.exception.code, PostingErrorCode.INVALID_SERVICE_RESULT)
+
+    def test_error_exposes_machine_readable_code(self):
+        with self.assertRaises(PostingContractError) as raised:
+            JournalLineDraft(account=self.account, debit_base=1.0)
+
+        self.assertEqual(raised.exception.code, PostingErrorCode.INVALID_AMOUNT)
 
     def test_atomic_wrapper_rolls_back_all_work_on_failure(self):
         request = PostingRequest(

@@ -3,6 +3,8 @@
 Members 2 and 3 should import the contract from `apps.ledger.services`. Operational
 apps build journal drafts; only Member 4's posting service writes ledger rows.
 
+Architecture rationale: [ADR 0001](adr/0001-centralized-posting-service.md).
+
 ```python
 from decimal import Decimal
 
@@ -48,6 +50,9 @@ request = PostingRequest(
     build_journal=build_purchase_bill_journal,
     reason=form.cleaned_data.get("reason", ""),
 )
+# Available on Day 1: build and validate the draft without persisting anything.
+draft = posting_service.preview(request)
+
 # Day 2: the concrete service will be injected into the view/application service.
 result = posting_service.post(request)
 journal = result.journal_entry
@@ -67,6 +72,7 @@ journal = result.journal_entry
   back the journal, status, stock/allocation effects, and audit event together.
 - Do not create `JournalEntry`, `JournalLine`, or `PostingLink` directly outside the
   ledger service.
+- Preserve the request's `correlation_id` when handing it to audit or diagnostic code.
 
 ## Day-1 runtime behavior
 
@@ -85,6 +91,25 @@ posting_service.post(request)  # raises PostingEngineUnavailable on Day 1
 Callers may catch `PostingError` at an application boundary to show a safe message, but
 must not swallow it or mark the source document as posted.
 
+Errors expose a stable `code` value from `PostingErrorCode`; views should branch on that
+code rather than parsing human-readable messages. Posting logs include only correlation
+ID, model label, source ID, and actor ID—never amounts, credentials, or narration.
+
 The Day-2 engine will add mapping validation, balance enforcement, idempotent lookup,
 number allocation, persistence, status/audit callbacks, and safe concurrency handling
 behind this unchanged public interface.
+
+## Verification commands
+
+The database-free contract suite is safe on every workstation:
+
+```bash
+python manage.py test apps.ledger.tests.test_posting_unit
+```
+
+The PostgreSQL integration suite verifies row locking and transactional rollback and
+must run against an isolated test database, never the shared Supabase database:
+
+```bash
+python manage.py test apps.ledger.tests.test_posting_contract
+```

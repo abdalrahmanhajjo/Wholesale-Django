@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% comment %}
+Create / edit a party (PTY-001, PTY-002, PTY-004, PTY-007).
+Used for both customers and vendors — `party_kind` switches the copy.
+{% endcomment %}
+
+{% block header_title %}{{ page_title }}{% endblock %}
+
+{% block content %}
+<form method="post" novalidate class="max-w-4xl">
+  {% csrf_token %}
+
+  {% if form.non_field_errors %}
+    <div class="card card-pad mb-5 border-l-4 border-l-danger">
+      {% for error in form.non_field_errors %}<p class="text-sm text-danger">{{ error }}</p>{% endfor %}
+    </div>
+  {% endif %}
+
+  {% if duplicate_warnings %}
+    {# PTY-007: a warning for review, not a block — two real companies can share a name. #}
+    <div class="mb-5 rounded-xl2 border border-amber-200 bg-amber-50 p-5">
+      <p class="text-sm font-bold text-amber-900">Possible duplicate — please review</p>
+      <ul class="mt-2 space-y-1">
+        {% for warning in duplicate_warnings %}
+          <li class="text-sm text-amber-800">{{ warning }}</li>
+        {% endfor %}
+      </ul>
+      <p class="mt-3 text-xs text-amber-700">
+        Save again to continue anyway, or change the details above.
+      </p>
+    </div>
+  {% endif %}
+
+  <div class="card card-pad">
+    <p class="eyebrow">Identity</p>
+    <div class="mt-4 grid gap-4 sm:grid-cols-2">
+      {% include "core/_form_field.html" with field=form.code %}
+      {% include "core/_form_field.html" with field=form.name %}
+      {% include "core/_form_field.html" with field=form.legal_name %}
+      {% include "core/_form_field.html" with field=form.tax_id %}
+    </div>
+  </div>
+
+  <div class="card card-pad mt-4">
+    <p class="eyebrow">Contact</p>
+    <div class="mt-4 grid gap-4 sm:grid-cols-3">
+      {% include "core/_form_field.html" with field=form.email %}
+      {% include "core/_form_field.html" with field=form.phone %}
+      {% include "core/_form_field.html" with field=form.website %}
+    </div>
+  </div>
+
+  <div class="card card-pad mt-4">
+    <p class="eyebrow">Commercial</p>
+    <div class="mt-4 grid gap-4 sm:grid-cols-2">
+      {% include "core/_form_field.html" with field=form.currency %}
+      {% include "core/_form_field.html" with field=form.payment_term %}
+      {% include "core/_form_field.html" with field=form.default_tax_code %}
+      {% if form.default_warehouse %}{% include "core/_form_field.html" with field=form.default_warehouse %}{% endif %}
+      {% if form.salesperson %}{% include "core/_form_field.html" with field=form.salesperson %}{% endif %}
+      {% if form.default_expense_account %}{% include "core/_form_field.html" with field=form.default_expense_account %}{% endif %}
+    </div>
+  </div>
+
+  {% if form.credit_limit %}
+  <div class="card card-pad mt-4">
+    <p class="eyebrow">Credit control (PTY-004)</p>
+    <div class="mt-4 grid gap-4 sm:grid-cols-3">
+      {% include "core/_form_field.html" with field=form.credit_limit %}
+      {% include "core/_form_field.html" with field=form.credit_hold %}
+      {% include "core/_form_field.html" with field=form.credit_hold_reason %}
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="card card-pad mt-4">
+    <p class="eyebrow">Other</p>
+    <div class="mt-4 grid gap-4">
+      {% include "core/_form_field.html" with field=form.notes %}
+      {% include "core/_form_field.html" with field=form.is_active %}
+    </div>
+  </div>
+
+  <div class="mt-5 flex items-center gap-2">
+    <button type="submit" class="btn-primary">Save</button>
+    <a href="{% if object %}{{ object.get_absolute_url }}{% elif party_kind == 'vendor' %}{% url 'parties:vendor_list' %}{% else %}{% url 'parties:customer_list' %}{% endif %}"
+       class="btn-ghost">Cancel</a>
+  </div>
+</form>
+{% endblock %}

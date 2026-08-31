@@ -1,0 +1,13 @@
+{% comment %}
+Status badge. One place decides what colour a status is, so a Posted invoice
+looks the same in sales, purchases and payments (UX-002, UX-006).
+{% endcomment %}
+{% if value == "POSTED" or value == "COMPLETED" or value is True %}
+  <span class="badge-posted">{{ display }}</span>
+{% elif value == "PARTIAL" or value == "SUBMITTED" or value == "APPROVED" %}
+  <span class="badge-partial">{{ display }}</span>
+{% elif value == "REVERSED" or value == "CANCELLED" or value == "REJECTED" %}
+  <span class="badge-overdue">{{ display }}</span>
+{% else %}
+  <span class="badge-draft">{{ display }}</span>
+{% endif %}

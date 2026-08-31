@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% comment %}
+Customer detail (PTY-005, ACC-005).
+
+The audit history is shown on the record itself, which is what ACC-005 asks for:
+"Audit history is readable from the related record."
+{% endcomment %}
+
+{% block header_title %}{{ customer.code }}{% endblock %}
+
+{% block actions %}
+  {% if perms.parties.change_customer %}
+    <a href="{% url 'parties:customer_edit' customer.pk %}" class="btn-primary">Edit</a>
+  {% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="grid gap-4 lg:grid-cols-3">
+
+  <div class="space-y-4 lg:col-span-2">
+    <div class="card card-pad">
+      <div class="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p class="eyebrow">Customer</p>
+          <h2 class="mt-1 text-2xl font-extrabold tracking-tight">{{ customer.name }}</h2>
+          <p class="font-mono text-xs text-muted-fg">{{ customer.code }}</p>
+        </div>
+        <div class="flex gap-2">
+          {% if customer.is_active %}<span class="badge-posted">Active</span>
+          {% else %}<span class="badge-draft">Inactive</span>{% endif %}
+          {% if customer.credit_hold %}<span class="badge-overdue">Credit hold</span>{% endif %}
+        </div>
+      </div>
+
+      <dl class="mt-6 grid gap-x-6 gap-y-4 sm:grid-cols-2">
+        <div><dt class="eyebrow">Legal name</dt><dd class="mt-1 text-sm">{{ customer.legal_name|default:"—" }}</dd></div>
+        <div><dt class="eyebrow">Tax ID</dt><dd class="mt-1 font-mono text-sm">{{ customer.tax_id|default:"—" }}</dd></div>
+        <div><dt class="eyebrow">Email</dt><dd class="mt-1 text-sm">{{ customer.email|default:"—" }}</dd></div>
+        <div><dt class="eyebrow">Phone</dt><dd class="mt-1 text-sm">{{ customer.phone|default:"—" }}</dd></div>
+        <div><dt class="eyebrow">Currency</dt><dd class="mt-1 text-sm">{{ customer.currency_id }}</dd></div>
+        <div><dt class="eyebrow">Payment terms</dt><dd class="mt-1 text-sm">{{ customer.payment_term|default:"—" }}</dd></div>
+        <div><dt class="eyebrow">Credit limit</dt><dd class="mt-1 text-sm tabular-nums">{{ customer.credit_limit|floatformat:2 }}</dd></div>
+        <div><dt class="eyebrow">Salesperson</dt><dd class="mt-1 text-sm">{{ customer.salesperson|default:"—" }}</dd></div>
+      </dl>
+
+      {% if customer.credit_hold %}
+        <div class="mt-5 rounded-xl border-l-4 border-l-danger bg-red-50 px-4 py-3">
+          <p class="text-sm font-semibold text-danger">On credit hold</p>
+          <p class="mt-0.5 text-sm text-danger/80">{{ customer.credit_hold_reason }}</p>
+        </div>
+      {% endif %}
+
+      {% if customer.notes %}
+        <div class="mt-5 border-t border-line pt-4">
+          <p class="eyebrow">Notes</p>
+          <p class="mt-1 whitespace-pre-line text-sm text-muted-fg">{{ customer.notes }}</p>
+        </div>
+      {% endif %}
+    </div>
+
+    <div class="card card-pad">
+      <p class="eyebrow">Position</p>
+      <h2 class="card-title mt-2">Invoiced, paid, credited, overdue</h2>
+      <p class="mt-3 text-sm text-muted-fg">
+        {# PTY-005 needs posted invoices and receipts, which arrive with Slices 3 and 4. #}
+        Figures appear once the sales and payments modules post their first
+        documents. They will be read from the AR subledger, so they reconcile to
+        the control account by construction (GL-011).
+      </p>
+    </div>
+  </div>
+
+  <div class="space-y-4">
+    <div class="card card-pad">
+      <p class="eyebrow">Status</p>
+      {# PTY-008: deactivate, never delete. There is no delete action anywhere. #}
+      <form method="post"
+            action="{% url 'parties:customer_deactivate' customer.pk %}" class="mt-3 space-y-3">
+        {% csrf_token %}
+        <input type="text" name="reason" placeholder="Reason (recorded in the audit log)"
+               class="field">
+        <button type="submit" class="{% if customer.is_active %}btn-danger{% else %}btn-accent{% endif %} w-full">
+          {% if customer.is_active %}Deactivate{% else %}Reactivate{% endif %}
+        </button>
+      </form>
+      <p class="help mt-2">
+        Customers referenced by posted transactions are deactivated, never
+        deleted (PTY-008).
+      </p>
+    </div>
+
+    <div class="card card-pad">
+      <p class="eyebrow">Audit history</p>
+      <h2 class="card-title mt-2">What changed, and who changed it</h2>
+      <ul class="mt-4 space-y-4">
+        {% for event in audit_events %}
+          <li class="border-l-2 border-line pl-3">
+            <p class="text-xs font-bold uppercase tracking-wide text-brand-deep">{{ event.get_action_display }}</p>
+            <p class="text-sm">{{ event.user|default:"system" }}</p>
+            <p class="text-xs text-muted-fg">{{ event.occurred_at|date:"j M Y, H:i" }}</p>
+            {% if event.changes %}
+              <ul class="mt-1.5 space-y-0.5">
+                {% for field, change in event.changes.items %}
+                  <li class="font-mono text-[11px] text-muted-fg">
+                    {{ field }}: {{ change.from|default:"—" }} → {{ change.to|default:"—" }}
+                  </li>
+                {% endfor %}
+              </ul>
+            {% endif %}
+            {% if event.reason %}<p class="mt-1 text-xs italic text-muted-fg">{{ event.reason }}</p>{% endif %}
+          </li>
+        {% empty %}
+          <li class="text-sm text-muted-fg">No changes recorded yet.</li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+</div>
+{% endblock %}

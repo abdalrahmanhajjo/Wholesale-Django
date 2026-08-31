@@ -159,6 +159,77 @@ Need a permission that doesn't exist yet? Add it to `ACTION_PERMISSIONS` in
 `apps/core/permissions.py` and tell Member 1 — it needs a migration, and that
 file is Member 1's.
 
+## 4d. Building a list screen (copy `apps/parties/views.py`)
+
+Do not write a table by hand. Subclass `FilteredListView` and declare what your
+list holds — you get search, filters, sortable columns, pagination, an empty
+state and CSV export, all behaving the same as every other module (UX-002).
+
+```python
+from apps.core.list_views import BooleanFilter, ChoiceFilter, Column, FilteredListView
+from apps.core.permissions import EXPORT_DATA
+
+class PurchaseBillListView(FilteredListView):
+    model = PurchaseBill
+    permission_required = "purchases.view_purchasebill"
+    page_title = "Purchase bills"
+    create_url_name = "purchases:bill_create"
+    export_permission = EXPORT_DATA
+    export_filename = "purchase-bills"
+    default_ordering = "-document_date"
+
+    columns = [
+        Column("number", "Number", sortable=True, link=True, css="font-mono text-xs"),
+        Column("vendor", "Vendor", sortable=True),
+        Column("document_date", "Date", sortable=True),
+        Column("total_txn", "Total", align="right", money=True, sortable=True),
+        Column("status", "Status", badge=True, align="center"),
+    ]
+    search_fields = ["number", "vendor__name", "vendor_invoice_number"]
+    filters = [ChoiceFilter("status", "Status", DocumentStatus.choices)]
+
+    def get_summary(self):
+        return [("Open bills", ...), ("Overdue", ...)]
+```
+
+Your model needs `get_absolute_url()` for the row links. Give it a
+`urls.py` with `app_name`, and add one `include()` to `config/urls.py` — ask
+Member 1, that file is theirs.
+
+Points worth knowing:
+
+* **Sorting only works on columns marked `sortable=True.`** That is deliberate —
+  accepting any `?sort=` value would let a visitor order by a related table.
+* **Export re-runs the same queryset**, so UX-007's "exported rows match the
+  on-screen filtered report" holds by construction, and it writes an audit event.
+* **Filter state lives in the URL**, so a filtered list is shareable and the back
+  button works.
+
+## 4e. Recording audit events (ACC-005)
+
+Every material change needs user, timestamp, action and before/after values.
+Use `AuditedFormMixin` on your create and update views and it happens for you:
+
+```python
+from apps.parties.views import AuditedFormMixin   # or copy it into your app
+
+class BillUpdateView(AuditedFormMixin, ActionPermissionMixin, UpdateView):
+    ...
+```
+
+For posting, approving, reversing and closing, call the service directly:
+
+```python
+from apps.core import audit
+from apps.core.models import AuditAction
+
+audit.record_action(request, AuditAction.POST, invoice, reason=reason)
+```
+
+Do it **inside** the same `transaction.atomic()` as the change itself. If the
+posting rolls back the audit event must roll back too — a log that records
+things which did not happen is worse than no log.
+
 ## 4c. Templates and styling
 
 Extend `templates/base.html`. It gives you the sidebar, header, message banner

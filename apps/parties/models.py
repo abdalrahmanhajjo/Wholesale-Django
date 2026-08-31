@@ -110,6 +110,11 @@ class Customer(PartyBase):
             ),
         ]
 
+    def get_absolute_url(self):
+        from django.urls import reverse
+
+        return reverse("parties:customer_detail", args=[self.pk])
+
 
 class Vendor(PartyBase):
     payable_account = models.ForeignKey(
@@ -139,6 +144,11 @@ class Vendor(PartyBase):
                 OpClass(Upper("tax_id"), name="gin_trgm_ops"), name="ix_vendor_taxid_trgm"
             ),
         ]
+
+    def get_absolute_url(self):
+        from django.urls import reverse
+
+        return reverse("parties:vendor_edit", args=[self.pk])
 
 
 # ---------------------------------------------------------------------------

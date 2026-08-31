@@ -22,7 +22,7 @@ The audit history is shown on the record itself, which is what ACC-005 asks for:
       <div class="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p class="eyebrow">Customer</p>
-          <h2 class="mt-1 text-2xl font-extrabold tracking-tight">{{ customer.name }}</h2>
+          <h2 class="display mt-1 text-2xl">{{ customer.name }}</h2>
           <p class="font-mono text-xs text-muted-fg">{{ customer.code }}</p>
         </div>
         <div class="flex gap-2">
@@ -44,7 +44,7 @@ The audit history is shown on the record itself, which is what ACC-005 asks for:
       </dl>
 
       {% if customer.credit_hold %}
-        <div class="mt-5 rounded-xl border-l-4 border-l-danger bg-red-50 px-4 py-3">
+        <div class="mt-5 rounded-xl2 border-l-4 border-l-danger bg-red-50 px-4 py-3">
           <p class="text-sm font-semibold text-danger">On credit hold</p>
           <p class="mt-0.5 text-sm text-danger/80">{{ customer.credit_hold_reason }}</p>
         </div>

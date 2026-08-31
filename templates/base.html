@@ -2,11 +2,10 @@
 {% comment %}
 Base template every page inherits from.
 
-Design tokens are lifted from the approved prototype at
-wholesale-accounting-prototype.upfunding-6320.chatgpt.site, so the Django app
-and the prototype look like one product. The prototype is a React SPA; the BRD
-requires server-rendered Django Templates (NFR-001, UX-004, SC-07), so the look
-is reproduced here rather than the code being reused.
+Colours, type and the component classes live in `_theme.html`, which the
+sign-in page includes too — change the design there, not here. The approved
+prototypes are React SPAs; the BRD requires server-rendered Django Templates
+(NFR-001, UX-004, SC-07), so the look is reproduced rather than the code reused.
 
 Blocks available to child templates:
   title        browser tab title
@@ -23,72 +22,8 @@ Blocks available to child templates:
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}{{ page_title|default:"Wholesale Accounting" }}{% endblock %} · Atlas Wholesale</title>
 
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet"
-        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap">
+  {% include "_theme.html" %}
 
-  {# Tailwind Play CDN. Fine for development and for this build; before a real
-     production deployment, swap it for a compiled stylesheet (see README). #}
-  <script src="https://cdn.tailwindcss.com?plugins=forms"></script>
-  <script>
-    tailwind.config = {
-      theme: {
-        extend: {
-          // Tokens taken from the approved prototype.
-          colors: {
-            ink:        '#0a1d31',   // primary text / primary buttons
-            sidebar:    '#071a2f',   // sidebar ground
-            brand:      '#22c77a',   // accent green
-            'brand-bright': '#39d889',
-            'brand-deep':   '#067647',
-            'brand-tint':   '#edf8f3',
-            canvas:     '#f4f7f6',   // page background
-            line:       '#e1e9e7',   // borders
-            'muted-bg': '#f1f5f4',
-            'muted-fg': '#64748b',
-            danger:     '#dc2626',
-          },
-          fontFamily: {
-            sans: ['Inter', 'Segoe UI', 'system-ui', 'sans-serif'],
-          },
-          borderRadius: { xl2: '0.875rem' },
-        }
-      }
-    }
-  </script>
-  <style type="text/tailwindcss">
-    @layer components {
-      /* The shared component vocabulary. Use these class names rather than
-         re-deriving utility strings, so every module looks the same. */
-      .btn        { @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 h-10 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none; }
-      .btn-primary{ @apply btn bg-ink text-white hover:bg-ink/90; }
-      .btn-accent { @apply btn bg-brand text-ink hover:bg-brand-bright; }
-      .btn-ghost  { @apply btn border border-line bg-white text-ink hover:bg-muted-bg; }
-      .btn-danger { @apply btn bg-danger text-white hover:bg-danger/90; }
-      .btn-sm     { @apply h-8 px-3 text-xs rounded-lg; }
-
-      .card       { @apply rounded-xl2 border border-line bg-white shadow-sm; }
-      .card-pad   { @apply p-5 sm:p-6; }
-      .card-title { @apply text-base font-bold text-ink; }
-      .eyebrow    { @apply text-[11px] font-bold uppercase tracking-[0.14em] text-muted-fg; }
-
-      .field      { @apply block w-full rounded-xl border border-line bg-white px-3 h-10 text-sm text-ink placeholder:text-muted-fg focus:border-brand focus:ring-2 focus:ring-brand/30 focus:outline-none; }
-      .label      { @apply block text-sm font-semibold text-ink mb-1.5; }
-      .help       { @apply mt-1 text-xs text-muted-fg; }
-      .error-text { @apply mt-1 text-xs font-medium text-danger; }
-
-      .badge      { @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide; }
-      .badge-draft   { @apply badge bg-muted-bg text-muted-fg; }
-      .badge-posted  { @apply badge bg-brand-tint text-brand-deep; }
-      .badge-partial { @apply badge bg-amber-50 text-amber-700; }
-      .badge-overdue { @apply badge bg-red-50 text-danger; }
-
-      .nav-link      { @apply flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-slate-300 transition-colors hover:bg-white/10 hover:text-white; }
-      .nav-link-active { @apply bg-white/10 text-white; }
-      .nav-group     { @apply px-3 pt-5 pb-1 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500; }
-    }
-  </style>
   {% block extra_head %}{% endblock %}
 </head>
 
@@ -97,10 +32,10 @@ Blocks available to child templates:
 
   {# ---------------------------------------------------------------- sidebar #}
   <aside id="sidebar"
-         class="fixed inset-y-0 left-0 z-40 w-64 -translate-x-full bg-sidebar transition-transform lg:static lg:translate-x-0">
+         class="fixed inset-y-0 left-0 z-40 w-64 -translate-x-full bg-navy transition-transform lg:static lg:translate-x-0">
     <div class="flex h-full flex-col">
       <div class="flex h-[70px] shrink-0 items-center gap-2.5 px-5">
-        <span class="grid h-8 w-8 place-items-center rounded-lg bg-brand text-sm font-black text-sidebar">A</span>
+        <span class="grid h-8 w-8 place-items-center rounded-lg bg-brand text-sm font-black text-navy">A</span>
         <span class="text-[13px] font-black uppercase tracking-[0.12em] text-white">Atlas Wholesale</span>
       </div>
 
@@ -175,7 +110,7 @@ Blocks available to child templates:
         {% if page_title %}
         <div class="mb-6 flex flex-wrap items-end justify-between gap-4">
           <div>
-            <h1 class="text-3xl font-extrabold tracking-tight">{% block page_title %}{{ page_title }}{% endblock %}</h1>
+            <h1 class="display text-3xl">{% block page_title %}{{ page_title }}{% endblock %}</h1>
             {% block page_subtitle %}
               {% if page_subtitle %}<p class="mt-1 text-sm text-muted-fg">{{ page_subtitle }}</p>{% endif %}
             {% endblock %}

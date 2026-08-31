@@ -10,25 +10,25 @@
 
   <div class="card card-pad">
     <p class="eyebrow">Company</p>
-    <p class="mt-2 text-2xl font-extrabold tracking-tight">{{ company.name|default:"Not set" }}</p>
+    <p class="display mt-2 text-2xl">{{ company.name|default:"Not set" }}</p>
     <p class="mt-1 text-sm text-muted-fg">Base currency {{ company.base_currency_id|default:"—" }}</p>
   </div>
 
   <div class="card card-pad">
     <p class="eyebrow">Current period</p>
-    <p class="mt-2 text-2xl font-extrabold tracking-tight">{{ current_period.name|default:"None open" }}</p>
+    <p class="display mt-2 text-2xl">{{ current_period.name|default:"None open" }}</p>
     <p class="mt-1 text-sm text-muted-fg">{{ open_period_count }} period{{ open_period_count|pluralize }} open</p>
   </div>
 
   <div class="card card-pad">
     <p class="eyebrow">Chart of accounts</p>
-    <p class="mt-2 text-2xl font-extrabold tracking-tight">{{ account_count }}</p>
+    <p class="display mt-2 text-2xl">{{ account_count }}</p>
     <p class="mt-1 text-sm text-muted-fg">{{ postable_account_count }} postable</p>
   </div>
 
   <div class="card card-pad">
     <p class="eyebrow">Your role</p>
-    <p class="mt-2 text-2xl font-extrabold tracking-tight">{{ role.name|default:"Unassigned" }}</p>
+    <p class="display mt-2 text-2xl">{{ role.name|default:"Unassigned" }}</p>
     <p class="mt-1 text-sm text-muted-fg">
       {% if user.is_superuser %}Superuser — bypasses all checks
       {% elif user.is_read_only %}Read-only account

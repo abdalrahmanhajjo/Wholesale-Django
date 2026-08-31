@@ -36,7 +36,17 @@ load_dotenv(BASE_DIR / ".env")
 
 
 def env(key, default=None, required=False):
-    value = os.environ.get(key, default)
+    """
+    Read a setting from the environment.
+
+    An empty value counts as unset, so a blank line in .env (`DJANGO_SECRET_KEY=`)
+    falls back to the default rather than silently setting it to "". Getting this
+    wrong produces "The SECRET_KEY setting must not be empty" on the first page
+    load, which is a confusing way to start a project.
+    """
+    value = os.environ.get(key)
+    if value is None or value == "":
+        value = default
     if required and not value:
         raise RuntimeError(
             f"{key} is not set. Copy .env.example to .env and fill it in "
@@ -46,11 +56,12 @@ def env(key, default=None, required=False):
 
 
 def env_bool(key, default=False):
-    return str(os.environ.get(key, str(default))).strip().lower() in {"1", "true", "yes", "on"}
+    raw = env(key, str(default))
+    return str(raw).strip().lower() in {"1", "true", "yes", "on"}
 
 
 def env_list(key, default=""):
-    return [item.strip() for item in os.environ.get(key, default).split(",") if item.strip()]
+    return [item.strip() for item in env(key, default).split(",") if item.strip()]
 
 
 DEBUG = env_bool("DJANGO_DEBUG", True)

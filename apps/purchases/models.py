@@ -43,7 +43,10 @@ class PurchaseOrder(FinancialDocumentBase):
     vendor_reference = models.CharField(max_length=64, blank=True)
     delivery_address_text = models.TextField(blank=True)
     buyer = models.ForeignKey(
-        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT,
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
         related_name="+",
     )
     document_discount_kind = models.CharField(
@@ -69,12 +72,18 @@ class PurchaseOrder(FinancialDocumentBase):
 class PurchaseOrderLine(DocumentLineBase):
     order = models.ForeignKey(PurchaseOrder, on_delete=models.CASCADE, related_name="lines")
     product = models.ForeignKey("catalog.Product", on_delete=models.PROTECT, related_name="+")
-    unit = models.ForeignKey("catalog.UnitOfMeasure", on_delete=models.PROTECT, related_name="+")
+    unit = models.ForeignKey(
+        "catalog.UnitOfMeasure", on_delete=models.PROTECT, related_name="+"
+    )
     tax_code = models.ForeignKey(
         "core.TaxCode", null=True, blank=True, on_delete=models.PROTECT, related_name="+"
     )
     warehouse = models.ForeignKey(
-        "inventory.Warehouse", null=True, blank=True, on_delete=models.PROTECT, related_name="+"
+        "inventory.Warehouse",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="+",
     )
     # PUR-003 / PUR-012 three-way match counters
     quantity_received = models.DecimalField(**QTY, default=ZERO)
@@ -87,7 +96,9 @@ class PurchaseOrderLine(DocumentLineBase):
         constraints = [
             models.UniqueConstraint(fields=["order", "line_no"], name="po_line_unique_no"),
             models.CheckConstraint(condition=Q(quantity__gt=0), name="po_line_qty_positive"),
-            models.CheckConstraint(condition=Q(unit_price__gte=0), name="po_line_price_nonneg"),
+            models.CheckConstraint(
+                condition=Q(unit_price__gte=0), name="po_line_price_nonneg"
+            ),
             models.CheckConstraint(
                 condition=Q(quantity_received__gte=0) & Q(quantity_billed__gte=0),
                 name="po_line_progress_nonneg",
@@ -108,13 +119,20 @@ class PurchaseBill(FinancialDocumentBase):
         "parties.Vendor", on_delete=models.PROTECT, related_name="bills"
     )
     warehouse = models.ForeignKey(
-        "inventory.Warehouse", null=True, blank=True, on_delete=models.PROTECT, related_name="+"
+        "inventory.Warehouse",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="+",
     )
     purchase_order = models.ForeignKey(
         PurchaseOrder, null=True, blank=True, on_delete=models.PROTECT, related_name="bills"
     )
     goods_receipt = models.ForeignKey(
-        "inventory.GoodsReceipt", null=True, blank=True, on_delete=models.PROTECT,
+        "inventory.GoodsReceipt",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
         related_name="bills",
     )
     payment_term = models.ForeignKey(
@@ -193,19 +211,30 @@ class PurchaseBillLine(DocumentLineBase):
         "catalog.Product", null=True, blank=True, on_delete=models.PROTECT, related_name="+"
     )
     unit = models.ForeignKey(
-        "catalog.UnitOfMeasure", null=True, blank=True, on_delete=models.PROTECT, related_name="+"
+        "catalog.UnitOfMeasure",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="+",
     )
     tax_code = models.ForeignKey(
         "core.TaxCode", null=True, blank=True, on_delete=models.PROTECT, related_name="+"
     )
     warehouse = models.ForeignKey(
-        "inventory.Warehouse", null=True, blank=True, on_delete=models.PROTECT, related_name="+"
+        "inventory.Warehouse",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="+",
     )
     purchase_order_line = models.ForeignKey(
         PurchaseOrderLine, null=True, blank=True, on_delete=models.PROTECT, related_name="+"
     )
     receipt_line = models.ForeignKey(
-        "inventory.GoodsReceiptLine", null=True, blank=True, on_delete=models.PROTECT,
+        "inventory.GoodsReceiptLine",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
         related_name="bill_lines",
     )
     # Appendix A: stock lines hit Inventory, non-stock lines hit an expense account.
@@ -222,7 +251,9 @@ class PurchaseBillLine(DocumentLineBase):
         constraints = [
             models.UniqueConstraint(fields=["bill", "line_no"], name="pb_line_unique_no"),
             models.CheckConstraint(condition=Q(quantity__gt=0), name="pb_line_qty_positive"),
-            models.CheckConstraint(condition=Q(unit_price__gte=0), name="pb_line_price_nonneg"),
+            models.CheckConstraint(
+                condition=Q(unit_price__gte=0), name="pb_line_price_nonneg"
+            ),
             models.CheckConstraint(
                 condition=Q(line_discount_txn__lte=F("gross_txn")),
                 name="pb_line_discount_within_gross",
@@ -267,7 +298,10 @@ class PurchaseReturn(TimeStampedModel):
         PurchaseBill, null=True, blank=True, on_delete=models.PROTECT, related_name="returns"
     )
     original_receipt = models.ForeignKey(
-        "inventory.GoodsReceipt", null=True, blank=True, on_delete=models.PROTECT,
+        "inventory.GoodsReceipt",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
         related_name="returns",
     )
     status = models.CharField(
@@ -276,11 +310,18 @@ class PurchaseReturn(TimeStampedModel):
     reason = models.TextField(help_text="Mandatory (RET-008).")
     total_cost_base = models.DecimalField(**MONEY, default=ZERO)
     journal_entry = models.ForeignKey(
-        "ledger.JournalEntry", null=True, blank=True, on_delete=models.PROTECT, related_name="+"
+        "ledger.JournalEntry",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="+",
     )
     posted_at = models.DateTimeField(null=True, blank=True)
     posted_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT,
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
         related_name="+",
     )
 
@@ -308,11 +349,17 @@ class PurchaseReturnLine(models.Model):
     )
     line_no = models.PositiveSmallIntegerField()
     bill_line = models.ForeignKey(
-        PurchaseBillLine, null=True, blank=True, on_delete=models.PROTECT,
+        PurchaseBillLine,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
         related_name="return_lines",
     )
     receipt_line = models.ForeignKey(
-        "inventory.GoodsReceiptLine", null=True, blank=True, on_delete=models.PROTECT,
+        "inventory.GoodsReceiptLine",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
         related_name="return_lines",
     )
     product = models.ForeignKey("catalog.Product", on_delete=models.PROTECT, related_name="+")
@@ -334,6 +381,9 @@ class PurchaseReturnLine(models.Model):
             models.CheckConstraint(condition=Q(quantity__gt=0), name="pr_line_qty_positive"),
         ]
 
+    def __str__(self):
+        return f"{self.purchase_return_id}/{self.line_no} {self.quantity}"
+
 
 # ---------------------------------------------------------------------------
 # Vendor debit note (RET-006, RET-007)
@@ -349,10 +399,17 @@ class VendorDebitNote(FinancialDocumentBase):
         "parties.Vendor", on_delete=models.PROTECT, related_name="debit_notes"
     )
     original_bill = models.ForeignKey(
-        PurchaseBill, null=True, blank=True, on_delete=models.PROTECT, related_name="debit_notes"
+        PurchaseBill,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="debit_notes",
     )
     purchase_return = models.ForeignKey(
-        PurchaseReturn, null=True, blank=True, on_delete=models.PROTECT,
+        PurchaseReturn,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
         related_name="debit_notes",
     )
     vendor_credit_reference = models.CharField(max_length=64, blank=True)
@@ -403,13 +460,20 @@ class VendorDebitNoteLine(DocumentLineBase):
         "catalog.Product", null=True, blank=True, on_delete=models.PROTECT, related_name="+"
     )
     unit = models.ForeignKey(
-        "catalog.UnitOfMeasure", null=True, blank=True, on_delete=models.PROTECT, related_name="+"
+        "catalog.UnitOfMeasure",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="+",
     )
     tax_code = models.ForeignKey(
         "core.TaxCode", null=True, blank=True, on_delete=models.PROTECT, related_name="+"
     )
     bill_line = models.ForeignKey(
-        PurchaseBillLine, null=True, blank=True, on_delete=models.PROTECT,
+        PurchaseBillLine,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
         related_name="debit_lines",
     )
     return_line = models.ForeignKey(

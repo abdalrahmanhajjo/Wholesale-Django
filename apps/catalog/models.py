@@ -9,7 +9,7 @@ from decimal import Decimal
 from django.db import models
 from django.db.models import F, Q
 
-from apps.core.models import COST, MONEY, PCT, QTY, TimeStampedModel
+from apps.core.models import MONEY, PCT, QTY, TimeStampedModel
 
 ZERO = Decimal("0")
 
@@ -92,7 +92,11 @@ class Product(TimeStampedModel):
     description = models.TextField(blank=True)
     barcode = models.CharField(max_length=64, blank=True)
     category = models.ForeignKey(
-        ProductCategory, null=True, blank=True, on_delete=models.PROTECT, related_name="products"
+        ProductCategory,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="products",
     )
     unit = models.ForeignKey(UnitOfMeasure, on_delete=models.PROTECT, related_name="products")
     product_type = models.CharField(

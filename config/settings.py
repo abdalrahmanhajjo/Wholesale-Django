@@ -193,8 +193,11 @@ LOGGING = {
     },
     "root": {"handlers": ["console"], "level": env("DJANGO_LOG_LEVEL", "INFO")},
     "loggers": {
-        "apps": {"handlers": ["console"], "level": env("APP_LOG_LEVEL", "DEBUG"),
-                 "propagate": False},
+        "apps": {
+            "handlers": ["console"],
+            "level": env("APP_LOG_LEVEL", "DEBUG"),
+            "propagate": False,
+        },
     },
 }
 

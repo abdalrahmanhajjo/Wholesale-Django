@@ -101,11 +101,17 @@ class Payment(TimeStampedModel):
     )
 
     customer = models.ForeignKey(
-        "parties.Customer", null=True, blank=True, on_delete=models.PROTECT,
+        "parties.Customer",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
         related_name="payments",
     )
     vendor = models.ForeignKey(
-        "parties.Vendor", null=True, blank=True, on_delete=models.PROTECT,
+        "parties.Vendor",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
         related_name="payments",
     )
 
@@ -118,7 +124,9 @@ class Payment(TimeStampedModel):
         **MONEY, default=ZERO, help_text="Advance / unapplied credit (PAY-004, BR-009)."
     )
 
-    method = models.ForeignKey(PaymentMethod, on_delete=models.PROTECT, related_name="payments")
+    method = models.ForeignKey(
+        PaymentMethod, on_delete=models.PROTECT, related_name="payments"
+    )
     money_account = models.ForeignKey(
         MoneyAccount, on_delete=models.PROTECT, related_name="payments"
     )
@@ -129,11 +137,18 @@ class Payment(TimeStampedModel):
         max_length=10, choices=DocumentStatus.choices, default=DocumentStatus.DRAFT
     )
     journal_entry = models.ForeignKey(
-        "ledger.JournalEntry", null=True, blank=True, on_delete=models.PROTECT, related_name="+"
+        "ledger.JournalEntry",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="+",
     )
     posted_at = models.DateTimeField(null=True, blank=True)
     posted_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT,
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
         related_name="+",
     )
 
@@ -141,12 +156,19 @@ class Payment(TimeStampedModel):
     is_reversed = models.BooleanField(default=False)
     reversed_at = models.DateTimeField(null=True, blank=True)
     reversed_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT,
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
         related_name="+",
     )
     reversal_reason = models.TextField(blank=True)
     reversal_journal = models.ForeignKey(
-        "ledger.JournalEntry", null=True, blank=True, on_delete=models.PROTECT, related_name="+"
+        "ledger.JournalEntry",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="+",
     )
 
     # PAY-009 printable voucher
@@ -159,12 +181,22 @@ class Payment(TimeStampedModel):
             # A payment belongs to exactly one party, on the matching side.
             models.CheckConstraint(
                 condition=(
-                    (Q(direction="RECEIPT") & Q(customer__isnull=False) & Q(vendor__isnull=True))
-                    | (Q(direction="PAYMENT") & Q(vendor__isnull=False) & Q(customer__isnull=True))
+                    (
+                        Q(direction="RECEIPT")
+                        & Q(customer__isnull=False)
+                        & Q(vendor__isnull=True)
+                    )
+                    | (
+                        Q(direction="PAYMENT")
+                        & Q(vendor__isnull=False)
+                        & Q(customer__isnull=True)
+                    )
                 ),
                 name="payment_party_matches_direction",
             ),
-            models.CheckConstraint(condition=Q(amount_txn__gt=0), name="payment_amount_positive"),
+            models.CheckConstraint(
+                condition=Q(amount_txn__gt=0), name="payment_amount_positive"
+            ),
             models.CheckConstraint(
                 condition=Q(exchange_rate__gt=0), name="payment_rate_positive"
             ),
@@ -257,11 +289,17 @@ class Allocation(TimeStampedModel):
     # Denormalised party, so a customer statement is one indexed scan of this
     # table rather than a union across the source documents.
     customer = models.ForeignKey(
-        "parties.Customer", null=True, blank=True, on_delete=models.PROTECT,
+        "parties.Customer",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
         related_name="allocations",
     )
     vendor = models.ForeignKey(
-        "parties.Vendor", null=True, blank=True, on_delete=models.PROTECT,
+        "parties.Vendor",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
         related_name="allocations",
     )
 
@@ -270,21 +308,33 @@ class Allocation(TimeStampedModel):
         Payment, null=True, blank=True, on_delete=models.PROTECT, related_name="allocations"
     )
     sales_credit_note = models.ForeignKey(
-        "sales.SalesCreditNote", null=True, blank=True, on_delete=models.PROTECT,
+        "sales.SalesCreditNote",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
         related_name="allocations",
     )
     vendor_debit_note = models.ForeignKey(
-        "purchases.VendorDebitNote", null=True, blank=True, on_delete=models.PROTECT,
+        "purchases.VendorDebitNote",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
         related_name="allocations",
     )
 
     # --- target (exactly one) ---
     sales_invoice = models.ForeignKey(
-        "sales.SalesInvoice", null=True, blank=True, on_delete=models.PROTECT,
+        "sales.SalesInvoice",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
         related_name="allocations",
     )
     purchase_bill = models.ForeignKey(
-        "purchases.PurchaseBill", null=True, blank=True, on_delete=models.PROTECT,
+        "purchases.PurchaseBill",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
         related_name="allocations",
     )
 
@@ -296,10 +346,17 @@ class Allocation(TimeStampedModel):
         **MONEY, default=ZERO, help_text="Positive = gain, negative = loss (BR-014)."
     )
     fx_journal_entry = models.ForeignKey(
-        "ledger.JournalEntry", null=True, blank=True, on_delete=models.PROTECT, related_name="+"
+        "ledger.JournalEntry",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="+",
     )
     journal_entry = models.ForeignKey(
-        "ledger.JournalEntry", null=True, blank=True, on_delete=models.PROTECT,
+        "ledger.JournalEntry",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
         related_name="allocations",
         help_text="Set when the allocation itself posts (credit application).",
     )
@@ -335,14 +392,8 @@ class Allocation(TimeStampedModel):
             models.CheckConstraint(
                 condition=(
                     (Q(source_type="PAYMENT") & Q(payment__isnull=False))
-                    | (
-                        Q(source_type="SALES_CREDIT_NOTE")
-                        & Q(sales_credit_note__isnull=False)
-                    )
-                    | (
-                        Q(source_type="VENDOR_DEBIT_NOTE")
-                        & Q(vendor_debit_note__isnull=False)
-                    )
+                    | (Q(source_type="SALES_CREDIT_NOTE") & Q(sales_credit_note__isnull=False))
+                    | (Q(source_type="VENDOR_DEBIT_NOTE") & Q(vendor_debit_note__isnull=False))
                 ),
                 name="allocation_source_matches_type",
             ),
@@ -381,12 +432,16 @@ class Allocation(TimeStampedModel):
             # PAY-007: the same source may not be applied twice to the same target.
             models.UniqueConstraint(
                 fields=["payment", "sales_invoice"],
-                condition=Q(payment__isnull=False, sales_invoice__isnull=False, is_reversed=False),
+                condition=Q(
+                    payment__isnull=False, sales_invoice__isnull=False, is_reversed=False
+                ),
                 name="allocation_unique_payment_invoice",
             ),
             models.UniqueConstraint(
                 fields=["payment", "purchase_bill"],
-                condition=Q(payment__isnull=False, purchase_bill__isnull=False, is_reversed=False),
+                condition=Q(
+                    payment__isnull=False, purchase_bill__isnull=False, is_reversed=False
+                ),
                 name="allocation_unique_payment_bill",
             ),
             models.UniqueConstraint(
@@ -436,23 +491,41 @@ class Refund(TimeStampedModel):
     )
 
     customer = models.ForeignKey(
-        "parties.Customer", null=True, blank=True, on_delete=models.PROTECT, related_name="refunds"
+        "parties.Customer",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="refunds",
     )
     vendor = models.ForeignKey(
-        "parties.Vendor", null=True, blank=True, on_delete=models.PROTECT, related_name="refunds"
+        "parties.Vendor",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="refunds",
     )
 
     # Source of the credit being refunded (at most one document reference).
     sales_credit_note = models.ForeignKey(
-        "sales.SalesCreditNote", null=True, blank=True, on_delete=models.PROTECT,
+        "sales.SalesCreditNote",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
         related_name="refunds",
     )
     vendor_debit_note = models.ForeignKey(
-        "purchases.VendorDebitNote", null=True, blank=True, on_delete=models.PROTECT,
+        "purchases.VendorDebitNote",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
         related_name="refunds",
     )
     source_payment = models.ForeignKey(
-        Payment, null=True, blank=True, on_delete=models.PROTECT, related_name="refunds",
+        Payment,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="refunds",
         help_text="Refund of an unapplied advance.",
     )
 
@@ -472,15 +545,25 @@ class Refund(TimeStampedModel):
         max_length=10, choices=DocumentStatus.choices, default=DocumentStatus.DRAFT
     )
     journal_entry = models.ForeignKey(
-        "ledger.JournalEntry", null=True, blank=True, on_delete=models.PROTECT, related_name="+"
+        "ledger.JournalEntry",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="+",
     )
     posted_at = models.DateTimeField(null=True, blank=True)
     posted_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT,
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
         related_name="+",
     )
     approved_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT,
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
         related_name="+",
     )
 
@@ -488,8 +571,12 @@ class Refund(TimeStampedModel):
         db_table = "refund"
         ordering = ["-refund_date", "-id"]
         constraints = [
-            models.CheckConstraint(condition=Q(amount_txn__gt=0), name="refund_amount_positive"),
-            models.CheckConstraint(condition=Q(exchange_rate__gt=0), name="refund_rate_positive"),
+            models.CheckConstraint(
+                condition=Q(amount_txn__gt=0), name="refund_amount_positive"
+            ),
+            models.CheckConstraint(
+                condition=Q(exchange_rate__gt=0), name="refund_rate_positive"
+            ),
             models.CheckConstraint(
                 condition=(
                     (

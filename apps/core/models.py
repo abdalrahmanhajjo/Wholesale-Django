@@ -16,7 +16,6 @@ from django.contrib.postgres.fields import DateRangeField, RangeBoundary, RangeO
 from django.core.validators import MinValueValidator
 from django.db import models
 from django.db.models import F, Func, Q
-from django.db.models.functions import Upper
 from django.utils import timezone
 
 
@@ -32,6 +31,7 @@ class DateRangeInclusive(Func):
 
     function = "daterange"
     output_field = DateRangeField()
+
 
 # ---------------------------------------------------------------------------
 # Precision policy (BR-001, NFR-004)
@@ -152,17 +152,27 @@ class FinancialDocumentBase(TimeStampedModel):
     internal_notes = models.TextField(blank=True)
 
     journal_entry = models.ForeignKey(
-        "ledger.JournalEntry", null=True, blank=True, on_delete=models.PROTECT, related_name="+"
+        "ledger.JournalEntry",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="+",
     )
     posted_at = models.DateTimeField(null=True, blank=True)
     posted_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT,
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
         related_name="+",
     )
     submitted_at = models.DateTimeField(null=True, blank=True)
     approved_at = models.DateTimeField(null=True, blank=True)
     approved_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT,
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
         related_name="+",
     )
     approval_reason = models.CharField(max_length=255, blank=True)
@@ -409,11 +419,13 @@ class Company(TimeStampedModel):
         constraints = [
             models.UniqueConstraint(fields=["singleton"], name="company_singleton"),
             models.CheckConstraint(
-                condition=Q(fiscal_year_start_month__gte=1) & Q(fiscal_year_start_month__lte=12),
+                condition=Q(fiscal_year_start_month__gte=1)
+                & Q(fiscal_year_start_month__lte=12),
                 name="company_fy_start_month_range",
             ),
             models.CheckConstraint(
-                condition=Q(rounding_tolerance__gte=0), name="company_rounding_tolerance_nonneg"
+                condition=Q(rounding_tolerance__gte=0),
+                name="company_rounding_tolerance_nonneg",
             ),
         ]
 
@@ -481,13 +493,19 @@ class FiscalPeriod(models.Model):
     )
     closed_at = models.DateTimeField(null=True, blank=True)
     closed_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT,
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
         related_name="+",
     )
     close_reason = models.TextField(blank=True)
     reopened_at = models.DateTimeField(null=True, blank=True)
     reopened_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT,
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
         related_name="+",
     )
     reopen_reason = models.TextField(blank=True)
@@ -625,7 +643,10 @@ class AuditEvent(models.Model):
 
     occurred_at = models.DateTimeField(default=timezone.now, db_index=True)
     user = models.ForeignKey(
-        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT,
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
         related_name="audit_events",
     )
     action = models.CharField(max_length=16, choices=AuditAction.choices)

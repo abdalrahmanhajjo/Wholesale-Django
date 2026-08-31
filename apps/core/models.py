@@ -18,6 +18,8 @@ from django.db import models
 from django.db.models import F, Func, Q
 from django.utils import timezone
 
+from apps.core.permissions import ACTION_PERMISSIONS
+
 
 class DateRangeInclusive(Func):
     """
@@ -674,3 +676,32 @@ class AuditEvent(models.Model):
 
     def __str__(self):
         return f"{self.action} {self.object_repr} @ {self.occurred_at:%Y-%m-%d %H:%M}"
+
+
+# ---------------------------------------------------------------------------
+# Action permissions (ACC-003, ACC-004)
+# ---------------------------------------------------------------------------
+class SystemPermission(models.Model):
+    """
+    A permission carrier, not a table.
+
+    `managed = False` means Django creates no table for it, but still registers
+    a Permission row for every entry in Meta.permissions. That gives one place
+    to declare and audit every cross-cutting action permission without editing
+    models owned by other team members.
+
+    `default_permissions = ()` suppresses the automatic add/change/delete/view,
+    which would be meaningless here.
+
+    See apps/core/permissions.py for the codenames and the role matrix.
+    """
+
+    class Meta:
+        managed = False
+        default_permissions = ()
+        permissions = ACTION_PERMISSIONS
+        verbose_name = "system permission"
+        verbose_name_plural = "system permissions"
+
+    def __str__(self):
+        return "System permissions"

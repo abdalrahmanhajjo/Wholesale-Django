@@ -247,6 +247,18 @@ class Command(BaseCommand):
         else:
             self.fail("no base currency", "run: python manage.py migrate")
 
+        # ACC-003: empty role groups mean every permission check fails silently.
+        from django.contrib.auth.models import Group
+
+        empty = [g.name for g in Group.objects.all() if g.permissions.count() == 0]
+        if Group.objects.exists() and not empty:
+            self.ok("role groups populated (ACC-003)", f"{Group.objects.count()} roles")
+        elif empty:
+            self.fail(
+                f"role group(s) with no permissions: {', '.join(empty)}",
+                "run: python manage.py migrate   (assigned by core.0006_seed_role_permissions)",
+            )
+
         open_periods = FiscalPeriod.objects.filter(status="OPEN").count()
         if open_periods:
             self.ok("fiscal calendar present", f"{open_periods} open period(s)")

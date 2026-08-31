@@ -1,0 +1,101 @@
+{% comment %}
+Sign-in page (ACC-001). Deliberately does not extend base.html: there is no
+navigation to show before authentication, and the split layout is its own thing.
+{% endcomment %}
+<!doctype html>
+<html lang="en" class="h-full">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sign in · Atlas Wholesale</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap">
+  <script src="https://cdn.tailwindcss.com?plugins=forms"></script>
+  <script>
+    tailwind.config = { theme: { extend: {
+      colors: { ink:'#0a1d31', sidebar:'#071a2f', brand:'#22c77a', 'brand-bright':'#39d889',
+                'brand-deep':'#067647', 'brand-tint':'#edf8f3', canvas:'#f4f7f6',
+                line:'#e1e9e7', 'muted-bg':'#f1f5f4', 'muted-fg':'#64748b', danger:'#dc2626' },
+      fontFamily: { sans: ['Inter','Segoe UI','system-ui','sans-serif'] },
+      borderRadius: { xl2: '0.875rem' } } } };
+  </script>
+</head>
+<body class="h-full bg-canvas font-sans text-ink antialiased">
+<div class="flex min-h-full">
+
+  <!-- Brand panel: hidden on small screens, where it would just push the form down. -->
+  <div class="hidden w-1/2 flex-col justify-between bg-sidebar p-12 lg:flex">
+    <div class="flex items-center gap-2.5">
+      <span class="grid h-9 w-9 place-items-center rounded-lg bg-brand text-base font-black text-sidebar">A</span>
+      <span class="text-[13px] font-black uppercase tracking-[0.12em] text-white">Atlas Wholesale</span>
+    </div>
+    <div>
+      <h1 class="max-w-lg text-4xl font-extrabold leading-tight tracking-tight text-white">
+        Every figure traces back to the document that produced it.
+      </h1>
+      <p class="mt-4 max-w-md text-sm leading-relaxed text-slate-400">
+        Purchasing, inventory, sales and payments on one accrual-basis
+        double-entry ledger. Posted entries balance or they do not post.
+      </p>
+    </div>
+    <p class="text-xs text-slate-500">Accrual basis · double entry · audited</p>
+  </div>
+
+  <!-- Form -->
+  <div class="flex w-full items-center justify-center px-6 py-12 lg:w-1/2">
+    <div class="w-full max-w-sm">
+      <div class="mb-8 flex items-center gap-2.5 lg:hidden">
+        <span class="grid h-9 w-9 place-items-center rounded-lg bg-brand text-base font-black text-sidebar">A</span>
+        <span class="text-[13px] font-black uppercase tracking-[0.12em]">Atlas Wholesale</span>
+      </div>
+
+      <h2 class="text-2xl font-extrabold tracking-tight">Sign in</h2>
+      <p class="mt-1 text-sm text-muted-fg">Use your work account.</p>
+
+      {% if form.errors %}
+        <div class="mt-6 rounded-xl border-l-4 border-l-danger bg-red-50 px-4 py-3">
+          {# UX-008: say what failed, without revealing whether the username exists. #}
+          <p class="text-sm font-medium text-danger">
+            That username and password don't match an active account.
+          </p>
+        </div>
+      {% endif %}
+
+      {% if next and user.is_authenticated %}
+        <div class="mt-6 rounded-xl border-l-4 border-l-amber-500 bg-amber-50 px-4 py-3">
+          <p class="text-sm text-amber-800">
+            Your account doesn't have access to that page. Sign in with an account that does.
+          </p>
+        </div>
+      {% endif %}
+
+      <form method="post" class="mt-6 space-y-4">
+        {% csrf_token %}
+        <div>
+          <label for="{{ form.username.id_for_label }}" class="block text-sm font-semibold mb-1.5">Username</label>
+          <input type="text" name="username" id="{{ form.username.id_for_label }}"
+                 autocomplete="username" autofocus required
+                 class="block w-full rounded-xl border border-line bg-white px-3 h-11 text-sm placeholder:text-muted-fg focus:border-brand focus:ring-2 focus:ring-brand/30 focus:outline-none">
+        </div>
+        <div>
+          <label for="{{ form.password.id_for_label }}" class="block text-sm font-semibold mb-1.5">Password</label>
+          <input type="password" name="password" id="{{ form.password.id_for_label }}"
+                 autocomplete="current-password" required
+                 class="block w-full rounded-xl border border-line bg-white px-3 h-11 text-sm placeholder:text-muted-fg focus:border-brand focus:ring-2 focus:ring-brand/30 focus:outline-none">
+        </div>
+        <input type="hidden" name="next" value="{{ next }}">
+        <button type="submit"
+                class="inline-flex h-11 w-full items-center justify-center rounded-xl bg-ink px-4 text-sm font-semibold text-white transition-colors hover:bg-ink/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2">
+          Sign in
+        </button>
+      </form>
+
+      <p class="mt-8 text-xs text-muted-fg">
+        Trouble signing in? Contact your system administrator.
+      </p>
+    </div>
+  </div>
+</div>
+</body>
+</html>

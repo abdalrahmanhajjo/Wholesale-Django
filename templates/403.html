@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% comment %}
+Permission denied (ACC-004, UX-008). Names the rule that refused, never a stack
+trace or anything about the system's internals.
+{% endcomment %}
+{% block title %}Not permitted{% endblock %}
+{% block header_title %}Not permitted{% endblock %}
+{% block content %}
+<div class="card card-pad max-w-xl">
+  <p class="eyebrow">403</p>
+  <h1 class="mt-2 text-2xl font-extrabold tracking-tight">You don't have permission for that</h1>
+  <p class="mt-3 text-sm text-muted-fg">
+    {% if exception %}{{ exception }}{% else %}
+    Your role doesn't include this action.{% endif %}
+  </p>
+  <p class="mt-4 text-sm text-muted-fg">
+    If you need it, ask an administrator to grant it to your role. Actions such as
+    posting, reversing and closing periods are granted separately from viewing
+    and editing.
+  </p>
+  <a href="{% url 'dashboard' %}" class="btn-primary mt-6">Back to dashboard</a>
+</div>
+{% endblock %}

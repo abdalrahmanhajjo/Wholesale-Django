@@ -129,6 +129,65 @@ Either all of it happens or none of it does.
 
 ---
 
+## 4b. Guarding your views (read this before writing a view)
+
+Every action permission lives in `apps/core/permissions.py` as a constant.
+Import the constant — never type the string.
+
+```python
+from apps.core.mixins import ActionPermissionMixin
+from apps.core.permissions import POST_SALES_INVOICE
+
+class SalesInvoicePostView(ActionPermissionMixin, View):
+    required_permission = POST_SALES_INVOICE
+```
+
+For a function view: `@require_action(POST_SALES_INVOICE)`.
+
+**Hiding a button is not security.** BRD §4.1 is explicit, and ACC-004's
+acceptance test is "a user lacking a permission receives a denial even when
+calling the URL directly". So:
+
+```django
+{% if perms.core.post_sales_invoice %}<button>Post</button>{% endif %}
+```
+
+is presentation. The view must *also* refuse. If only one of the two exists,
+make it the view.
+
+Need a permission that doesn't exist yet? Add it to `ACTION_PERMISSIONS` in
+`apps/core/permissions.py` and tell Member 1 — it needs a migration, and that
+file is Member 1's.
+
+## 4c. Templates and styling
+
+Extend `templates/base.html`. It gives you the sidebar, header, message banner
+and page-header block, and it carries the design tokens from the approved
+prototype.
+
+Use the component classes rather than re-deriving utility strings, so every
+module looks like the same product:
+
+| Class | For |
+|---|---|
+| `.btn-primary` `.btn-accent` `.btn-ghost` `.btn-danger` `.btn-sm` | buttons |
+| `.card` `.card-pad` `.card-title` | panels |
+| `.field` `.label` `.help` `.error-text` | form controls |
+| `.badge-draft` `.badge-posted` `.badge-partial` `.badge-overdue` | statuses |
+| `.eyebrow` | small uppercase section labels |
+
+Blocks available: `title`, `header_title`, `page_title`, `page_subtitle`,
+`breadcrumb`, `actions`, `content`, `extra_head`, `extra_scripts`.
+
+Add a new component class to `base.html` rather than inventing a one-off — and
+tell the team, since `base.html` is Member 1's file.
+
+**Note on Tailwind:** we use the Play CDN, which compiles in the browser. That
+is right for this build but not for production — a real deployment needs a
+compiled stylesheet. It is on the Slice 7 hardening list.
+
+---
+
 ## 5. Before you commit
 
 ```bash

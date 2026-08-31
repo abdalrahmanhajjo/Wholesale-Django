@@ -80,7 +80,12 @@ python manage.py createsuperuser
 python manage.py runserver
 ```
 
-Then open http://127.0.0.1:8000/admin/.
+Open http://127.0.0.1:8000/ and sign in.
+
+A superuser bypasses every permission check, which makes it the wrong account
+for testing roles. To check that authorisation actually works, create a second
+user in the admin, put them in the **Cashier** group, and confirm they cannot
+reach an accounting action.
 
 ---
 
@@ -95,7 +100,10 @@ to be filled in, it is a foundation to build screens on.
 | Reference data | Seeded (chart of accounts, tax, currencies, calendar, roles) |
 | Accounting rules | Enforced in the database (see below) |
 | Reporting layer | 10 views + 4 functions |
-| Views, templates, forms | **Not built** — this is the work |
+| Authentication and roles | Built — 7 role groups with permissions, login/logout |
+| Base template and UI kit | Built — `templates/base.html` and component classes |
+| Django admin | Registered for configuration and master data |
+| Feature screens | **Not built** — this is the work |
 
 Before designing a model, check whether it already exists. It probably does.
 
@@ -165,6 +173,7 @@ schema_reference.sql    pg_dump of the built schema, for reference
 
 ```bash
 python manage.py doctor              # check your setup
+python manage.py test                # run the test suite
 python manage.py migrate             # apply schema changes
 python manage.py runserver           # start the dev server
 python manage.py shell               # Django shell

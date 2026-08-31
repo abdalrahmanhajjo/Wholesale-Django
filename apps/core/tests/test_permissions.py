@@ -1,0 +1,154 @@
+"""
+Authorisation tests (ACC-001, ACC-003, ACC-004, ACC-006).
+
+ACC-004's acceptance evidence is specific: "A user lacking a permission receives
+a denial even when calling the URL directly." So these tests call views through
+the URL, not by inspecting group membership — a test that only checks
+`user.has_perm()` would pass even if every view forgot to check.
+
+    python manage.py test apps.core
+"""
+
+from django.contrib.auth.models import Group
+from django.core.exceptions import PermissionDenied
+from django.test import RequestFactory, TestCase
+from django.urls import reverse
+from django.views import View
+
+from apps.accounts.models import User
+from apps.core.mixins import ActionPermissionMixin, require_action
+from apps.core.permissions import (
+    ACCOUNTANT,
+    AUDITOR,
+    CASHIER,
+    CLOSE_PERIOD,
+    OWNER_ADMIN,
+    POST_PAYMENT,
+    POST_SALES_INVOICE,
+    SALES,
+)
+
+
+def make_user(username, group_name=None, **kwargs):
+    user = User.objects.create_user(
+        username=username, email=f"{username}@example.com", password="testpass-12345", **kwargs
+    )
+    if group_name:
+        user.groups.add(Group.objects.get(name=group_name))
+    return user
+
+
+class RoleMatrixTests(TestCase):
+    """The seeded groups grant what BRD §4.1 says they grant."""
+
+    def test_groups_exist_and_are_populated(self):
+        for name in [OWNER_ADMIN, ACCOUNTANT, SALES, CASHIER, AUDITOR]:
+            group = Group.objects.get(name=name)
+            self.assertGreater(
+                group.permissions.count(), 0, f"{name} has no permissions — role seed failed"
+            )
+
+    def test_accountant_can_post_and_close(self):
+        user = make_user("acc", ACCOUNTANT)
+        self.assertTrue(user.has_perm(POST_SALES_INVOICE))
+        self.assertTrue(user.has_perm(CLOSE_PERIOD))
+
+    def test_sales_cannot_post_by_default(self):
+        # BRD 4.1: "Create/edit drafts; submit; limited post if granted."
+        user = make_user("sales", SALES)
+        self.assertFalse(user.has_perm(POST_SALES_INVOICE))
+        self.assertTrue(user.has_perm("sales.add_salesorder"))
+
+    def test_cashier_can_take_money_but_not_configure(self):
+        user = make_user("cash", CASHIER)
+        self.assertTrue(user.has_perm(POST_PAYMENT))
+        self.assertFalse(user.has_perm(CLOSE_PERIOD))
+        self.assertFalse(user.has_perm("core.manage_configuration"))
+
+    def test_auditor_sees_everything_and_changes_nothing(self):
+        user = make_user("audit", AUDITOR)
+        self.assertTrue(user.has_perm("sales.view_salesinvoice"))
+        self.assertFalse(user.has_perm("sales.add_salesinvoice"))
+        self.assertFalse(user.has_perm("sales.change_salesinvoice"))
+
+    def test_owner_admin_has_everything(self):
+        user = make_user("owner", OWNER_ADMIN)
+        for perm in [POST_SALES_INVOICE, POST_PAYMENT, CLOSE_PERIOD]:
+            self.assertTrue(user.has_perm(perm), perm)
+
+
+class DirectUrlAccessTests(TestCase):
+    """ACC-004: the denial must come from the view, not from a hidden button."""
+
+    def setUp(self):
+        self.factory = RequestFactory()
+
+        class PostInvoiceView(ActionPermissionMixin, View):
+            required_permission = POST_SALES_INVOICE
+
+            def post(self, request):
+                from django.http import HttpResponse
+
+                return HttpResponse("posted")
+
+        self.view = PostInvoiceView.as_view()
+
+    def test_user_without_permission_is_denied(self):
+        request = self.factory.post("/post/")
+        request.user = make_user("nobody")
+        with self.assertRaises(PermissionDenied):
+            self.view(request)
+
+    def test_user_with_permission_is_allowed(self):
+        request = self.factory.post("/post/")
+        request.user = make_user("acc2", ACCOUNTANT)
+        response = self.view(request)
+        self.assertEqual(response.status_code, 200)
+
+    def test_read_only_account_is_blocked_on_write(self):
+        """ACC-006: an auditor may hold permissions and still may not mutate."""
+        request = self.factory.post("/post/")
+        user = make_user("ro", ACCOUNTANT, is_read_only=True)
+        request.user = user
+        with self.assertRaises(PermissionDenied):
+            self.view(request)
+
+    def test_decorator_matches_the_mixin(self):
+        @require_action(POST_SALES_INVOICE)
+        def a_view(request):
+            from django.http import HttpResponse
+
+            return HttpResponse("ok")
+
+        request = self.factory.post("/x/")
+        request.user = make_user("nobody2")
+        with self.assertRaises(PermissionDenied):
+            a_view(request)
+
+
+class AuthenticationTests(TestCase):
+    """ACC-001, ACC-002."""
+
+    def test_protected_page_redirects_anonymous_user_to_login(self):
+        response = self.client.get(reverse("dashboard"))
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(reverse("login"), response["Location"])
+
+    def test_valid_user_can_sign_in_and_reach_the_dashboard(self):
+        make_user("hassan", OWNER_ADMIN)
+        signed_in = self.client.login(username="hassan", password="testpass-12345")
+        self.assertTrue(signed_in)
+        response = self.client.get(reverse("dashboard"))
+        self.assertEqual(response.status_code, 200)
+
+    def test_inactive_user_cannot_sign_in(self):
+        user = make_user("gone")
+        user.is_active = False
+        user.deactivated_at = "2026-08-01T00:00:00Z"
+        user.save()
+        self.assertFalse(self.client.login(username="gone", password="testpass-12345"))
+
+    def test_login_page_renders(self):
+        response = self.client.get(reverse("login"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Sign in")

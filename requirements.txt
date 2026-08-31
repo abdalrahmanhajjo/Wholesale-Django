@@ -1,0 +1,11 @@
+# Runtime dependencies. Pinned to minor versions so all four machines and the
+# deployment target behave identically. Install with:
+#
+#     pip install -r requirements.txt
+#
+# Deliberately short. Settings are read from the environment by a small helper
+# in config/settings.py rather than a settings library, so there is no third
+# dependency to install, learn, or debug precedence rules for.
+
+Django==5.1.*
+psycopg[binary]==3.2.*

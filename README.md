@@ -103,7 +103,10 @@ to be filled in, it is a foundation to build screens on.
 | Authentication and roles | Built — 7 role groups with permissions, login/logout |
 | Base template and UI kit | Built — `templates/base.html` and component classes |
 | Django admin | Registered for configuration and master data |
-| Feature screens | **Not built** — this is the work |
+| Shared list pattern | Built — `FilteredListView` + `core/list_base.html` |
+| Audit trail service | Built — `apps/core/audit.py` |
+| Customers and vendors | Built — list, detail, form, deactivate |
+| Remaining feature screens | **Not built** — this is the work |
 
 Before designing a model, check whether it already exists. It probably does.
 

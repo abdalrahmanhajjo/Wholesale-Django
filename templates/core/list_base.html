@@ -1,0 +1,164 @@
+{% extends "base.html" %}
+{% comment %}
+The shared list screen (UX-002). Every module's list page renders through this,
+so search, filters, sorting, pagination and export behave identically
+everywhere. Subclass FilteredListView and declare `columns` / `filters`; you
+should not need to copy this file.
+
+Override `list_actions` for buttons beyond "New", or `empty_state` for a
+module-specific empty message.
+{% endcomment %}
+
+{% block header_title %}{{ page_title }}{% endblock %}
+
+{% block actions %}
+  {% if can_export %}
+    <a href="?{{ querystring }}{% if querystring %}&{% endif %}export=csv" class="btn-ghost">Export CSV</a>
+  {% endif %}
+  {% block list_actions %}{% endblock %}
+  {% if create_url_name %}
+    <a href="{% url create_url_name %}" class="btn-primary">{{ create_label }}</a>
+  {% endif %}
+{% endblock %}
+
+{% block content %}
+
+{% if summary %}
+  <div class="mb-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+    {% for label, value in summary %}
+      <div class="card card-pad">
+        <p class="eyebrow">{{ label }}</p>
+        <p class="mt-2 text-2xl font-extrabold tracking-tight tabular-nums">{{ value }}</p>
+      </div>
+    {% endfor %}
+  </div>
+{% endif %}
+
+<div class="card">
+
+  {# ------------------------------------------------------------ toolbar #}
+  <form method="get" class="flex flex-wrap items-end gap-3 border-b border-line p-4 sm:p-5">
+    <div class="min-w-[220px] flex-1">
+      <label for="q" class="label">Search</label>
+      <input type="search" name="q" id="q" value="{{ search_term }}"
+             placeholder="Search…" class="field">
+    </div>
+
+    {% for f in filters %}
+      {% if f.kind == "choice" %}
+        <div>
+          <label for="f-{{ f.name }}" class="label">{{ f.label }}</label>
+          <select name="{{ f.name }}" id="f-{{ f.name }}" class="field pr-8">
+            <option value="">{{ f.blank_label }}</option>
+            {% for c in f.choices %}
+              <option value="{{ c.value }}" {% if c.selected %}selected{% endif %}>{{ c.label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      {% else %}
+        <div>
+          <label class="label">{{ f.label }}</label>
+          <div class="flex items-center gap-2">
+            <input type="date" name="{{ f.name }}_from" value="{{ f.value_from }}" class="field">
+            <span class="text-sm text-muted-fg">to</span>
+            <input type="date" name="{{ f.name }}_to" value="{{ f.value_to }}" class="field">
+          </div>
+        </div>
+      {% endif %}
+    {% endfor %}
+
+    {% if current_sort %}<input type="hidden" name="sort" value="{{ current_sort }}">{% endif %}
+
+    <button type="submit" class="btn-primary">Apply</button>
+    {% if active_filters %}
+      <a href="{{ request.path }}" class="btn-ghost">Clear</a>
+    {% endif %}
+  </form>
+
+  {# -------------------------------------------------------------- table #}
+  <div class="overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead>
+        <tr class="border-b border-line bg-muted-bg">
+          {% for c in columns %}
+            <th class="whitespace-nowrap px-4 py-3 text-{{ c.align }} text-[11px] font-bold uppercase tracking-[0.1em] text-muted-fg">
+              {% if c.sortable %}
+                {% if current_sort == c.ordering_key %}
+                  <a href="?{{ querystring }}{% if querystring %}&{% endif %}sort=-{{ c.ordering_key }}"
+                     class="inline-flex items-center gap-1 hover:text-ink">{{ c.label }} <span aria-hidden="true">↑</span></a>
+                {% elif current_sort == "-"|add:c.ordering_key %}
+                  <a href="?{{ querystring }}{% if querystring %}&{% endif %}sort={{ c.ordering_key }}"
+                     class="inline-flex items-center gap-1 hover:text-ink">{{ c.label }} <span aria-hidden="true">↓</span></a>
+                {% else %}
+                  <a href="?{{ querystring }}{% if querystring %}&{% endif %}sort={{ c.ordering_key }}"
+                     class="inline-flex items-center gap-1 hover:text-ink">{{ c.label }}</a>
+                {% endif %}
+              {% else %}{{ c.label }}{% endif %}
+            </th>
+          {% endfor %}
+          <th class="w-px px-4 py-3"><span class="sr-only">Actions</span></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+          <tr class="border-b border-line last:border-0 hover:bg-muted-bg/60">
+            {% for cell in row.cells %}
+              <td class="px-4 py-3 text-{{ cell.column.align }} {{ cell.column.css }}
+                         {% if cell.column.money %}tabular-nums font-medium{% endif %}">
+                {% if cell.column.link %}
+                  <a href="{{ row.object.get_absolute_url }}" class="font-semibold text-ink hover:text-brand-deep">{{ cell.display }}</a>
+                {% elif cell.column.badge %}
+                  {% include "core/_status_badge.html" with value=cell.value display=cell.display %}
+                {% else %}{{ cell.display }}{% endif %}
+              </td>
+            {% endfor %}
+            <td class="px-4 py-3 text-right">
+              <a href="{{ row.object.get_absolute_url }}" class="text-xs font-semibold text-muted-fg hover:text-ink">View</a>
+            </td>
+          </tr>
+        {% empty %}
+          <tr>
+            <td colspan="{{ columns|length|add:1 }}" class="px-4 py-16 text-center">
+              {% block empty_state %}
+                <p class="text-sm font-semibold">Nothing to show</p>
+                <p class="mt-1 text-sm text-muted-fg">
+                  {% if active_filters %}No records match these filters.{% else %}No records yet.{% endif %}
+                </p>
+                {% if active_filters %}
+                  <a href="{{ request.path }}" class="btn-ghost mt-4">Clear filters</a>
+                {% endif %}
+              {% endblock %}
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {# --------------------------------------------------------- pagination #}
+  {% if is_paginated %}
+    <div class="flex flex-wrap items-center justify-between gap-3 border-t border-line px-4 py-3 sm:px-5">
+      <p class="text-xs text-muted-fg">
+        Showing {{ page_obj.start_index }}–{{ page_obj.end_index }} of {{ total_count }}
+      </p>
+      <div class="flex items-center gap-1">
+        {% if page_obj.has_previous %}
+          <a href="?{{ querystring }}{% if querystring %}&{% endif %}page={{ page_obj.previous_page_number }}"
+             class="btn-ghost btn-sm">Previous</a>
+        {% endif %}
+        <span class="px-3 text-xs font-semibold text-muted-fg">
+          Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}
+        </span>
+        {% if page_obj.has_next %}
+          <a href="?{{ querystring }}{% if querystring %}&{% endif %}page={{ page_obj.next_page_number }}"
+             class="btn-ghost btn-sm">Next</a>
+        {% endif %}
+      </div>
+    </div>
+  {% else %}
+    <div class="border-t border-line px-4 py-3 text-xs text-muted-fg sm:px-5">
+      {{ total_count }} record{{ total_count|pluralize }}
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

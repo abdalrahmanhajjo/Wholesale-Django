@@ -115,8 +115,10 @@ Blocks available to child templates:
         <a href="#" class="nav-link">Inventory</a>
 
         <p class="nav-group">Relationships</p>
-        <a href="#" class="nav-link">Customers</a>
-        <a href="#" class="nav-link">Vendors</a>
+        <a href="{% url 'parties:customer_list' %}"
+           class="nav-link {% if request.resolver_match.url_name|slice:':8' == 'customer' %}nav-link-active{% endif %}">Customers</a>
+        <a href="{% url 'parties:vendor_list' %}"
+           class="nav-link {% if request.resolver_match.url_name|slice:':6' == 'vendor' %}nav-link-active{% endif %}">Vendors</a>
 
         <p class="nav-group">Finance</p>
         <a href="#" class="nav-link">Accounting</a>

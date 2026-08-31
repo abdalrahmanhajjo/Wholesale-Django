@@ -9,7 +9,7 @@ from django.conf import settings
 from django.conf.urls.static import static
 from django.contrib import admin
 from django.contrib.auth import views as auth_views
-from django.urls import path
+from django.urls import include, path
 
 from apps.core import views as core_views
 
@@ -25,6 +25,7 @@ urlpatterns = [
         auth_views.PasswordChangeView.as_view(success_url="/"),
         name="password_change",
     ),
+    path("parties/", include("apps.parties.urls")),
     path("admin/", admin.site.urls),
     # Members 2-4 add their includes here:
     # path("sales/", include("apps.sales.urls")),

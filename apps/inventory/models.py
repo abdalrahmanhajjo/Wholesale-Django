@@ -413,6 +413,10 @@ class DeliveryNote(StockDocumentBase):
         related_name="+",
     )
 
+    def get_absolute_url(self):
+        from django.urls import reverse
+        return reverse("sales:delivery_detail", args=[self.pk])
+
     class Meta:
         db_table = "delivery_note"
         ordering = ["-document_date", "-id"]

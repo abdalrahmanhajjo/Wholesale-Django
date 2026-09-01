@@ -35,6 +35,12 @@ class NumberingTests(TestCase):
         self.assertEqual(Decimal(seq.next_number), Decimal(3))
 
     def test_allocate_raises_without_active_sequence(self):
+        # Be resilient to a stale SO/DEFAULT row left in the persisted
+        # --keepdb test database by other suites; this test asserts the
+        # raise, so it owns a clean slate (SAL-001 numbering).
+        DocumentSequence.objects.filter(
+            document_type="SO", series="DEFAULT"
+        ).delete()
         with self.assertRaises(ValueError):
             services.allocate_so_number()
 

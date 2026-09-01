@@ -23,4 +23,9 @@ urlpatterns = [
         views.SalesOrderRejectView.as_view(),
         name="so_reject",
     ),
+    # Delivery notes (SAL-005, INV-007)
+    path("deliveries/", views.DeliveryNoteListView.as_view(), name="delivery_list"),
+    path("deliveries/new/", views.DeliveryNoteCreateView.as_view(), name="delivery_create"),
+    path("deliveries/<int:pk>/", views.DeliveryNoteDetailView.as_view(), name="delivery_detail"),
+    path("deliveries/<int:pk>/post/", views.DeliveryNotePostView.as_view(), name="delivery_post"),
 ]

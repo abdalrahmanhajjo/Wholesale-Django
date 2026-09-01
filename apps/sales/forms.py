@@ -8,11 +8,12 @@ identical to CustomerForm.
 
 from django import forms
 from django.core.exceptions import ValidationError
-from django.forms import inlineformset_factory
+from django.forms import formset_factory, inlineformset_factory
 
 from apps.core.models import DocumentStatus
+from apps.inventory.models import DeliveryNote, DeliveryNoteLine
 from apps.sales.models import SalesOrder, SalesOrderLine, DiscountKind
-from apps.sales.services import recalculate_order
+from apps.sales.services import recalculate_order, remaining_to_deliver
 
 
 class SalesOrderForm(forms.ModelForm):
@@ -142,4 +143,93 @@ SalesOrderLineFormSet = inlineformset_factory(
     can_delete=True,
     min_num=0,
     validate_min=False,
+)
+
+
+# ---------------------------------------------------------------------------
+# Delivery notes (SAL-005, INV-007)
+# ---------------------------------------------------------------------------
+class DeliveryNoteForm(forms.ModelForm):
+    """
+    Header of a delivery note. `customer` and `sales_order` arrive from the
+    order selected on the create flow, so they are hidden here. The note is
+    created as DRAFT and posted separately (warehouse double-check).
+
+    """
+    class Meta:
+        model = DeliveryNote
+        fields = [
+            "customer", "sales_order", "warehouse", "document_date",
+            "reference", "carrier", "tracking_reference",
+            "shipping_address_text", "notes",
+        ]
+        widgets = {
+            "customer": forms.HiddenInput(),
+            "sales_order": forms.HiddenInput(),
+            "document_date": forms.DateInput(attrs={"type": "date"}),
+            "shipping_address_text": forms.Textarea(attrs={"rows": 2}),
+            "notes": forms.Textarea(attrs={"rows": 2}),
+            "carrier": forms.TextInput(attrs={"placeholder": "Carrier (optional)"}),
+            "tracking_reference": forms.TextInput(attrs={"placeholder": "Tracking (optional)"}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for fld in self.fields.values():
+            widget = fld.widget
+            if isinstance(widget, forms.CheckboxInput):
+                widget.attrs.setdefault(
+                    "class",
+                    "h-4 w-4 rounded border-line text-brand focus:ring-brand/30",
+                )
+            elif isinstance(widget, forms.Textarea):
+                widget.attrs.setdefault(
+                    "class",
+                    "block w-full rounded-xl2 border border-line bg-white px-3 py-2 text-sm "
+                    "focus:border-brand focus:ring-2 focus:ring-brand/30 focus:outline-none",
+                )
+            else:
+                widget.attrs.setdefault("class", "field")
+        self.fields["warehouse"].queryset = (
+            self.fields["warehouse"].queryset.filter(is_active=True)
+        )
+
+
+class DeliveryLineForm(forms.Form):
+    """One editable row in the create-from-order flow.
+
+    Only the quantity is entered here; product and order-line are carried
+    hidden and rendered read-only from the order line the view attaches.
+    """
+
+    sales_order_line = forms.IntegerField(widget=forms.HiddenInput())
+    quantity = forms.DecimalField(
+        max_digits=18,
+        decimal_places=4,
+        min_value=0,
+        widget=forms.NumberInput(
+            attrs={
+                "min": "0",
+                "step": "0.0001",
+                "class": "field block w-28 text-right tabular-nums",
+            }
+        ),
+    )
+
+    def clean_quantity(self):
+        qty = self.cleaned_data["quantity"]
+        so_line = getattr(self, "so_line", None)
+        if so_line is not None and qty > remaining_to_deliver(so_line):
+            raise ValidationError(
+                f"Only {remaining_to_deliver(so_line)} remains to deliver "
+                f"({so_line.product}) — over-delivery is blocked (SAL-005)."
+            )
+        return qty
+
+
+# Rows are added by the view for each order line with remaining quantity.
+DeliveryLineFormSet = formset_factory(
+    DeliveryLineForm,
+    formset=forms.BaseFormSet,
+    extra=0,
 )

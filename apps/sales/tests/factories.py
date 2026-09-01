@@ -152,3 +152,19 @@ def make_open_period():
         ),
     )
     return period
+
+
+_user_seq = [0]
+
+
+def make_user(username=None):
+    """Create a real User (audit events require one)."""
+    from apps.accounts.models import User
+
+    _user_seq[0] += 1
+    username = username or "user-%03d" % _user_seq[0]
+    return User.objects.create_user(
+        username=username,
+        email=f"{username}@example.com",
+        password="x-test-password",
+    )

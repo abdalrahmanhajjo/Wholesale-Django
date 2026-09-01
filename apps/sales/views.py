@@ -10,8 +10,11 @@ Follows the parties/views.py worked example exactly:
 from django.contrib import messages
 from django.db import transaction
 from django.db.models import Q, Count, Sum
+from django import forms
+from django.forms import Form, IntegerField, ModelChoiceField
 from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse, reverse_lazy
+from django.utils import timezone
 from django.views.generic import (
     CreateView, DetailView, TemplateView, UpdateView, View,
 )
@@ -20,9 +23,12 @@ from apps.core import audit
 from apps.core.list_views import Column, ChoiceFilter, DateRangeFilter, FilteredListView
 from apps.core.mixins import ActionPermissionMixin, ConfirmationRequiredMixin
 from apps.core.models import AuditEvent, DocumentStatus, ZERO
-from apps.core.permissions import APPROVE_SALES_ORDER, EXPORT_DATA
+from apps.core.permissions import APPROVE_SALES_ORDER, EXPORT_DATA, POST_DELIVERY
 
-from apps.sales.forms import SalesOrderForm, SalesOrderLineFormSet
+from apps.inventory.models import DeliveryNote, DeliveryNoteLine
+from apps.sales.forms import (
+    DeliveryLineFormSet, DeliveryNoteForm, SalesOrderForm, SalesOrderLineFormSet,
+)
 from apps.sales.models import SalesOrder, SalesOrderLine
 from apps.sales import services
 
@@ -318,3 +324,261 @@ class SalesOrderRejectView(ConfirmationRequiredMixin, View):
             messages.error(request, str(exc))
 
         return redirect("sales:so_detail", pk=pk)
+
+
+# ---------------------------------------------------------------------------
+# Delivery notes (SAL-005, INV-007)
+# ---------------------------------------------------------------------------
+class DeliveryNoteListView(FilteredListView):
+    model = DeliveryNote
+    page_title = "Delivery notes"
+    page_subtitle = "Goods shipped against approved sales orders."
+    create_url_name = "sales:delivery_create"
+    create_label = "New delivery note"
+    export_permission = EXPORT_DATA
+    export_filename = "delivery_notes"
+    default_ordering = "-document_date"
+    paginate_by = 25
+
+    columns = [
+        Column("number", "Number", sortable=True, link=True, css="font-mono text-xs"),
+        Column("customer", "Customer", sortable=True, order_by="customer__name"),
+        Column("sales_order", "Sales order", order_by="sales_order__number"),
+        Column("document_date", "Date", sortable=True),
+        Column("warehouse", "Warehouse", order_by="warehouse__code"),
+        Column("status", "Status", badge=True, align="center"),
+        Column("total_cost_base", "Total cost", align="right", money=True, sortable=True),
+    ]
+
+    search_fields = [
+        "number", "customer__name", "customer__code", "sales_order__number",
+        "carrier", "tracking_reference",
+    ]
+    trigram_search_fields = ["customer__name"]
+
+    filters = [
+        ChoiceFilter("status", "Status", list(DocumentStatus.choices)),
+        DateRangeFilter("document_date", "Date range"),
+    ]
+
+    def get_queryset(self):
+        return (
+            super()
+            .get_queryset()
+            .select_related("customer", "warehouse", "sales_order")
+        )
+
+    def get_summary(self):
+        agg = DeliveryNote.objects.aggregate(
+            draft=Count("id", filter=Q(status="DRAFT")),
+            posted=Count("id", filter=Q(status="POSTED")),
+            completed=Count("id", filter=Q(status="COMPLETED")),
+        )
+        return [
+            ("Draft", agg["draft"] or 0),
+            ("Posted", agg["posted"] or 0),
+            ("Completed", agg["completed"] or 0),
+        ]
+
+
+class DeliveryOrderSelectForm(forms.Form):
+    """First step of creating a delivery note: pick an approved order."""
+
+    order = forms.ModelChoiceField(
+        queryset=SalesOrder.objects.none(),
+        label="Approved sales order",
+        empty_label="Select an order…",
+        widget=forms.Select(attrs={"class": "field"}),
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["order"].queryset = (
+            SalesOrder.objects
+            .filter(status__in=[DocumentStatus.APPROVED, DocumentStatus.PARTIAL])
+            .select_related("customer", "warehouse")
+            .order_by("-document_date")
+        )
+
+
+class DeliveryNoteCreateView(ActionPermissionMixin, TemplateView):
+    """
+    Create a delivery note against an approved sales order.
+
+    GET without `?order=` shows the approved-order picker. GET with `?order=`
+    renders the header form plus the order's remaining lines with quantities
+    pre-filled from what still needs delivering. POST validates, creates and
+    posts the note (SAL-005), then redirects to its detail.
+    """
+
+    template_name = "sales/delivery_note_form.html"
+    required_permission = "inventory.add_deliverynote"
+
+    def get_order(self):
+        pk = self.request.GET.get("order") or self.request.POST.get("order")
+        if not pk:
+            return None
+        order = get_object_or_404(SalesOrder, pk=pk)
+        if order.status not in (DocumentStatus.APPROVED, DocumentStatus.PARTIAL):
+            return None
+        return order
+
+    def get_initial(self, order):
+        return {
+            "customer": order.customer_id,
+            "sales_order": order.pk,
+            "warehouse": order.warehouse_id,
+            "document_date": timezone.localdate(),
+            "shipping_address_text": order.shipping_address_text,
+        }
+
+    def build_formset(self, order):
+        rows = services.build_delivery_lines(order)
+        formset = DeliveryLineFormSet(
+            self.request.POST or None,
+            initial=[
+                {"sales_order_line": ln.pk, "quantity": remaining}
+                for ln, remaining in rows
+            ],
+            prefix="lines",
+        )
+        for form, (ln, remaining) in zip(formset.forms, rows):
+            form.so_line = ln
+            form.remaining = remaining
+        return formset
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        order = self.get_order()
+        if order is None:
+            ctx["order_picker"] = DeliveryOrderSelectForm()
+            ctx["step"] = "pick"
+            ctx["page_title"] = "New delivery note"
+            ctx["page_subtitle"] = "Start from an approved sales order."
+            return ctx
+
+        ctx["order"] = order
+        ctx["step"] = "create"
+        ctx["page_title"] = f"Deliver {order.number}"
+        ctx["page_subtitle"] = f"{order.customer} · {order.get_status_display()}"
+
+        header = kwargs.get("header_form")
+        if header is None:
+            header = DeliveryNoteForm(initial=self.get_initial(order))
+        ctx["header_form"] = header
+
+        formset = kwargs.get("line_formset")
+        if formset is None:
+            formset = self.build_formset(order)
+        ctx["line_formset"] = formset
+        return ctx
+
+    def get(self, request, *args, **kwargs):
+        if request.GET.get("order") and self.get_order() is not None:
+            return self.render_to_response(self.get_context_data())
+        # No valid order selected yet: show the picker.
+        ctx = self.get_context_data()
+        return self.render_to_response(ctx)
+
+    def post(self, request, *args, **kwargs):
+        order = self.get_order()
+        if order is None:
+            messages.error(request, "Choose an approved sales order to deliver.")
+            return redirect("sales:delivery_create")
+
+        header = DeliveryNoteForm(request.POST)
+        header.instance.customer = order.customer
+        header.instance.sales_order = order
+
+        rows = services.build_delivery_lines(order)
+        formset = DeliveryLineFormSet(request.POST, prefix="lines")
+        for form, (ln, remaining) in zip(formset.forms, rows):
+            form.so_line = ln
+            form.remaining = remaining
+
+        if not header.is_valid() or not formset.is_valid():
+            return self.render_to_response(
+                self.get_context_data(header_form=header, line_formset=formset)
+            )
+
+        quantities = {
+            int(form.cleaned_data["sales_order_line"]): form.cleaned_data["quantity"]
+            for form in formset.forms
+            if form.cleaned_data and form.cleaned_data.get("quantity") is not None
+        }
+        if not quantities:
+            messages.error(request, "Choose at least one line quantity to deliver.")
+            return self.render_to_response(
+                self.get_context_data(header_form=header, line_formset=formset)
+            )
+
+        try:
+            note = services.draft_delivery_from_order(
+                order=order,
+                user=request.user,
+                quantities=quantities,
+                warehouse=header.cleaned_data.get("warehouse"),
+                document_date=header.cleaned_data.get("document_date"),
+                reference=header.cleaned_data.get("reference", ""),
+                notes=header.cleaned_data.get("notes", ""),
+                carrier=header.cleaned_data.get("carrier", ""),
+                tracking_reference=header.cleaned_data.get("tracking_reference", ""),
+                shipping_address_text=header.cleaned_data.get(
+                    "shipping_address_text", ""
+                ),
+            )
+            services.post_delivery(note, request.user)
+            messages.success(
+                request,
+                f"Delivery note {note.number} created and posted.",
+            )
+            return redirect("sales:delivery_detail", pk=note.pk)
+        except ValueError as exc:
+            messages.error(request, str(exc))
+            return self.render_to_response(
+                self.get_context_data(header_form=header, line_formset=formset)
+            )
+
+
+class DeliveryNoteDetailView(ActionPermissionMixin, DetailView):
+    model = DeliveryNote
+    template_name = "sales/delivery_note_detail.html"
+    context_object_name = "note"
+    required_permission = "inventory.view_deliverynote"
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        ctx["page_title"] = self.object.number
+        ctx["page_subtitle"] = f"Delivery for {self.object.customer}"
+        ctx["audit_events"] = (
+            AuditEvent.objects
+            .filter(
+                content_type__app_label="inventory",
+                content_type__model="deliverynote",
+                object_id=self.object.pk,
+            )
+            .select_related("user")[:20]
+        )
+        return ctx
+
+
+class DeliveryNotePostView(ActionPermissionMixin, View):
+    """
+    Post a DRAFT delivery note (SAL-005). Requires the post_delivery permission
+    (WAREHOUSE role). Order counters update here; stock movement rows go
+    through Member 2's Day 5 engine via the services seam.
+    """
+
+    required_permission = POST_DELIVERY
+
+    def post(self, request, pk):
+        note = get_object_or_404(DeliveryNote, pk=pk)
+        try:
+            services.post_delivery(note, request.user)
+            messages.success(
+                request,
+                f"Delivery note {note.number} posted.",
+            )
+        except ValueError as exc:
+            messages.error(request, str(exc))
+        return redirect("sales:delivery_detail", pk=pk)

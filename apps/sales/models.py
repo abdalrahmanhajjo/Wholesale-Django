@@ -78,6 +78,10 @@ class SalesOrder(FinancialDocumentBase):
             models.Index(fields=["customer_reference"], name="ix_so_customer_ref"),
         ]
 
+    def get_absolute_url(self):
+        from django.urls import reverse
+        return reverse("sales:so_detail", args=[self.pk])
+
 
 class SalesOrderLine(DocumentLineBase):
     order = models.ForeignKey(SalesOrder, on_delete=models.CASCADE, related_name="lines")

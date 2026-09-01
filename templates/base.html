@@ -44,7 +44,7 @@ Blocks available to child templates:
            class="nav-link {% if request.resolver_match.url_name == 'dashboard' %}nav-link-active{% endif %}">Dashboard</a>
 
         <p class="nav-group">Operations</p>
-        <a href="#" class="nav-link">Sales</a>
+        <a href="{% url 'sales:so_list' %}" class="nav-link {% if request.resolver_match.app_name == 'sales' %}nav-link-active{% endif %}">Sales</a>
         <a href="#" class="nav-link">Purchases</a>
         <a href="#" class="nav-link">Payments</a>
         <a href="#" class="nav-link">Inventory</a>

@@ -1,0 +1,214 @@
+{% extends "base.html" %}
+{% comment %}
+Create / edit a sales order with header fields and a line formset (SAL-001..SAL-004).
+The layout follows customer_form.html: card sections with eyebrow labels,
+the same field widget styling, and a save/cancel footer.
+{% endcomment %}
+
+{% block header_title %}{{ page_title }}{% endblock %}
+
+{% block content %}
+<form method="post" novalidate class="max-w-5xl">
+  {% csrf_token %}
+
+  {% if form.non_field_errors %}
+    <div class="card card-pad mb-5 border-l-4 border-l-danger">
+      {% for error in form.non_field_errors %}
+        <p class="text-sm text-danger">{{ error }}</p>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  {# ---- Header fields ---- #}
+  <div class="card card-pad">
+    <p class="eyebrow">Order details</p>
+    <div class="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      {% include "core/_form_field.html" with field=form.customer %}
+      {% include "core/_form_field.html" with field=form.warehouse %}
+      {% include "core/_form_field.html" with field=form.currency %}
+      {% include "core/_form_field.html" with field=form.exchange_rate %}
+      {% include "core/_form_field.html" with field=form.document_date %}
+      {% include "core/_form_field.html" with field=form.posting_date %}
+      {% include "core/_form_field.html" with field=form.due_date %}
+      {% include "core/_form_field.html" with field=form.payment_term %}
+      {% include "core/_form_field.html" with field=form.expected_date %}
+      {% include "core/_form_field.html" with field=form.customer_reference %}
+      {% include "core/_form_field.html" with field=form.salesperson %}
+    </div>
+  </div>
+
+  <div class="card card-pad mt-4">
+    <p class="eyebrow">Addresses</p>
+    <div class="mt-4 grid gap-4 sm:grid-cols-2">
+      {% include "core/_form_field.html" with field=form.billing_address_text %}
+      {% include "core/_form_field.html" with field=form.shipping_address_text %}
+    </div>
+  </div>
+
+  <div class="card card-pad mt-4">
+    <p class="eyebrow">Document discount (SAL-003)</p>
+    <div class="mt-4 grid gap-4 sm:grid-cols-2">
+      {% include "core/_form_field.html" with field=form.document_discount_kind %}
+      {% include "core/_form_field.html" with field=form.document_discount_value %}
+    </div>
+  </div>
+
+  <div class="card card-pad mt-4">
+    <p class="eyebrow">Notes</p>
+    <div class="mt-4 grid gap-4 sm:grid-cols-2">
+      {% include "core/_form_field.html" with field=form.notes %}
+      {% include "core/_form_field.html" with field=form.internal_notes %}
+    </div>
+  </div>
+
+  {# ---- Lines formset (SAL-001) ---- #}
+  <div class="card mt-4">
+    <div class="border-b border-line px-5 py-4">
+      <p class="eyebrow">Lines</p>
+      <h2 class="card-title mt-1">Order lines with discount &amp; tax (SAL-002)</h2>
+    </div>
+
+    {{ line_formset.management_form }}
+
+    {% if line_formset.non_form_errors %}
+      <div class="mx-5 mt-4 rounded-xl2 border-l-4 border-l-danger bg-red-50 px-4 py-3">
+        {% for error in line_formset.non_form_errors %}
+          <p class="text-sm text-danger">{{ error }}</p>
+        {% endfor %}
+      </div>
+    {% endif %}
+
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm" id="lines-table">
+        <thead>
+          <tr class="border-b border-line bg-muted-bg text-[11px] font-bold uppercase tracking-[0.1em] text-muted-fg">
+            <th class="w-10 px-4 py-3">#</th>
+            <th class="px-4 py-3 text-left">Product</th>
+            <th class="px-4 py-3 text-left">Description</th>
+            <th class="px-4 py-3 text-left">Unit</th>
+            <th class="px-4 py-3 text-right">Qty</th>
+            <th class="px-4 py-3 text-right">Unit price</th>
+            <th class="px-4 py-3 text-right">Disc %</th>
+            <th class="px-4 py-3 text-left">Tax code</th>
+            <th class="px-4 py-3 text-right">Gross</th>
+            <th class="px-4 py-3 text-right">Tax</th>
+            <th class="px-4 py-3 text-right">Total</th>
+            <th class="w-16 px-4 py-3">Del</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for lf in line_formset %}
+            <tr class="border-b border-line last:border-0 line-row">
+              {% if lf.non_field_errors %}
+                <td colspan="12" class="px-4 py-2">
+                  {% for e in lf.non_field_errors %}
+                    <p class="error-text">{{ e }}</p>
+                  {% endfor %}
+                </td>
+              {% else %}
+              <td class="px-4 py-2">
+                {{ lf.line_no }}
+                {% if lf.line_no.value %}{{ lf.line_no.value }}{% endif %}
+                {% for e in lf.line_no.errors %}<p class="error-text">{{ e }}</p>{% endfor %}
+              </td>
+              <td class="px-4 py-2">{{ lf.product }}
+                {% for e in lf.product.errors %}<p class="error-text">{{ e }}</p>{% endfor %}
+              </td>
+              <td class="px-4 py-2">{{ lf.description }}
+                {% for e in lf.description.errors %}<p class="error-text">{{ e }}</p>{% endfor %}
+              </td>
+              <td class="px-4 py-2">{{ lf.unit }}
+                {% for e in lf.unit.errors %}<p class="error-text">{{ e }}</p>{% endfor %}
+              </td>
+              <td class="px-4 py-2">{{ lf.quantity }}
+                {% for e in lf.quantity.errors %}<p class="error-text">{{ e }}</p>{% endfor %}
+              </td>
+              <td class="px-4 py-2">{{ lf.unit_price }}
+                {% for e in lf.unit_price.errors %}<p class="error-text">{{ e }}</p>{% endfor %}
+              </td>
+              <td class="px-4 py-2">{{ lf.discount_percent }}
+                {% for e in lf.discount_percent.errors %}<p class="error-text">{{ e }}</p>{% endfor %}
+              </td>
+              <td class="px-4 py-2">{{ lf.tax_code }}
+                {% for e in lf.tax_code.errors %}<p class="error-text">{{ e }}</p>{% endfor %}
+              </td>
+              <td class="px-4 py-2 text-right tabular-nums">
+                {% if lf.instance.pk %}
+                  {{ lf.instance.gross_txn|floatformat:2 }}
+                {% else %}—{% endif %}
+              </td>
+              <td class="px-4 py-2 text-right tabular-nums">
+                {% if lf.instance.pk %}
+                  {{ lf.instance.tax_txn|floatformat:2 }}
+                {% else %}—{% endif %}
+              </td>
+              <td class="px-4 py-2 text-right tabular-nums font-semibold">
+                {% if lf.instance.pk %}
+                  {{ lf.instance.total_txn|floatformat:2 }}
+                {% else %}—{% endif %}
+              </td>
+              <td class="px-4 py-2 text-center">
+                {% if lf.instance.pk %}
+                  <label class="flex items-center justify-center">
+                    {{ lf.DELETE }}
+                  </label>
+                {% endif %}
+              </td>
+              {% endif %}
+            </tr>
+            {% for hidden in lf.hidden_fields %}{{ hidden }}{% endfor %}
+          {% endfor %}
+        </tbody>
+        <tfoot>
+          <tr class="border-t-2 border-line bg-muted-bg font-semibold">
+            <td colspan="8" class="px-4 py-3 text-right text-xs uppercase tracking-wide text-muted-fg">
+              Totals (server-recalculated, SAL-002)
+            </td>
+            <td class="px-4 py-3 text-right tabular-nums" id="sum-gross">
+              {{ object.subtotal_txn|default:0|floatformat:2 }}
+            </td>
+            <td class="px-4 py-3 text-right tabular-nums" id="sum-tax">
+              {{ object.tax_txn|default:0|floatformat:2 }}
+            </td>
+            <td class="px-4 py-3 text-right tabular-nums text-brand-deep" id="sum-total">
+              {{ object.total_txn|default:0|floatformat:2 }}
+            </td>
+            <td></td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  </div>
+
+  <div class="mt-5 flex items-center gap-2">
+    <button type="submit" class="btn-primary">Save</button>
+    <a href="{% if object %}{% url 'sales:so_detail' object.pk %}{% else %}{% url 'sales:so_list' %}{% endif %}"
+       class="btn-ghost">Cancel</a>
+  </div>
+</form>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+  // Client-side line total preview (UX only — server recalculates on save per SAL-002)
+  document.querySelectorAll('#lines-table tbody').forEach(tbody => {
+    tbody.addEventListener('input', e => {
+      const row = e.target.closest('.line-row');
+      if (!row) return;
+      const get = name => {
+        const el = row.querySelector(`[name$="-${name}"]`);
+        return el ? parseFloat(el.value) || 0 : 0;
+      };
+      const qty = get('quantity');
+      const price = get('unit_price');
+      const disc = get('discount_percent');
+      const gross = qty * price;
+      const lineDisc = gross * disc / 100;
+      const net = gross - lineDisc;
+      const cells = row.querySelectorAll('td');
+      if (cells[8]) cells[8].textContent = gross.toFixed(2);
+      // Tax and total need tax code lookup — server handles it
+    });
+  });
+</script>
+{% endblock %}

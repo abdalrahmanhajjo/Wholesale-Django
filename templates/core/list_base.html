@@ -162,3 +162,28 @@ module-specific empty message.
   {% endif %}
 </div>
 {% endblock %}
+
+{% block extra_scripts %}
+<script>
+  // Live search (UX-002): re-query as you type, keeping the current filters
+  // and sort, instead of requiring Apply. The filters still submit too.
+  (function () {
+    const form = document.querySelector('form[method="get"]');
+    const q = document.getElementById('q');
+    if (!form || !q) return;
+
+    let timer = null;
+    q.addEventListener('input', function () {
+      clearTimeout(timer);
+      timer = setTimeout(function () {
+        const current = new URLSearchParams(window.location.search);
+        const term = q.value.trim();
+        if (term) current.set('q', term);
+        else current.delete('q');
+        current.delete('page');
+        window.location.search = current.toString();
+      }, 400);
+    });
+  })();
+</script>
+{% endblock extra_scripts %}

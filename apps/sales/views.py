@@ -110,7 +110,7 @@ class SalesOrderCreateView(ActionPermissionMixin, CreateView):
     model = SalesOrder
     form_class = SalesOrderForm
     template_name = "sales/so_form.html"
-    permission_required = "sales.add_salesorder"
+    required_permission = "sales.add_salesorder"
     extra_context = {"page_title": "New sales order"}
 
     def get_formset(self):
@@ -171,7 +171,7 @@ class SalesOrderUpdateView(ActionPermissionMixin, UpdateView):
     model = SalesOrder
     form_class = SalesOrderForm
     template_name = "sales/so_form.html"
-    permission_required = "sales.change_salesorder"
+    required_permission = "sales.change_salesorder"
 
     def get_formset(self):
         return SalesOrderLineFormSet(
@@ -229,7 +229,7 @@ class SalesOrderUpdateView(ActionPermissionMixin, UpdateView):
 class SalesOrderDetailView(ActionPermissionMixin, DetailView):
     model = SalesOrder
     template_name = "sales/so_detail.html"
-    permission_required = "sales.view_salesorder"
+    required_permission = "sales.view_salesorder"
     context_object_name = "order"
 
     def get_context_data(self, **kwargs):
@@ -254,7 +254,7 @@ class SalesOrderDetailView(ActionPermissionMixin, DetailView):
 class SalesOrderSubmitView(ActionPermissionMixin, View):
     """Move a draft order into the submitted state (SAL-004)."""
 
-    permission_required = "sales.change_salesorder"
+    required_permission = "sales.change_salesorder"
 
     def post(self, request, pk):
         order = get_object_or_404(SalesOrder, pk=pk)
@@ -279,7 +279,7 @@ class SalesOrderApproveView(ConfirmationRequiredMixin, View):
     permission (ACC-004) and an explicit reason (ACC-008).
     """
 
-    permission_required = APPROVE_SALES_ORDER
+    required_permission = APPROVE_SALES_ORDER
 
     def post(self, request, pk):
         order = get_object_or_404(SalesOrder, pk=pk)
@@ -302,7 +302,7 @@ class SalesOrderRejectView(ConfirmationRequiredMixin, View):
     Reject a submitted order (SAL-004). Requires a reason (ACC-008).
     """
 
-    permission_required = APPROVE_SALES_ORDER
+    required_permission = APPROVE_SALES_ORDER
 
     def post(self, request, pk):
         order = get_object_or_404(SalesOrder, pk=pk)

@@ -28,26 +28,26 @@ Blocks available to child templates:
 </head>
 
 <body class="h-full bg-canvas font-sans text-ink antialiased">
+<a href="#main-content" class="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-lg focus:bg-brand focus:px-4 focus:py-2">Skip to content</a>
 <div class="flex min-h-full">
 
   {# ---------------------------------------------------------------- sidebar #}
   <aside id="sidebar"
-         class="fixed inset-y-0 left-0 z-40 w-64 -translate-x-full bg-navy transition-transform lg:static lg:translate-x-0">
+         class="fixed inset-y-0 left-0 z-40 w-[272px] -translate-x-full bg-[#071a2f] transition-transform lg:static lg:translate-x-0">
     <div class="flex h-full flex-col">
-      <div class="flex h-[70px] shrink-0 items-center gap-2.5 px-5">
-        <span class="grid h-8 w-8 place-items-center rounded-lg bg-brand text-sm font-black text-navy">A</span>
-        <span class="text-[13px] font-black uppercase tracking-[0.12em] text-white">Atlas Wholesale</span>
+      <div class="border-b border-white/[.08] p-4">
+        <div class="flex items-center gap-3"><span class="logo-mark"><i></i><i></i><i></i></span><span><strong class="block text-[15px] tracking-[-.02em] text-white">ledgerwise</strong><small class="block text-[10px] uppercase tracking-[.16em] text-slate-400">Wholesale finance</small></span></div>
+        <div class="company-switcher"><span class="grid h-8 w-8 place-items-center rounded-lg bg-brand/[.15] text-xs font-bold text-emerald-300">AW</span><span class="min-w-0"><strong class="block truncate text-[11px] text-slate-200">Atlas Wholesale</strong><small class="block text-[9px] text-slate-500">Main company · {{ base_currency|default:"USD" }}</small></span></div>
       </div>
 
       <nav class="flex-1 overflow-y-auto px-3 pb-6">
-        <a href="{% url 'dashboard' %}"
-           class="nav-link {% if request.resolver_match.url_name == 'dashboard' %}nav-link-active{% endif %}">Dashboard</a>
-
+        <p class="nav-group">Overview</p>
+        <a href="{% url 'dashboard' %}" class="nav-link {% if request.resolver_match.url_name == 'dashboard' %}nav-link-active{% endif %}">Dashboard</a>
         <p class="nav-group">Operations</p>
         <a href="{% url 'sales:so_list' %}" class="nav-link {% if request.resolver_match.app_name == 'sales' %}nav-link-active{% endif %}">Sales</a>
-        <a href="#" class="nav-link">Purchases</a>
-        <a href="{% url 'payments:payment_list' %}" class="nav-link">Payments</a>
-        <a href="#" class="nav-link">Inventory</a>
+        <span class="nav-link cursor-not-allowed opacity-50" title="Purchasing workspace is not routed yet">Purchases</span>
+        <a href="{% url 'payments:payment_list' %}" class="nav-link {% if request.resolver_match.app_name == 'payments' %}nav-link-active{% endif %}">Payments</a>
+        <span class="nav-link cursor-not-allowed opacity-50" title="Inventory workspace is not routed yet">Inventory</span>
 
         <p class="nav-group">Relationships</p>
         <a href="{% url 'parties:customer_list' %}"
@@ -56,8 +56,8 @@ Blocks available to child templates:
            class="nav-link {% if request.resolver_match.url_name|slice:':6' == 'vendor' %}nav-link-active{% endif %}">Vendors</a>
 
         <p class="nav-group">Finance</p>
-        <a href="#" class="nav-link">Accounting</a>
-        <a href="#" class="nav-link">Reports</a>
+        <span class="nav-link cursor-not-allowed opacity-50" title="Accounting workspace is not routed yet">Accounting</span>
+        <span class="nav-link cursor-not-allowed opacity-50" title="Reports workspace is not routed yet">Reports</span>
 
         <p class="nav-group">System</p>
         <a href="{% url 'admin:index' %}" class="nav-link">Settings</a>
@@ -88,11 +88,12 @@ Blocks available to child templates:
       <button type="button" onclick="document.getElementById('sidebar').classList.toggle('-translate-x-full')"
               class="grid h-8 w-8 place-items-center rounded-lg text-muted-fg hover:bg-muted-bg lg:hidden"
               aria-label="Toggle navigation">☰</button>
-      <h2 class="truncate text-sm font-bold">{% block header_title %}{{ page_title|default:"Dashboard" }}{% endblock %}</h2>
-      <div class="ml-auto flex items-center gap-2">{% block header_actions %}{% endblock %}</div>
+      <div class="min-w-0"><p class="text-[10px] font-semibold uppercase tracking-[.12em] text-slate-400">Atlas Wholesale</p><h2 class="truncate text-sm font-bold">{% block header_title %}{{ page_title|default:"Dashboard" }}{% endblock %}</h2></div>
+      <div class="relative ml-auto hidden w-full max-w-[340px] lg:block"><input class="field bg-slate-50 pl-9" placeholder="Search anything…" aria-label="Global search"><span class="pointer-events-none absolute left-3 top-2.5 text-slate-400">⌕</span><kbd class="absolute right-3 top-2 rounded border border-line bg-white px-1.5 py-0.5 text-[10px] text-slate-400">⌘ K</kbd></div>
+      <div class="flex items-center gap-2">{% block header_actions %}{% endblock %}</div>
     </header>
 
-    <main class="flex-1 px-4 py-6 sm:px-6 lg:px-8">
+    <main id="main-content" class="mx-auto w-full max-w-[1580px] flex-1 px-4 py-5 sm:px-6 sm:py-6 lg:px-8 lg:py-7">
       {% if messages %}
         <div class="mb-5 space-y-2">
           {% for message in messages %}
@@ -108,7 +109,7 @@ Blocks available to child templates:
 
       {% block page_header %}
         {% if page_title %}
-        <div class="mb-6 flex flex-wrap items-end justify-between gap-4">
+        <div class="module-hero mb-6 flex-wrap">
           <div>
             <h1 class="display text-3xl">{% block page_title %}{{ page_title }}{% endblock %}</h1>
             {% block page_subtitle %}

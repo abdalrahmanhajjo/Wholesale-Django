@@ -50,11 +50,11 @@ reversed if the designer disagrees:
           'brand-deep':   '#1f7447',
           'brand-tint':   '#edf9f1',
           paper:          '#fbfcf9',
-          canvas:         '#fbfcf9',
+          canvas:         '#f4f7f6',
           cream:          '#f7f7f2',
-          line:           '#dce7e1',
+          line:           '#e1e9e7',
           'input-line':   '#d7e3dc',
-          'muted-bg':     '#f1f5f3',
+          'muted-bg':     '#f1f5f4',
           'muted-fg':     '#667682',
           danger:         '#dc2626',
         },
@@ -71,7 +71,7 @@ reversed if the designer disagrees:
   @layer components {
     /* The shared component vocabulary. Use these rather than re-deriving
        utility strings, so every module looks like the same product. */
-    .btn         { @apply inline-flex items-center justify-center gap-2 rounded-xl2 px-4 h-10 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none; }
+    .btn         { @apply inline-flex items-center justify-center gap-2 rounded-xl2 px-4 h-10 text-sm font-semibold transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none active:scale-[.98]; }
     .btn-primary { @apply btn bg-ink text-white hover:bg-navy-2; }
     .btn-accent  { @apply btn bg-brand text-ink hover:bg-brand-bright; }
     .btn-ghost   { @apply btn border border-line bg-white text-ink hover:bg-muted-bg; }
@@ -80,7 +80,7 @@ reversed if the designer disagrees:
 
     /* The page ground is near-white, so cards are separated by their border
        and a soft lift rather than by a colour difference. */
-    .card        { @apply rounded-xl2 border border-line bg-white shadow-[0_1px_2px_rgba(7,23,43,.04),0_8px_24px_-18px_rgba(7,23,43,.25)]; }
+    .card        { @apply rounded-[18px] border border-line bg-white shadow-[0_1px_2px_rgba(7,26,47,.025),0_10px_30px_rgba(7,26,47,.035)]; }
     .card-pad    { @apply p-5 sm:p-6; }
     .card-title  { @apply text-base font-bold text-ink; }
     .eyebrow     { @apply text-[11px] font-bold uppercase tracking-[0.14em] text-muted-fg; }
@@ -100,8 +100,23 @@ reversed if the designer disagrees:
     .badge-partial { @apply badge bg-amber-50 text-amber-700; }
     .badge-overdue { @apply badge bg-red-50 text-danger; }
 
-    .nav-link        { @apply flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-slate-300 transition-colors hover:bg-white/10 hover:text-white; }
-    .nav-link-active { @apply bg-white/10 text-white; }
+    .nav-link        { @apply flex h-10 items-center gap-3 rounded-xl px-3 text-sm font-medium text-slate-300 transition-all hover:bg-white/[.08] hover:text-white; }
+    .nav-link-active { @apply bg-brand/[.14] font-semibold text-emerald-300; }
     .nav-group       { @apply px-3 pt-5 pb-1 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500; }
   }
+</style>
+<style>
+  html{scroll-behavior:smooth} body{font-feature-settings:"tnum" 1,"ss01" 1}
+  .logo-mark{display:flex;width:32px;height:32px;align-items:flex-end;gap:3px;border-radius:9px;background:#39d889;padding:7px}
+  .logo-mark i{display:block;width:4px;border-radius:3px;background:#071a2f}.logo-mark i:nth-child(1){height:9px}.logo-mark i:nth-child(2){height:15px}.logo-mark i:nth-child(3){height:12px}
+  .company-switcher{display:flex;align-items:center;gap:9px;margin-top:10px;border:1px solid rgba(255,255,255,.08);border-radius:12px;background:rgba(255,255,255,.04);padding:8px}
+  .welcome-strip{position:relative;display:flex;align-items:center;justify-content:space-between;gap:28px;overflow:hidden;min-height:166px;padding:28px 32px;border-radius:20px;background:#071a2f;color:#fff;box-shadow:0 20px 50px rgba(7,26,47,.12)}
+  .welcome-strip:after{content:"";position:absolute;top:-100px;right:14%;width:310px;height:310px;border:1px solid rgba(57,216,137,.13);border-radius:50%;box-shadow:0 0 0 44px rgba(57,216,137,.025),0 0 0 88px rgba(57,216,137,.018);pointer-events:none}
+  .metric-card{border:1px solid rgba(203,216,213,.75);border-radius:17px;background:#fff;padding:19px;box-shadow:0 1px 2px rgba(7,26,47,.025);transition:transform .2s ease,box-shadow .2s ease}.metric-card:hover{transform:translateY(-2px);box-shadow:0 14px 36px rgba(7,26,47,.07)}
+  .metric-label{color:#718096;font-size:.75rem;font-weight:700}.metric-value{margin-top:6px;color:#081a2e;font-size:1.58rem;font-weight:850;letter-spacing:-.04em}
+  .cashflow-panel{overflow:hidden;border-radius:20px;background:#071a2f;padding:24px;box-shadow:0 20px 48px rgba(7,26,47,.12)}
+  .surface{border:1px solid rgba(203,216,213,.72);border-radius:18px;background:rgba(255,255,255,.96);box-shadow:0 1px 2px rgba(7,26,47,.025),0 10px 30px rgba(7,26,47,.035)}
+  .module-hero{display:flex;min-height:132px;align-items:center;justify-content:space-between;gap:24px;border:1px solid #dde8e4;border-radius:20px;background:linear-gradient(125deg,#fff 0%,#f3faf7 100%);padding:25px 28px;box-shadow:0 8px 30px rgba(7,26,47,.025)}
+  @media(max-width:700px){.welcome-strip{align-items:flex-start;flex-direction:column;padding:24px}.module-hero{align-items:flex-start;padding:22px}}
+  @media(prefers-reduced-motion:reduce){*,*:before,*:after{scroll-behavior:auto!important;transition-duration:.01ms!important}}
 </style>

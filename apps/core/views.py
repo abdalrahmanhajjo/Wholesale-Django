@@ -7,10 +7,14 @@ members' modules have data to show.
 """
 
 from django.contrib.auth.decorators import login_required
+from django.db.models import Count, Q, Sum
 from django.shortcuts import render
 
 from apps.core.models import Company, FiscalPeriod
 from apps.ledger.models import Account, AccountMapping, MappingKey
+from apps.parties.models import Customer, Vendor
+from apps.payments.models import Payment, PaymentDirection
+from apps.sales.models import SalesOrder
 
 
 @login_required
@@ -28,6 +32,12 @@ def dashboard(request):
         set(dict(MappingKey.choices))
         - set(AccountMapping.objects.values_list("key", flat=True))
     )
+    payment_totals = Payment.objects.aggregate(
+        receipts=Sum("amount_base", filter=Q(direction=PaymentDirection.RECEIPT)),
+        payments=Sum("amount_base", filter=Q(direction=PaymentDirection.PAYMENT)),
+        unallocated=Sum("unallocated_txn"),
+        drafts=Count("id", filter=Q(status="DRAFT")),
+    )
 
     context = {
         "page_title": f"Good day, {request.user.full_name or request.user.username}.",
@@ -42,5 +52,12 @@ def dashboard(request):
         ).count(),
         "missing_mappings": missing_mappings,
         "role": request.user.groups.first(),
+        "customer_count": Customer.objects.filter(is_active=True).count(),
+        "vendor_count": Vendor.objects.filter(is_active=True).count(),
+        "sales_order_count": SalesOrder.objects.count(),
+        "payment_totals": payment_totals,
+        "recent_payments": Payment.objects.select_related(
+            "customer", "vendor", "currency", "method"
+        )[:5],
     }
     return render(request, "core/dashboard.html", context)

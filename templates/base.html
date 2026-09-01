@@ -67,7 +67,7 @@ Blocks available to child templates:
       <div class="border-t border-white/10 p-4">
         <p class="truncate text-sm font-semibold text-white">{{ user.full_name|default:user.username }}</p>
         <p class="truncate text-xs text-slate-400">
-          {% with user.groups.first as role %}{{ role.name|default:"No role assigned" }}{% endwith %}
+          {% if user.is_superuser %}Owner & administrator{% elif user.is_staff %}Staff user{% else %}Business user{% endif %}
           {% if user.is_read_only %}· read-only{% endif %}
         </p>
         <form method="post" action="{% url 'logout' %}" class="mt-3">

@@ -21,9 +21,21 @@ from decimal import Decimal
 from typing import TYPE_CHECKING, Generic, Protocol, TypeVar
 
 from django.contrib.auth.models import AbstractBaseUser
-from django.db import models, transaction
+from django.contrib.contenttypes.models import ContentType
+from django.db import IntegrityError, models, transaction
+from django.utils import timezone
 
-from apps.ledger.models import Account, JournalEntry, JournalType
+from apps.core.models import DocumentSequence, DocumentType, FiscalPeriod, PeriodStatus
+from apps.ledger.models import (
+    Account,
+    AccountMapping,
+    JournalEntry,
+    JournalLine,
+    JournalType,
+    MappingKey,
+    PostingEffect,
+    PostingLink,
+)
 from apps.ledger.services.exceptions import (
     PostingContractError,
     PostingEngineUnavailable,
@@ -172,6 +184,7 @@ class PostingRequest(Generic[SourceT]):
     user: AbstractBaseUser
     idempotency_key: str
     build_journal: JournalBuilder[SourceT]
+    required_mappings: tuple[str, ...] = ()
     reason: str = ""
     correlation_id: uuid.UUID = field(default_factory=uuid.uuid4)
 
@@ -197,6 +210,15 @@ class PostingRequest(Generic[SourceT]):
             raise PostingContractError("idempotency_key must contain 1 to 120 characters")
         if not callable(self.build_journal):
             raise PostingContractError("build_journal must be callable")
+        if not isinstance(self.required_mappings, tuple):
+            raise PostingContractError("required_mappings must be an immutable tuple")
+        invalid_mappings = set(self.required_mappings).difference(MappingKey.values)
+        if invalid_mappings:
+            raise PostingContractError(
+                f"Unsupported account mapping key(s): {', '.join(sorted(invalid_mappings))}"
+            )
+        if len(set(self.required_mappings)) != len(self.required_mappings):
+            raise PostingContractError("required_mappings cannot contain duplicates")
         if not isinstance(self.reason, str):
             raise PostingContractError("reason must be text")
         if not isinstance(self.correlation_id, uuid.UUID):
@@ -309,6 +331,239 @@ class PostingEngineStub(PostingService[SourceT]):
         raise PostingEngineUnavailable(
             "Posting persistence is not available in the Day-1 engine stub"
         )
+
+
+class PostingEngine(PostingService[SourceT]):
+    """Production journal persistence with defense-in-depth financial controls."""
+
+    def _post_locked(
+        self,
+        request: PostingRequest[SourceT],
+        source: SourceT,
+    ) -> PostingResult:
+        existing = self._find_idempotent_result(request, source)
+        if existing is not None:
+            return existing
+
+        mappings = self._validate_account_mappings(request.required_mappings)
+        draft = request.build_journal(source, user=request.user)
+        if not isinstance(draft, JournalDraft):
+            raise PostingContractError(
+                "Journal builder must return JournalDraft",
+                code=PostingErrorCode.INVALID_BUILDER_RESULT,
+            )
+        self._validate_draft(draft, mappings)
+        fiscal_period = self._get_open_period(draft.entry_date)
+        content_type = ContentType.objects.get_for_model(source, for_concrete_model=False)
+
+        try:
+            with transaction.atomic():
+                entry = JournalEntry.objects.create(
+                    number=self._allocate_journal_number(draft.entry_date),
+                    entry_date=draft.entry_date,
+                    fiscal_period=fiscal_period,
+                    journal_type=draft.journal_type,
+                    narration=draft.narration,
+                    currency=draft.currency,
+                    exchange_rate=draft.exchange_rate,
+                    total_debit_base=sum(
+                        (line.debit_base for line in draft.lines), Decimal("0")
+                    ),
+                    total_credit_base=sum(
+                        (line.credit_base for line in draft.lines), Decimal("0")
+                    ),
+                    source_content_type=content_type,
+                    source_object_id=source.pk,
+                    source_doc_type=draft.source_doc_type,
+                    source_doc_number=draft.source_doc_number,
+                    idempotency_key=request.idempotency_key,
+                    posted_at=timezone.now(),
+                    posted_by=request.user,
+                    created_by=request.user,
+                    updated_by=request.user,
+                )
+                JournalLine.objects.bulk_create(
+                    [
+                        self._make_line(entry, line_no, line, draft)
+                        for line_no, line in enumerate(draft.lines, 1)
+                    ]
+                )
+                PostingLink.objects.create(
+                    source_content_type=content_type,
+                    source_object_id=source.pk,
+                    source_doc_type=draft.source_doc_type,
+                    source_doc_number=draft.source_doc_number,
+                    effect_type=PostingEffect.JOURNAL,
+                    journal_entry=entry,
+                    idempotency_key=request.idempotency_key,
+                )
+        except IntegrityError:
+            retry = self._find_idempotent_result(request, source)
+            if retry is not None:
+                return retry
+            raise
+        return PostingResult(journal_entry=entry, created=True)
+
+    @staticmethod
+    def _validate_account_mappings(keys: tuple[str, ...]) -> dict[str, Account]:
+        if not keys:
+            raise PostingContractError(
+                "Production posting requires at least one account mapping",
+                code=PostingErrorCode.MISSING_ACCOUNT_MAPPING,
+            )
+        rows = AccountMapping.objects.select_related("account").filter(key__in=keys)
+        mappings = {row.key: row.account for row in rows}
+        missing = set(keys).difference(mappings)
+        if missing:
+            raise PostingContractError(
+                f"Missing account mapping(s): {', '.join(sorted(missing))}",
+                code=PostingErrorCode.MISSING_ACCOUNT_MAPPING,
+            )
+        invalid = [
+            key
+            for key, account in mappings.items()
+            if not account.is_active or not account.is_postable
+        ]
+        if invalid:
+            raise PostingContractError(
+                f"Account mapping(s) target an inactive or non-postable account: {', '.join(sorted(invalid))}",
+                code=PostingErrorCode.INVALID_ACCOUNT_MAPPING,
+            )
+        return mappings
+
+    @staticmethod
+    def _validate_draft(draft: JournalDraft, mappings: dict[str, Account]) -> None:
+        debit = sum((line.debit_base for line in draft.lines), Decimal("0"))
+        credit = sum((line.credit_base for line in draft.lines), Decimal("0"))
+        if debit != credit or debit == 0:
+            raise PostingContractError(
+                f"Journal is not balanced in base currency (debit={debit}, credit={credit})",
+                code=PostingErrorCode.UNBALANCED_JOURNAL,
+            )
+        mapped_account_ids = {account.pk for account in mappings.values()}
+        draft_account_ids = {line.account.pk for line in draft.lines}
+        unused = mapped_account_ids.difference(draft_account_ids)
+        if unused:
+            keys = [key for key, account in mappings.items() if account.pk in unused]
+            raise PostingContractError(
+                f"Required account mapping(s) are not used by the journal: {', '.join(sorted(keys))}",
+                code=PostingErrorCode.INVALID_ACCOUNT_MAPPING,
+            )
+        accounts = Account.objects.only(
+            "code", "is_active", "is_postable", "requires_party", "currency_id"
+        ).in_bulk(draft_account_ids)
+        for line in draft.lines:
+            account = accounts.get(line.account.pk)
+            if account is None or not account.is_active or not account.is_postable:
+                raise PostingContractError(
+                    f"Journal account {line.account.pk} is missing, inactive, or non-postable",
+                    code=PostingErrorCode.INVALID_ACCOUNT_MAPPING,
+                )
+            if account.requires_party and line.customer is None and line.vendor is None:
+                raise PostingContractError(
+                    f"Control account {account.code} requires a customer or vendor",
+                    code=PostingErrorCode.INVALID_DRAFT,
+                )
+            if account.currency_id and account.currency_id != draft.currency.pk:
+                raise PostingContractError(
+                    f"Account {account.code} does not accept {draft.currency.pk}",
+                    code=PostingErrorCode.INVALID_DRAFT,
+                )
+
+    @staticmethod
+    def _get_open_period(entry_date: date) -> FiscalPeriod:
+        periods = list(
+            FiscalPeriod.objects.select_for_update().filter(
+                start_date__lte=entry_date,
+                end_date__gte=entry_date,
+                status=PeriodStatus.OPEN,
+            )[:2]
+        )
+        if len(periods) != 1:
+            raise PostingContractError(
+                f"Posting date {entry_date.isoformat()} must belong to exactly one open fiscal period",
+                code=PostingErrorCode.CLOSED_FISCAL_PERIOD,
+            )
+        return periods[0]
+
+    @staticmethod
+    def _allocate_journal_number(entry_date: date) -> str:
+        sequence = (
+            DocumentSequence.objects.select_for_update()
+            .filter(document_type=DocumentType.JOURNAL_ENTRY, is_active=True)
+            .order_by("pk")
+            .first()
+        )
+        if sequence is None:
+            raise PostingContractError(
+                "No active journal-entry number sequence is configured",
+                code=PostingErrorCode.JOURNAL_SEQUENCE_UNAVAILABLE,
+            )
+        period_key = str(entry_date.year)
+        if sequence.reset_policy == "MONTHLY":
+            period_key = entry_date.strftime("%Y-%m")
+        if sequence.reset_policy != "NEVER" and sequence.period_key != period_key:
+            sequence.next_number = 1
+            sequence.period_key = period_key
+        number = (
+            f"{sequence.prefix}{sequence.next_number:0{sequence.padding}d}{sequence.suffix}"
+        )
+        if len(number) > 32:
+            raise PostingContractError(
+                "Configured journal number exceeds 32 characters",
+                code=PostingErrorCode.JOURNAL_SEQUENCE_UNAVAILABLE,
+            )
+        sequence.next_number += 1
+        sequence.save(update_fields=["next_number", "period_key"])
+        return number
+
+    @staticmethod
+    def _make_line(
+        entry: JournalEntry,
+        line_no: int,
+        line: JournalLineDraft,
+        draft: JournalDraft,
+    ) -> JournalLine:
+        return JournalLine(
+            entry=entry,
+            line_no=line_no,
+            account=line.account,
+            description=line.description,
+            debit_base=line.debit_base,
+            credit_base=line.credit_base,
+            debit_txn=line.debit_txn,
+            credit_txn=line.credit_txn,
+            currency=draft.currency,
+            exchange_rate=draft.exchange_rate,
+            customer=line.customer,
+            vendor=line.vendor,
+            product=line.product,
+            warehouse=line.warehouse,
+            tax_code=line.tax_code,
+            money_account=line.money_account,
+        )
+
+    @staticmethod
+    def _find_idempotent_result(
+        request: PostingRequest[SourceT], source: SourceT
+    ) -> PostingResult | None:
+        entry = (
+            JournalEntry.objects.select_related("source_content_type")
+            .filter(idempotency_key=request.idempotency_key)
+            .first()
+        )
+        if entry is None:
+            return None
+        expected_type = ContentType.objects.get_for_model(source, for_concrete_model=False)
+        if (
+            entry.source_content_type_id != expected_type.pk
+            or entry.source_object_id != source.pk
+        ):
+            raise PostingContractError(
+                "Idempotency key is already associated with a different posting source",
+                code=PostingErrorCode.IDEMPOTENCY_CONFLICT,
+            )
+        return PostingResult(journal_entry=entry, created=False)
 
 
 # Useful for annotations on registries which select a builder by source type.

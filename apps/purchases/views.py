@@ -20,14 +20,16 @@ from apps.core import audit
 from apps.core.list_views import ChoiceFilter, Column, FilteredListView
 from apps.core.mixins import ActionPermissionMixin
 from apps.core.models import AuditEvent, DocumentStatus
-from apps.core.permissions import APPROVE_PURCHASE_ORDER, EXPORT_DATA
+from apps.core.permissions import APPROVE_PURCHASE_ORDER, EXPORT_DATA, POST_PURCHASE_BILL
 from apps.purchases import services
 from apps.purchases.forms import (
+    PurchaseBillForm,
+    PurchaseBillLineFormSet,
     PurchaseOrderForm,
     PurchaseOrderLineFormSet,
     PurchaseOrderRejectForm,
 )
-from apps.purchases.models import PurchaseOrder
+from apps.purchases.models import PurchaseBill, PurchaseOrder
 
 
 def _products_payload():
@@ -280,3 +282,236 @@ class PurchaseOrderRejectView(ActionPermissionMixin, View):
         else:
             messages.success(request, f"{order.number} rejected.")
         return redirect("purchases:po_detail", pk=pk)
+
+
+# ---------------------------------------------------------------------------
+# Purchase bill: list, create/edit, detail, post (PUR-005..PUR-008)
+# ---------------------------------------------------------------------------
+class PurchaseBillListView(FilteredListView):
+    model = PurchaseBill
+    required_permission = "purchases.view_purchasebill"
+    page_title = "Purchase bills"
+    page_subtitle = "Vendor invoices and what they owe against."
+    create_url_name = "purchases:bill_create"
+    create_label = "New bill"
+    export_permission = EXPORT_DATA
+    export_filename = "purchase-bills"
+    default_ordering = "-document_date"
+
+    columns = [
+        Column("number", "Number", sortable=True, link=True, css="font-mono text-xs"),
+        Column("vendor", "Vendor", sortable=True, order_by="vendor__name"),
+        Column("vendor_invoice_number", "Vendor invoice #"),
+        Column("document_date", "Date", sortable=True),
+        Column("due_date", "Due", sortable=True),
+        Column("total_txn", "Total", align="right", money=True, sortable=True),
+        Column("open_txn", "Open", align="right", money=True, sortable=True),
+        Column("status", "Status", badge=True, align="center"),
+    ]
+    search_fields = ["number", "vendor__name", "vendor_invoice_number"]
+    filters = [ChoiceFilter("status", "Status", DocumentStatus.choices)]
+
+    def get_queryset(self):
+        return super().get_queryset().select_related("vendor", "currency")
+
+    def get_summary(self):
+        totals = PurchaseBill.objects.aggregate(
+            total=Count("id"),
+            draft=Count("id", filter=Q(status=DocumentStatus.DRAFT)),
+            posted=Count("id", filter=Q(status=DocumentStatus.POSTED)),
+        )
+        return [
+            ("Purchase bills", totals["total"]),
+            ("Draft", totals["draft"]),
+            ("Posted", totals["posted"]),
+        ]
+
+
+def _bill_initial_from_source(purchase_order):
+    """Prefill a new bill's header and open lines from an approved PO (PUR-005)."""
+    initial_header = {
+        "vendor": purchase_order.vendor_id,
+        "purchase_order": purchase_order.pk,
+        "warehouse": purchase_order.warehouse_id,
+        "payment_term": purchase_order.payment_term_id,
+        "currency": purchase_order.currency_id,
+        "exchange_rate": purchase_order.exchange_rate,
+    }
+    initial_lines = []
+    for line in purchase_order.lines.select_related(
+        "product", "unit", "tax_code", "warehouse"
+    ):
+        remaining = line.quantity - line.quantity_billed
+        if remaining <= 0:
+            continue
+        initial_lines.append(
+            {
+                "purchase_order_line": line.pk,
+                "is_stock_line": True,
+                "product": line.product_id,
+                "description": line.description,
+                "unit": line.unit_id,
+                "warehouse": line.warehouse_id,
+                "tax_code": line.tax_code_id,
+                "quantity": remaining,
+                "unit_price": line.unit_price,
+                "discount_percent": line.discount_percent,
+            }
+        )
+    return initial_header, initial_lines
+
+
+class PurchaseBillFormView(ActionPermissionMixin, View):
+    """Shared GET/POST handling for create and edit."""
+
+    template_name = "purchases/bill_form.html"
+    is_create = True
+
+    def get_object(self, pk):
+        return get_object_or_404(PurchaseBill, pk=pk)
+
+    def is_locked(self, bill):
+        return not self.is_create and bill.status != DocumentStatus.DRAFT
+
+    def render_form(self, request, form, formset, bill):
+        return render(
+            request,
+            self.template_name,
+            {
+                "form": form,
+                "formset": formset,
+                "empty_form": formset.empty_form,
+                "products_data": _products_payload(),
+                "object": None if self.is_create else bill,
+                "page_title": "New purchase bill" if self.is_create else f"Edit {bill.number}",
+            },
+        )
+
+    def get(self, request, pk=None):
+        bill = PurchaseBill() if self.is_create else self.get_object(pk)
+        if self.is_locked(bill):
+            messages.error(
+                request,
+                f"{bill.number} is {bill.get_status_display()} and can no longer be edited.",
+            )
+            return redirect(bill.get_absolute_url())
+
+        initial_lines = None
+        if self.is_create and request.GET.get("po"):
+            source_order = get_object_or_404(PurchaseOrder, pk=request.GET["po"])
+            initial_header, initial_lines = _bill_initial_from_source(source_order)
+            form = PurchaseBillForm(instance=bill, initial=initial_header)
+        else:
+            form = PurchaseBillForm(instance=bill)
+
+        formset = PurchaseBillLineFormSet(
+            instance=bill, prefix="lines", initial=initial_lines or None
+        )
+        if initial_lines:
+            formset.extra = len(initial_lines)
+        return self.render_form(request, form, formset, bill)
+
+    def post(self, request, pk=None):
+        bill = PurchaseBill() if self.is_create else self.get_object(pk)
+        if self.is_locked(bill):
+            messages.error(
+                request,
+                f"{bill.number} is {bill.get_status_display()} and can no longer be edited.",
+            )
+            return redirect(bill.get_absolute_url())
+
+        before = None if self.is_create else audit.snapshot(bill)
+        form = PurchaseBillForm(request.POST, instance=bill)
+        formset = PurchaseBillLineFormSet(request.POST, instance=bill, prefix="lines")
+
+        if form.is_valid() and formset.is_valid():
+            with transaction.atomic():
+                bill = form.save(commit=False)
+                is_new = bill.pk is None
+                if is_new:
+                    bill.number = services.allocate_pb_number(bill.document_date)
+                    bill.created_by = request.user
+                bill.updated_by = request.user
+                bill.save()
+
+                instances = formset.save(commit=False)
+                for obj in formset.deleted_objects:
+                    obj.delete()
+                next_line_no = (bill.lines.aggregate(Max("line_no"))["line_no__max"] or 0) + 1
+                for instance in instances:
+                    instance.bill = bill
+                    if instance.pk is None:
+                        instance.line_no = next_line_no
+                        next_line_no += 1
+                    instance.save()
+
+                services.recalculate_bill(bill)
+
+                if is_new:
+                    audit.record_create(request, bill)
+                    messages.success(request, f"{bill.number} created as a draft.")
+                else:
+                    event = audit.record_update(request, bill, before)
+                    if event:
+                        messages.success(request, f"{bill.number} updated.")
+                    else:
+                        messages.info(request, "No changes to save.")
+
+            return redirect(bill.get_absolute_url())
+
+        return self.render_form(request, form, formset, bill)
+
+
+class PurchaseBillCreateView(PurchaseBillFormView):
+    required_permission = "purchases.add_purchasebill"
+    is_create = True
+
+
+class PurchaseBillEditView(PurchaseBillFormView):
+    required_permission = "purchases.change_purchasebill"
+    is_create = False
+
+
+class PurchaseBillDetailView(ActionPermissionMixin, DetailView):
+    model = PurchaseBill
+    template_name = "purchases/bill_detail.html"
+    required_permission = "purchases.view_purchasebill"
+    context_object_name = "bill"
+
+    def get_queryset(self):
+        return (
+            super()
+            .get_queryset()
+            .select_related(
+                "vendor", "currency", "payment_term", "purchase_order", "goods_receipt"
+            )
+        )
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        ctx["page_title"] = self.object.number
+        ctx["page_subtitle"] = f"Purchase bill for {self.object.vendor}"
+        ctx["lines"] = self.object.lines.select_related(
+            "product", "unit", "tax_code", "warehouse", "expense_account"
+        )
+        ctx["can_edit"] = self.object.status == DocumentStatus.DRAFT
+        ctx["audit_events"] = AuditEvent.objects.filter(
+            content_type__app_label="purchases",
+            content_type__model="purchasebill",
+            object_id=self.object.pk,
+        ).select_related("user")[:20]
+        return ctx
+
+
+class PurchaseBillPostView(ActionPermissionMixin, View):
+    required_permission = POST_PURCHASE_BILL
+
+    def post(self, request, pk):
+        bill = get_object_or_404(PurchaseBill, pk=pk)
+        try:
+            services.post_purchase_bill(bill, request.user, request)
+        except ValidationError as exc:
+            messages.error(request, " ".join(exc.messages))
+        else:
+            messages.success(request, f"{bill.number} posted.")
+        return redirect("purchases:bill_detail", pk=pk)

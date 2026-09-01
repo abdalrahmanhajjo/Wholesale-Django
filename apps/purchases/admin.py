@@ -2,7 +2,12 @@
 
 from django.contrib import admin
 
-from apps.purchases.models import PurchaseOrder, PurchaseOrderLine
+from apps.purchases.models import (
+    PurchaseBill,
+    PurchaseBillLine,
+    PurchaseOrder,
+    PurchaseOrderLine,
+)
 
 
 class PurchaseOrderLineInline(admin.TabularInline):
@@ -26,4 +31,46 @@ class PurchaseOrderAdmin(admin.ModelAdmin):
         "approved_at",
         "approved_by",
         "approval_reason",
+    )
+
+
+class PurchaseBillLineInline(admin.TabularInline):
+    model = PurchaseBillLine
+    extra = 0
+    fields = (
+        "line_no",
+        "is_stock_line",
+        "product",
+        "expense_account",
+        "quantity",
+        "unit_price",
+        "tax_code",
+        "total_txn",
+    )
+    readonly_fields = ("total_txn",)
+
+
+@admin.register(PurchaseBill)
+class PurchaseBillAdmin(admin.ModelAdmin):
+    list_display = (
+        "number",
+        "vendor",
+        "vendor_invoice_number",
+        "document_date",
+        "status",
+        "total_txn",
+        "open_txn",
+    )
+    list_filter = ("status", "vendor")
+    search_fields = ("number", "vendor__name", "vendor_invoice_number")
+    date_hierarchy = "document_date"
+    inlines = [PurchaseBillLineInline]
+    # PUR-008: the post action, not a dropdown, moves a bill to POSTED.
+    readonly_fields = (
+        "status",
+        "posted_at",
+        "posted_by",
+        "journal_entry",
+        "open_txn",
+        "open_base",
     )

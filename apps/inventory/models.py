@@ -328,6 +328,11 @@ class GoodsReceipt(StockDocumentBase):
             models.Index(fields=["status", "-document_date"], name="ix_gr_status_date"),
         ]
 
+    def get_absolute_url(self):
+        from django.urls import reverse
+
+        return reverse("inventory:gr_detail", args=[self.pk])
+
 
 class GoodsReceiptLine(models.Model):
     receipt = models.ForeignKey(GoodsReceipt, on_delete=models.CASCADE, related_name="lines")

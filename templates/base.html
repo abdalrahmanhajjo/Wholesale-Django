@@ -59,8 +59,22 @@ Blocks available to child templates:
         <a href="#" class="nav-link">Accounting</a>
         <a href="#" class="nav-link">Reports</a>
 
+        <p class="nav-group">Settings</p>
+        <a href="{% url 'core:company_settings' %}"
+           class="nav-link {% if '/settings/company/' in request.path %}nav-link-active{% endif %}">Company</a>
+        <a href="{% url 'core:currency_list' %}"
+           class="nav-link {% if '/settings/currencies/' in request.path %}nav-link-active{% endif %}">Currencies</a>
+        <a href="{% url 'core:taxcode_list' %}"
+           class="nav-link {% if '/settings/tax-codes/' in request.path %}nav-link-active{% endif %}">Tax codes</a>
+        <a href="{% url 'core:paymentterm_list' %}"
+           class="nav-link {% if '/settings/payment-terms/' in request.path %}nav-link-active{% endif %}">Payment terms</a>
+        <a href="{% url 'core:sequence_list' %}"
+           class="nav-link {% if '/settings/number-series/' in request.path %}nav-link-active{% endif %}">Number series</a>
+        <a href="{% url 'core:fiscalperiod_list' %}"
+           class="nav-link {% if '/settings/fiscal-periods/' in request.path %}nav-link-active{% endif %}">Fiscal periods</a>
+
         <p class="nav-group">System</p>
-        <a href="{% url 'admin:index' %}" class="nav-link">Settings</a>
+        <a href="{% url 'admin:index' %}" class="nav-link">Django admin</a>
       </nav>
 
       {% if user.is_authenticated %}

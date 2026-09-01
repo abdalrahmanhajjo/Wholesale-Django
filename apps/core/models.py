@@ -17,6 +17,7 @@ from django.core.validators import MinValueValidator
 from django.db import models
 from django.db.models import F, Func, Q
 from django.utils import timezone
+from django.urls import reverse
 
 from apps.core.permissions import ACTION_PERMISSIONS
 
@@ -268,6 +269,9 @@ class Currency(models.Model):
     def __str__(self):
         return self.code
 
+    def get_absolute_url(self):
+        return reverse("core:currency_edit", args=[self.pk])
+
 
 class ExchangeRate(models.Model):
     """Dated rate to base currency. Snapshotted onto documents at posting (BR-013)."""
@@ -351,6 +355,9 @@ class TaxCode(models.Model):
     def __str__(self):
         return f"{self.code} ({self.rate_percent}%)"
 
+    def get_absolute_url(self):
+        return reverse("core:taxcode_edit", args=[self.pk])
+
 
 # ---------------------------------------------------------------------------
 # Payment terms (CFG-005)
@@ -376,6 +383,9 @@ class PaymentTerm(models.Model):
 
     def __str__(self):
         return self.name
+
+    def get_absolute_url(self):
+        return reverse("core:paymentterm_edit", args=[self.pk])
 
 
 # ---------------------------------------------------------------------------
@@ -618,6 +628,9 @@ class DocumentSequence(models.Model):
 
     def __str__(self):
         return f"{self.get_document_type_display()} / {self.series}"
+
+    def get_absolute_url(self):
+        return reverse("core:sequence_edit", args=[self.pk])
 
 
 # ---------------------------------------------------------------------------

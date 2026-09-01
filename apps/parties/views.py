@@ -17,7 +17,7 @@ from django.views.generic import CreateView, DetailView, UpdateView, View
 
 from apps.core import audit
 from apps.core.list_views import BooleanFilter, Column, FilteredListView
-from apps.core.mixins import ActionPermissionMixin
+from apps.core.mixins import ActionPermissionMixin, AuditedFormMixin
 from apps.core.models import AuditEvent
 from apps.core.permissions import EXPORT_DATA
 from apps.parties.forms import CustomerForm, VendorForm
@@ -31,7 +31,7 @@ class CustomerListView(FilteredListView):
     """PTY-001, UX-002, UX-005, UX-007."""
 
     model = Customer
-    permission_required = "parties.view_customer"
+    required_permission = "parties.view_customer"
     page_title = "Customers"
     page_subtitle = "Everyone you sell to, and their credit position."
     create_url_name = "parties:customer_create"
@@ -79,61 +79,13 @@ class CustomerListView(FilteredListView):
         ]
 
 
-class AuditedFormMixin:
-    """
-    Saves the object and writes the ACC-005 audit event in one transaction.
-
-    Doing it here rather than in each view means no screen can forget, and a
-    failed save never leaves an audit event claiming a change that did not
-    happen (BR-005).
-    """
-
-    audit_reason = ""
-
-    def form_valid(self, form):
-        is_create = form.instance.pk is None
-        before = (
-            None if is_create else audit.snapshot(self.model.objects.get(pk=form.instance.pk))
-        )
-
-        with transaction.atomic():
-            form.instance.updated_by = self.request.user
-            if is_create:
-                form.instance.created_by = self.request.user
-            self.object = form.save()
-
-            if is_create:
-                audit.record_create(self.request, self.object, reason=self.audit_reason)
-                messages.success(self.request, f"{self.object} created.")
-            else:
-                event = audit.record_update(
-                    self.request, self.object, before, reason=self.audit_reason
-                )
-                if event:
-                    changed = ", ".join(event.changes.keys())
-                    messages.success(self.request, f"{self.object} updated ({changed}).")
-                else:
-                    messages.info(self.request, "No changes to save.")
-
-        return redirect(self.get_success_url())
-
-    def get_context_data(self, **kwargs):
-        ctx = super().get_context_data(**kwargs)
-        form = ctx["form"]
-        # PTY-007 soft warnings, only once the form has been validated.
-        ctx["duplicate_warnings"] = (
-            form.duplicate_warnings()
-            if hasattr(form, "duplicate_warnings") and form.is_bound and form.is_valid()
-            else []
-        )
-        return ctx
 
 
 class CustomerCreateView(AuditedFormMixin, ActionPermissionMixin, CreateView):
     model = Customer
     form_class = CustomerForm
     template_name = "parties/customer_form.html"
-    permission_required = "parties.add_customer"
+    required_permission = "parties.add_customer"
     extra_context = {"page_title": "New customer"}
 
     def get_success_url(self):
@@ -144,7 +96,7 @@ class CustomerUpdateView(AuditedFormMixin, ActionPermissionMixin, UpdateView):
     model = Customer
     form_class = CustomerForm
     template_name = "parties/customer_form.html"
-    permission_required = "parties.change_customer"
+    required_permission = "parties.change_customer"
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
@@ -158,7 +110,7 @@ class CustomerUpdateView(AuditedFormMixin, ActionPermissionMixin, UpdateView):
 class CustomerDetailView(ActionPermissionMixin, DetailView):
     model = Customer
     template_name = "parties/customer_detail.html"
-    permission_required = "parties.view_customer"
+    required_permission = "parties.view_customer"
     context_object_name = "customer"
 
     def get_context_data(self, **kwargs):
@@ -180,7 +132,7 @@ class CustomerDeactivateView(ActionPermissionMixin, View):
     party. There is deliberately no delete view for customers at all.
     """
 
-    permission_required = "parties.change_customer"
+    required_permission = "parties.change_customer"
 
     def post(self, request, pk):
         customer = get_object_or_404(Customer, pk=pk)
@@ -212,7 +164,7 @@ class CustomerDeactivateView(ActionPermissionMixin, View):
 # ---------------------------------------------------------------------------
 class VendorListView(FilteredListView):
     model = Vendor
-    permission_required = "parties.view_vendor"
+    required_permission = "parties.view_vendor"
     page_title = "Vendors"
     page_subtitle = "Everyone you buy from."
     create_url_name = "parties:vendor_create"
@@ -249,7 +201,7 @@ class VendorCreateView(AuditedFormMixin, ActionPermissionMixin, CreateView):
     model = Vendor
     form_class = VendorForm
     template_name = "parties/customer_form.html"
-    permission_required = "parties.add_vendor"
+    required_permission = "parties.add_vendor"
     extra_context = {"page_title": "New vendor", "party_kind": "vendor"}
 
     def get_success_url(self):
@@ -260,6 +212,6 @@ class VendorUpdateView(AuditedFormMixin, ActionPermissionMixin, UpdateView):
     model = Vendor
     form_class = VendorForm
     template_name = "parties/customer_form.html"
-    permission_required = "parties.change_vendor"
+    required_permission = "parties.change_vendor"
     extra_context = {"party_kind": "vendor"}
     success_url = reverse_lazy("parties:vendor_list")

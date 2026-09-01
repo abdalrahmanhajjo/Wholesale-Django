@@ -27,6 +27,7 @@ urlpatterns = [
     ),
     path("parties/", include("apps.parties.urls")),
     path("admin/", admin.site.urls),
+    path("settings/", include("apps.core.urls")),
     # Members 2-4 add their includes here:
     # path("sales/", include("apps.sales.urls")),
     # path("purchases/", include("apps.purchases.urls")),

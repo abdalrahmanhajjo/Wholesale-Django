@@ -148,6 +148,7 @@ def allocate_document_discount(order):
     if discount_total <= ZERO:
         for ln in lines:
             ln.allocated_document_discount_txn = ZERO
+            ln.save(update_fields=["allocated_document_discount_txn"])
         return
 
     # Sum of all gross amounts
@@ -155,18 +156,21 @@ def allocate_document_discount(order):
     if total_gross <= ZERO:
         for ln in lines:
             ln.allocated_document_discount_txn = ZERO
+            ln.save(update_fields=["allocated_document_discount_txn"])
         return
 
     allocated_so_far = ZERO
+    total_lines = len(lines)
     for i, ln in enumerate(lines):
         gross = (ln.quantity or ZERO) * (ln.unit_price or ZERO)
-        if i < len(lines) - 1:
+        if i < total_lines - 1:
             share = _round_money(discount_total * gross / total_gross)
             ln.allocated_document_discount_txn = share
             allocated_so_far += share
         else:
             # Last line gets the remainder to avoid rounding drift
             ln.allocated_document_discount_txn = discount_total - allocated_so_far
+        ln.save(update_fields=["allocated_document_discount_txn"])
 
 
 # ---------------------------------------------------------------------------

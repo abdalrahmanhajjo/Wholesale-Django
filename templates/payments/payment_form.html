@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+
+{% block header_title %}{{ page_title }}{% endblock %}
+
+{% block content %}
+<form method="post" novalidate class="max-w-5xl">
+  {% csrf_token %}
+  {% if form.non_field_errors %}
+    <div class="card card-pad mb-5 border-l-4 border-l-danger">
+      {% for error in form.non_field_errors %}<p class="text-sm text-danger">{{ error }}</p>{% endfor %}
+    </div>
+  {% endif %}
+
+  <div class="card card-pad">
+    <p class="eyebrow">Movement</p>
+    <h2 class="card-title mt-2">Who is paying whom?</h2>
+    <p class="mt-1 text-sm text-muted-fg">
+      A customer receipt records money in. A vendor payment records money out.
+    </p>
+    <div class="mt-4 grid gap-4 sm:grid-cols-3">
+      {% include "core/_form_field.html" with field=form.direction %}
+      {% include "core/_form_field.html" with field=form.payment_date %}
+      {% include "core/_form_field.html" with field=form.posting_date %}
+    </div>
+    <div class="mt-4 grid gap-4 sm:grid-cols-2">
+      <div id="customer-field">{% include "core/_form_field.html" with field=form.customer %}</div>
+      <div id="vendor-field">{% include "core/_form_field.html" with field=form.vendor %}</div>
+    </div>
+  </div>
+
+  <div class="card card-pad mt-4">
+    <p class="eyebrow">Amount</p>
+    <div class="mt-4 grid gap-4 sm:grid-cols-3">
+      {% include "core/_form_field.html" with field=form.currency %}
+      {% include "core/_form_field.html" with field=form.exchange_rate %}
+      {% include "core/_form_field.html" with field=form.amount_txn %}
+    </div>
+    <p class="mt-3 text-xs text-muted-fg">
+      The base amount is calculated with the saved exchange rate. This entry remains
+      fully unallocated until the allocation workflow is completed.
+    </p>
+  </div>
+
+  <div class="card card-pad mt-4">
+    <p class="eyebrow">Payment details</p>
+    <div class="mt-4 grid gap-4 sm:grid-cols-3">
+      {% include "core/_form_field.html" with field=form.method %}
+      {% include "core/_form_field.html" with field=form.money_account %}
+      {% include "core/_form_field.html" with field=form.reference %}
+    </div>
+    <div class="mt-4">{% include "core/_form_field.html" with field=form.narration %}</div>
+  </div>
+
+  <div class="mt-5 flex items-center gap-2">
+    <button type="submit" class="btn-primary">Save draft</button>
+    <a href="{% if object %}{{ object.get_absolute_url }}{% else %}{% url 'payments:payment_list' %}{% endif %}" class="btn-ghost">Cancel</a>
+  </div>
+</form>
+
+<script>
+(() => {
+  const direction = document.getElementById("id_direction");
+  const customer = document.getElementById("customer-field");
+  const vendor = document.getElementById("vendor-field");
+  function updatePartyFields() {
+    const receipt = direction.value === "RECEIPT";
+    customer.hidden = !receipt;
+    vendor.hidden = receipt;
+  }
+  direction.addEventListener("change", updatePartyFields);
+  updatePartyFields();
+})();
+</script>
+{% endblock %}

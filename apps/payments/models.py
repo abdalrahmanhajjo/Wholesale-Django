@@ -8,8 +8,10 @@ BR-008, BR-009, BR-014, BR-016, FTD-004, FTD-005, RPT-012, RPT-013, RPT-022.
 from decimal import Decimal
 
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.db.models import F, Q
+from django.urls import reverse
 
 from apps.core.expressions import exactly_one
 from apps.core.models import MONEY, RATE, DocumentStatus, TimeStampedModel
@@ -242,6 +244,40 @@ class Payment(TimeStampedModel):
 
     def __str__(self):
         return self.number
+
+    @property
+    def party(self):
+        """The customer or vendor on the side selected by ``direction``."""
+        return self.customer if self.direction == PaymentDirection.RECEIPT else self.vendor
+
+    def get_absolute_url(self):
+        return reverse("payments:payment_detail", args=[self.pk])
+
+    def clean(self):
+        """Cross-table rules that cannot be expressed as database CHECKs."""
+        super().clean()
+        errors = {}
+        if self.direction == PaymentDirection.RECEIPT:
+            if not self.customer_id:
+                errors["customer"] = "A customer is required for a receipt."
+            if self.vendor_id:
+                errors["vendor"] = "A receipt cannot be assigned to a vendor."
+        elif self.direction == PaymentDirection.PAYMENT:
+            if not self.vendor_id:
+                errors["vendor"] = "A vendor is required for a vendor payment."
+            if self.customer_id:
+                errors["customer"] = "A vendor payment cannot be assigned to a customer."
+
+        if self.method_id and self.method.requires_reference and not self.reference.strip():
+            errors["reference"] = (
+                f"A reference is required for payment method {self.method.name}."
+            )
+        if self.method_id and not self.method.is_active:
+            errors["method"] = "Select an active payment method."
+        if self.money_account_id and not self.money_account.is_active:
+            errors["money_account"] = "Select an active money account."
+        if errors:
+            raise ValidationError(errors)
 
 
 # ---------------------------------------------------------------------------

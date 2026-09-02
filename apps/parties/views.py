@@ -17,7 +17,7 @@ from django.views.generic import CreateView, DetailView, UpdateView, View
 
 from apps.core import audit
 from apps.core.list_views import BooleanFilter, Column, FilteredListView
-from apps.core.mixins import ActionPermissionMixin
+from apps.core.mixins import ActionPermissionMixin, AuditedFormMixin
 from apps.core.models import AuditEvent
 from apps.core.permissions import EXPORT_DATA
 from apps.parties.forms import CustomerForm, VendorForm
@@ -77,56 +77,6 @@ class CustomerListView(FilteredListView):
             ("Active", totals["active"]),
             ("On credit hold", totals["on_hold"]),
         ]
-
-
-class AuditedFormMixin:
-    """
-    Saves the object and writes the ACC-005 audit event in one transaction.
-
-    Doing it here rather than in each view means no screen can forget, and a
-    failed save never leaves an audit event claiming a change that did not
-    happen (BR-005).
-    """
-
-    audit_reason = ""
-
-    def form_valid(self, form):
-        is_create = form.instance.pk is None
-        before = (
-            None if is_create else audit.snapshot(self.model.objects.get(pk=form.instance.pk))
-        )
-
-        with transaction.atomic():
-            form.instance.updated_by = self.request.user
-            if is_create:
-                form.instance.created_by = self.request.user
-            self.object = form.save()
-
-            if is_create:
-                audit.record_create(self.request, self.object, reason=self.audit_reason)
-                messages.success(self.request, f"{self.object} created.")
-            else:
-                event = audit.record_update(
-                    self.request, self.object, before, reason=self.audit_reason
-                )
-                if event:
-                    changed = ", ".join(event.changes.keys())
-                    messages.success(self.request, f"{self.object} updated ({changed}).")
-                else:
-                    messages.info(self.request, "No changes to save.")
-
-        return redirect(self.get_success_url())
-
-    def get_context_data(self, **kwargs):
-        ctx = super().get_context_data(**kwargs)
-        form = ctx["form"]
-        # PTY-007 soft warnings, only once the form has been validated.
-        ctx["duplicate_warnings"] = (
-            form.duplicate_warnings()
-            if hasattr(form, "duplicate_warnings") and form.is_bound and form.is_valid()
-            else []
-        )
-        return ctx
 
 
 class CustomerCreateView(AuditedFormMixin, ActionPermissionMixin, CreateView):

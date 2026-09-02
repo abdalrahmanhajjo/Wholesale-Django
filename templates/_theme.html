@@ -1,8 +1,11 @@
 {% load static %}
 {% comment %}
 The production CSS is compiled from static/src/app.css with the design tokens
-in tailwind.config.js. Run `npm run build:css` after changing either source.
+in tailwind.config.js. Run `npm run build:css` after changing either source or
+adding Tailwind classes to templates.
+
 Keeping compilation out of the browser removes the Tailwind Play CDN runtime
 from every Django page and makes the interface independent of third parties.
+Both the application shell and sign-in page include this partial.
 {% endcomment %}
 <link rel="stylesheet" href="{% static 'css/app.css' %}">

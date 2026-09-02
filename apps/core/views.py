@@ -1,7 +1,7 @@
 """
 Core views.
 
-Role-aware dashboard backed entirely by Django ORM aggregates and templates.
+Role-aware dashboard and audited configuration screens backed by Django ORM.
 """
 
 from django.conf import settings
@@ -9,8 +9,38 @@ from django.contrib.auth.decorators import login_required, permission_required
 from django.core.cache import cache
 from django.db.models import Count, Q, Sum
 from django.shortcuts import render
+from django.urls import reverse_lazy
+from django.views.generic import CreateView, UpdateView
 
-from apps.core.models import Company, FiscalPeriod
+from apps.core.forms import (
+    CompanyForm,
+    CurrencyForm,
+    DocumentSequenceForm,
+    PaymentTermForm,
+    TaxCodeForm,
+)
+from apps.core.list_views import (
+    BooleanFilter,
+    ChoiceFilter,
+    Column,
+    DateRangeFilter,
+    FilteredListView,
+)
+from apps.core.mixins import ActionPermissionMixin, AuditedFormMixin
+from apps.core.models import (
+    Company,
+    Currency,
+    DocumentSequence,
+    DocumentType,
+    FiscalPeriod,
+    PaymentTerm,
+    PeriodStatus,
+    SequenceReset,
+    TaxApplicability,
+    TaxCode,
+    TaxTreatment,
+)
+from apps.core.permissions import EXPORT_DATA, MANAGE_CONFIGURATION
 from apps.ledger.models import Account, AccountMapping, MappingKey
 from apps.parties.models import Customer, Vendor
 from apps.payments.models import Payment, PaymentDirection
@@ -67,3 +97,339 @@ def dashboard(request):
         **overview,
     }
     return render(request, "core/dashboard.html", context)
+
+
+class CurrencyListView(FilteredListView):
+    """CFG-003: the currencies the business trades in."""
+
+    model = Currency
+    required_permission = "core.view_currency"
+    page_title = "Currencies"
+    page_subtitle = "Currencies available on documents. One is the base currency (BR-002)."
+    default_ordering = "code"
+    create_url_name = "core:currency_create"
+    create_label = "New currency"
+
+    columns = [
+        Column("code", "Code", sortable=True, link=True, css="font-mono text-xs"),
+        Column("name", "Name", sortable=True),
+        Column("symbol", "Symbol"),
+        Column("decimal_places", "Decimals", align="right"),
+        Column("is_base", "Base", badge=True, align="center"),
+        Column("is_active", "Active", badge=True, align="center"),
+    ]
+
+    search_fields = ["code", "name"]
+
+    filters = [
+        BooleanFilter("is_active", "Status", true_label="Active", false_label="Inactive"),
+    ]
+
+    export_permission = EXPORT_DATA
+    export_filename = "currencies"
+
+    def get_summary(self):
+        queryset = self.get_queryset()
+        totals = queryset.aggregate(
+            total=Count("pk"),
+            active=Count("pk", filter=Q(is_active=True)),
+        )
+        return [
+            ("Currencies", totals["total"]),
+            ("Active", totals["active"]),
+            ("Base", queryset.filter(is_base=True).first() or "—"),
+        ]
+
+
+class CurrencyCreateView(AuditedFormMixin, ActionPermissionMixin, CreateView):
+    model = Currency
+    form_class = CurrencyForm
+    template_name = "core/currency_form.html"
+    required_permission = MANAGE_CONFIGURATION
+    success_url = reverse_lazy("core:currency_list")
+    extra_context = {"page_title": "New currency"}
+
+
+class CurrencyUpdateView(AuditedFormMixin, ActionPermissionMixin, UpdateView):
+    model = Currency
+    form_class = CurrencyForm
+    template_name = "core/currency_form.html"
+    required_permission = MANAGE_CONFIGURATION
+    success_url = reverse_lazy("core:currency_list")
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        ctx["page_title"] = f"Edit {self.object.code}"
+        return ctx
+
+
+class TaxCodeListView(FilteredListView):
+    """CFG-004: the tax codes available on documents."""
+
+    model = TaxCode
+    required_permission = "core.view_taxcode"
+    page_title = "Tax codes"
+    page_subtitle = "Rates and treatments applied to sales and purchase lines."
+    default_ordering = "code"
+    create_url_name = "core:taxcode_create"
+    create_label = "New tax code"
+
+    columns = [
+        Column("code", "Code", sortable=True, link=True, css="font-mono text-xs"),
+        Column("name", "Name", sortable=True),
+        Column("rate_percent", "Rate %", align="right", sortable=True),
+        Column("get_treatment_display", "Treatment"),
+        Column("get_applies_to_display", "Applies to"),
+        Column("is_inclusive", "Inclusive", align="center"),
+        Column("is_recoverable", "Recoverable", align="center"),
+        Column("is_active", "Active", badge=True, align="center"),
+    ]
+
+    search_fields = ["code", "name"]
+
+    filters = [
+        ChoiceFilter("treatment", "Treatment", TaxTreatment.choices),
+        ChoiceFilter("applies_to", "Applies to", TaxApplicability.choices),
+        BooleanFilter("is_active", "Status", true_label="Active", false_label="Inactive"),
+    ]
+
+    export_permission = EXPORT_DATA
+    export_filename = "tax-codes"
+
+    def get_summary(self):
+        totals = self.get_queryset().aggregate(
+            total=Count("pk"),
+            active=Count("pk", filter=Q(is_active=True)),
+            standard=Count("pk", filter=Q(treatment=TaxTreatment.STANDARD)),
+        )
+        return [
+            ("Tax codes", totals["total"]),
+            ("Active", totals["active"]),
+            ("Standard rated", totals["standard"]),
+        ]
+
+
+class TaxCodeCreateView(AuditedFormMixin, ActionPermissionMixin, CreateView):
+    model = TaxCode
+    form_class = TaxCodeForm
+    template_name = "core/taxcode_form.html"
+    required_permission = MANAGE_CONFIGURATION
+    success_url = reverse_lazy("core:taxcode_list")
+    extra_context = {"page_title": "New tax code"}
+
+
+class TaxCodeUpdateView(AuditedFormMixin, ActionPermissionMixin, UpdateView):
+    model = TaxCode
+    form_class = TaxCodeForm
+    template_name = "core/taxcode_form.html"
+    required_permission = MANAGE_CONFIGURATION
+    success_url = reverse_lazy("core:taxcode_list")
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        ctx["page_title"] = f"Edit {self.object.code}"
+        return ctx
+
+
+# ---------------------------------------------------------------------------
+# Payment terms (CFG-005)
+# ---------------------------------------------------------------------------
+class PaymentTermListView(FilteredListView):
+    model = PaymentTerm
+    required_permission = "core.view_paymentterm"
+    page_title = "Payment terms"
+    page_subtitle = "When an invoice falls due, and any early-settlement discount."
+    default_ordering = "code"
+    create_url_name = "core:paymentterm_create"
+    create_label = "New payment term"
+
+    columns = [
+        Column("code", "Code", sortable=True, link=True, css="font-mono text-xs"),
+        Column("name", "Name", sortable=True),
+        Column("net_days", "Net days", align="right", sortable=True),
+        Column("end_of_month", "End of month", align="center"),
+        Column("discount_percent", "Discount %", align="right"),
+        Column("discount_days", "Discount days", align="right"),
+        Column("is_active", "Active", badge=True, align="center"),
+    ]
+    search_fields = ["code", "name"]
+    filters = [
+        BooleanFilter("is_active", "Status", true_label="Active", false_label="Inactive")
+    ]
+    export_permission = EXPORT_DATA
+    export_filename = "payment-terms"
+
+    def get_summary(self):
+        totals = self.get_queryset().aggregate(
+            total=Count("pk"),
+            active=Count("pk", filter=Q(is_active=True)),
+        )
+        return [("Payment terms", totals["total"]), ("Active", totals["active"])]
+
+
+class PaymentTermCreateView(AuditedFormMixin, ActionPermissionMixin, CreateView):
+    model = PaymentTerm
+    form_class = PaymentTermForm
+    template_name = "core/settings_form.html"
+    required_permission = MANAGE_CONFIGURATION
+    success_url = reverse_lazy("core:paymentterm_list")
+    extra_context = {
+        "page_title": "New payment term",
+        "cancel_url": "/settings/payment-terms/",
+    }
+
+
+class PaymentTermUpdateView(AuditedFormMixin, ActionPermissionMixin, UpdateView):
+    model = PaymentTerm
+    form_class = PaymentTermForm
+    template_name = "core/settings_form.html"
+    required_permission = MANAGE_CONFIGURATION
+    success_url = reverse_lazy("core:paymentterm_list")
+    extra_context = {"cancel_url": "/settings/payment-terms/"}
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        ctx["page_title"] = f"Edit {self.object.code}"
+        return ctx
+
+
+# ---------------------------------------------------------------------------
+# Company settings (CFG-001, CFG-010)
+# ---------------------------------------------------------------------------
+class CompanySettingsView(AuditedFormMixin, ActionPermissionMixin, UpdateView):
+    """
+    A singleton screen: one row, edited in place. There is no list and no
+    create — the company is seeded, and BRD 3.1 allows exactly one.
+    """
+
+    model = Company
+    form_class = CompanyForm
+    template_name = "core/settings_form.html"
+    required_permission = MANAGE_CONFIGURATION
+    success_url = reverse_lazy("core:company_settings")
+    extra_context = {
+        "page_title": "Company settings",
+        "cancel_url": "/",
+        "form_hint": "These values appear on every document and drive system-wide policy.",
+    }
+
+    def get_object(self, queryset=None):
+        return Company.objects.select_related("base_currency").first()
+
+
+# ---------------------------------------------------------------------------
+# Number series (CFG-008)
+# ---------------------------------------------------------------------------
+class DocumentSequenceListView(FilteredListView):
+    model = DocumentSequence
+    required_permission = "core.view_documentsequence"
+    page_title = "Number series"
+    page_subtitle = "How each document type is numbered. Used by numbering.next_number()."
+    default_ordering = "document_type"
+    create_url_name = "core:sequence_create"
+    create_label = "New series"
+
+    columns = [
+        Column(
+            "get_document_type_display",
+            "Document",
+            sortable=True,
+            link=True,
+            order_by="document_type",
+        ),
+        Column("series", "Series", css="font-mono text-xs"),
+        Column("prefix", "Prefix", css="font-mono text-xs"),
+        Column("padding", "Padding", align="right"),
+        Column("next_number", "Next number", align="right", sortable=True),
+        Column("get_reset_policy_display", "Resets"),
+        Column("period_key", "Period", css="font-mono text-xs"),
+        Column("is_active", "Active", badge=True, align="center"),
+    ]
+    search_fields = ["series", "prefix"]
+    filters = [
+        ChoiceFilter("document_type", "Document type", DocumentType.choices),
+        ChoiceFilter("reset_policy", "Resets", SequenceReset.choices),
+        BooleanFilter("is_active", "Status", true_label="Active", false_label="Inactive"),
+    ]
+    export_permission = EXPORT_DATA
+    export_filename = "number-series"
+
+    def get_summary(self):
+        totals = self.get_queryset().aggregate(
+            total=Count("pk"),
+            active=Count("pk", filter=Q(is_active=True)),
+        )
+        return [("Series", totals["total"]), ("Active", totals["active"])]
+
+
+class DocumentSequenceCreateView(AuditedFormMixin, ActionPermissionMixin, CreateView):
+    model = DocumentSequence
+    form_class = DocumentSequenceForm
+    template_name = "core/settings_form.html"
+    required_permission = MANAGE_CONFIGURATION
+    success_url = reverse_lazy("core:sequence_list")
+    extra_context = {
+        "page_title": "New number series",
+        "cancel_url": "/settings/number-series/",
+    }
+
+
+class DocumentSequenceUpdateView(AuditedFormMixin, ActionPermissionMixin, UpdateView):
+    model = DocumentSequence
+    form_class = DocumentSequenceForm
+    template_name = "core/settings_form.html"
+    required_permission = MANAGE_CONFIGURATION
+    success_url = reverse_lazy("core:sequence_list")
+    extra_context = {"cancel_url": "/settings/number-series/"}
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        ctx["page_title"] = f"Edit {self.object}"
+        return ctx
+
+
+# ---------------------------------------------------------------------------
+# Fiscal calendar (CFG-009) — read-only here. Member 4 owns close/reopen.
+# ---------------------------------------------------------------------------
+class FiscalPeriodListView(FilteredListView):
+    model = FiscalPeriod
+    required_permission = "core.view_fiscalperiod"
+    page_title = "Fiscal periods"
+    page_subtitle = (
+        "Posting windows. Closing and reopening happen through the accounting "
+        "workflow, not from this screen (CFG-009, ACC-008)."
+    )
+    default_ordering = "start_date"
+    paginate_by = 50
+
+    columns = [
+        Column("name", "Period", sortable=True),
+        Column("fiscal_year", "Year", sortable=True),
+        Column("period_no", "No.", align="right"),
+        Column("start_date", "Starts", sortable=True),
+        Column("end_date", "Ends", sortable=True),
+        Column("status", "Status", badge=True, align="center"),
+        Column("closed_by", "Closed by"),
+    ]
+    search_fields = ["name", "fiscal_year__code"]
+    filters = [
+        ChoiceFilter("status", "Status", PeriodStatus.choices),
+        DateRangeFilter("start_date", "Starting between"),
+    ]
+    export_permission = EXPORT_DATA
+    export_filename = "fiscal-periods"
+
+    def get_queryset(self):
+        return super().get_queryset().select_related("fiscal_year", "closed_by")
+
+    def get_summary(self):
+        totals = self.get_queryset().aggregate(
+            total=Count("pk"),
+            open=Count("pk", filter=Q(status=PeriodStatus.OPEN)),
+            closed=Count("pk", filter=~Q(status=PeriodStatus.OPEN)),
+        )
+        return [
+            ("Periods", totals["total"]),
+            ("Open", totals["open"]),
+            ("Closed", totals["closed"]),
+        ]

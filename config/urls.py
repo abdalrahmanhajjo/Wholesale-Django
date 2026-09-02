@@ -28,6 +28,7 @@ urlpatterns = [
     path("parties/", include("apps.parties.urls")),
     path("sales/", include("apps.sales.urls")),
     path("payments/", include("apps.payments.urls")),
+    path("settings/", include("apps.core.urls")),
     path("admin/", admin.site.urls),
     # Member 2 adds the purchasing routes here when their screens are ready:
     # path("purchases/", include("apps.purchases.urls")),

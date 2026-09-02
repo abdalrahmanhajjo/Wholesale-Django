@@ -122,15 +122,27 @@ def record(
 
     content_type = object_id = None
     if instance is not None and instance.pk is not None:
-        content_type = ContentType.objects.get_for_model(instance)
-        object_id = instance.pk
+        # AuditEvent.object_id is a BigIntegerField, so only integer-primary-key
+        # models can provide a generic relation. Natural-key models still retain
+        # their actor, action, representation and complete field-level changes.
+        if isinstance(instance.pk, int):
+            content_type = ContentType.objects.get_for_model(instance)
+            object_id = instance.pk
+
+    resolved_repr = (
+        object_repr
+        if object_repr is not None
+        else str(instance)
+        if instance is not None
+        else ""
+    )
 
     return AuditEvent.objects.create(
         action=action,
         user=user,
         content_type=content_type,
         object_id=object_id,
-        object_repr=(object_repr or str(instance))[:255] if instance else "",
+        object_repr=resolved_repr[:255],
         changes=changes or None,
         reason=reason,
         correlation_id=correlation_id or _correlation_id(request),

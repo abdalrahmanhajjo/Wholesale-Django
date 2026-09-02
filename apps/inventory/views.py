@@ -8,7 +8,7 @@ Shape copied from apps/purchases/views.py per CONTRIBUTING.md §4d/§4e.
 from django.contrib import messages
 from django.core.exceptions import ValidationError
 from django.db import transaction
-from django.db.models import Count, Max, Q
+from django.db.models import Count, F, Max, Q, Sum
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views import View
 from django.views.generic import DetailView
@@ -20,7 +20,13 @@ from apps.core.models import AuditEvent, DocumentStatus
 from apps.core.permissions import EXPORT_DATA, POST_GOODS_RECEIPT
 from apps.inventory import services
 from apps.inventory.forms import GoodsReceiptForm, GoodsReceiptLineFormSet
-from apps.inventory.models import GoodsReceipt
+from apps.inventory.models import (
+    GoodsReceipt,
+    MovementType,
+    StockBalance,
+    StockMovement,
+    Warehouse,
+)
 from apps.purchases.models import PurchaseOrder
 
 
@@ -256,3 +262,106 @@ class GoodsReceiptPostView(ActionPermissionMixin, View):
         else:
             messages.success(request, f"{receipt.number} posted — stock updated.")
         return redirect("inventory:gr_detail", pk=pk)
+
+
+# ---------------------------------------------------------------------------
+# Stock ledger (INV-004, RPT-016, RPT-017)
+# ---------------------------------------------------------------------------
+class StockLedgerListView(FilteredListView):
+    """
+    Every posted stock movement, in order, with the running balance it left
+    behind — the on-screen equivalent of `fn_stock_card`, across every product
+    and warehouse rather than one at a time.
+    """
+
+    model = StockMovement
+    required_permission = "inventory.view_stockmovement"
+    page_title = "Stock ledger"
+    page_subtitle = "Every posted movement, in order, with the balance it left behind."
+    export_permission = EXPORT_DATA
+    export_filename = "stock-ledger"
+    default_ordering = "-movement_date"
+    show_summary = False
+
+    columns = [
+        Column("movement_date", "Date", sortable=True),
+        Column("product", "Product"),
+        Column("warehouse", "Warehouse", sortable=True, order_by="warehouse__code"),
+        Column("get_movement_type_display", "Type", sortable=True, order_by="movement_type"),
+        Column("source_doc_number", "Document"),
+        Column("signed_quantity", "Qty", align="right"),
+        Column("unit_cost", "Unit cost", align="right", money=True),
+        Column("balance_quantity_after", "Balance qty", align="right"),
+        Column("average_cost_after", "Avg cost", align="right", money=True),
+        Column("balance_value_after", "Balance value", align="right", money=True),
+    ]
+    search_fields = ["product__sku", "product__name", "source_doc_number"]
+
+    @property
+    def filters(self):
+        warehouses = [(w.pk, str(w)) for w in Warehouse.objects.filter(is_active=True)]
+        return [
+            ChoiceFilter("warehouse", "Warehouse", warehouses),
+            ChoiceFilter("movement_type", "Type", MovementType.choices),
+        ]
+
+    def get_queryset(self):
+        return super().get_queryset().select_related("product", "warehouse")
+
+
+# ---------------------------------------------------------------------------
+# Inventory valuation (INV-005, RPT-018)
+# ---------------------------------------------------------------------------
+class StockValuationListView(FilteredListView):
+    """
+    Quantity on hand and its weighted-average cost, by product and warehouse —
+    the screen equivalent of `v_inventory_valuation`, kept current because
+    `StockBalance` is updated by every posting rather than recomputed here.
+    """
+
+    model = StockBalance
+    required_permission = "inventory.view_stockbalance"
+    page_title = "Inventory valuation"
+    page_subtitle = "What is on hand right now, and what it is worth."
+    export_permission = EXPORT_DATA
+    export_filename = "inventory-valuation"
+    default_ordering = "product__sku"
+
+    columns = [
+        Column("product", "Product"),
+        Column("warehouse", "Warehouse", sortable=True, order_by="warehouse__code"),
+        Column("quantity_on_hand", "On hand", align="right", sortable=True),
+        Column("quantity_reserved", "Reserved", align="right"),
+        Column("average_cost", "Avg cost", align="right", money=True),
+        Column("total_value", "Value", align="right", money=True, sortable=True),
+    ]
+    search_fields = ["product__sku", "product__name"]
+
+    @property
+    def filters(self):
+        warehouses = [(w.pk, str(w)) for w in Warehouse.objects.filter(is_active=True)]
+        return [ChoiceFilter("warehouse", "Warehouse", warehouses)]
+
+    def get_queryset(self):
+        return (
+            super()
+            .get_queryset()
+            .select_related("product", "warehouse")
+            .filter(product__is_inventory=True)
+        )
+
+    def get_summary(self):
+        totals = StockBalance.objects.filter(product__is_inventory=True).aggregate(
+            items=Count("id", filter=Q(quantity_on_hand__gt=0)),
+            total_qty=Sum("quantity_on_hand"),
+            total_value=Sum("total_value"),
+        )
+        below_reorder = StockBalance.objects.filter(
+            product__is_inventory=True, quantity_on_hand__lte=F("product__reorder_level")
+        ).count()
+        return [
+            ("Items in stock", totals["items"] or 0),
+            ("Total quantity", totals["total_qty"] or 0),
+            ("Total value", totals["total_value"] or 0),
+            ("Below reorder level", below_reorder),
+        ]

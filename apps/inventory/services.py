@@ -14,7 +14,7 @@ from decimal import ROUND_HALF_UP, Decimal
 
 from django.contrib.contenttypes.models import ContentType
 from django.core.exceptions import ValidationError
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from apps.core import audit
@@ -26,7 +26,7 @@ from apps.core.models import (
     DocumentType,
     FiscalPeriod,
 )
-from apps.inventory.models import MovementType, StockBalance, StockMovement
+from apps.inventory.models import INBOUND_TYPES, MovementType, StockBalance, StockMovement
 from apps.ledger.models import AccountMapping, JournalEntry, JournalLine, JournalType
 
 ZERO = Decimal("0")
@@ -111,6 +111,108 @@ def recalculate_receipt(receipt):
 
 
 # ---------------------------------------------------------------------------
+# Weighted-average costing engine (INV-003..INV-005, BR-018, BR-019, NFR-008)
+#
+# The single place every stock-moving document posts through: goods receipts
+# today, deliveries/transfers/adjustments as they land. One function owns the
+# balance arithmetic so "what is a unit of this product worth right now" is
+# never computed two different ways in two different services.
+# ---------------------------------------------------------------------------
+def post_stock_movement(
+    *,
+    product,
+    warehouse,
+    movement_date,
+    movement_type,
+    quantity,
+    unit_cost=None,
+    source,
+    source_doc_type,
+    source_doc_number,
+    idempotency_key,
+    user,
+    notes="",
+):
+    """
+    Apply one movement to the product/warehouse balance and write the
+    immutable ledger line for it (INV-004, RPT-017).
+
+    Call this from inside the caller's `transaction.atomic()` — it takes
+    `SELECT ... FOR UPDATE` on the StockBalance row so concurrent movements of
+    the same item serialise (NFR-003, NFR-008) rather than racing each other's
+    read-modify-write of the running average.
+
+    An inbound movement (`movement_type` in INBOUND_TYPES) blends `unit_cost`
+    into the running weighted average — the caller must supply it. An outbound
+    movement is costed at the *current* average; `unit_cost` is ignored if
+    given, because the balance itself is the only source of truth for what
+    stock leaving the warehouse is worth (INV-005).
+
+    BR-017's negative-stock policy is a database trigger
+    (`wams_stock_negative_check`), not application logic, so the same rule
+    applies everywhere a movement is posted, however it gets there. This
+    only turns that trigger's error into a `ValidationError` a view can show.
+    """
+    direction = 1 if movement_type in INBOUND_TYPES else -1
+    balance, _ = StockBalance.objects.select_for_update().get_or_create(
+        product=product,
+        warehouse=warehouse,
+        defaults={"quantity_on_hand": ZERO, "average_cost": ZERO, "total_value": ZERO},
+    )
+
+    if direction == 1:
+        cost = _cost(unit_cost)
+        line_total = _money(quantity * cost)
+        new_qty = balance.quantity_on_hand + quantity
+        new_value = balance.total_value + line_total
+        new_avg = _cost(new_value / new_qty) if new_qty else ZERO
+    else:
+        cost = balance.average_cost
+        line_total = _money(quantity * cost)
+        new_qty = balance.quantity_on_hand - quantity
+        new_value = balance.total_value - line_total if new_qty > 0 else ZERO
+        new_avg = balance.average_cost if new_qty > 0 else ZERO
+
+    try:
+        movement = StockMovement.objects.create(
+            movement_date=movement_date,
+            movement_type=movement_type,
+            direction=direction,
+            product=product,
+            warehouse=warehouse,
+            quantity=quantity,
+            unit_cost=cost,
+            total_cost=line_total,
+            balance_quantity_after=new_qty,
+            balance_value_after=new_value,
+            average_cost_after=new_avg,
+            source_content_type=ContentType.objects.get_for_model(source),
+            source_object_id=source.pk,
+            source_doc_type=source_doc_type,
+            source_doc_number=source_doc_number,
+            idempotency_key=idempotency_key,
+            notes=notes,
+            created_by=user,
+        )
+    except IntegrityError as exc:
+        # wams_stock_negative_check (BR-017) fires on the StockBalance write
+        # below in a real posting, but StockMovement's own CHECK constraints
+        # (e.g. direction must match movement_type) can also land here.
+        raise ValidationError(str(exc).strip()) from exc
+
+    balance.quantity_on_hand = new_qty
+    balance.total_value = new_value
+    balance.average_cost = new_avg
+    balance.last_movement_at = timezone.now()
+    try:
+        balance.save()
+    except IntegrityError as exc:
+        raise ValidationError(str(exc).strip()) from exc
+
+    return movement
+
+
+# ---------------------------------------------------------------------------
 # Posting (INV-006, PUR-003, GL-001, GL-002, GL-010)
 # ---------------------------------------------------------------------------
 def _fiscal_period_for(on_date):
@@ -150,49 +252,27 @@ def post_goods_receipt(receipt, user, request):
 
     with transaction.atomic():
         fiscal_period = _fiscal_period_for(receipt.document_date)
-        source_type = ContentType.objects.get_for_model(receipt)
         movements = []
         total_cost = ZERO
 
         for line in lines:
             if line.quantity_accepted <= 0:
                 continue
-            balance, _ = StockBalance.objects.select_for_update().get_or_create(
+            movement = post_stock_movement(
                 product=line.product,
                 warehouse=receipt.warehouse,
-                defaults={"quantity_on_hand": ZERO, "average_cost": ZERO, "total_value": ZERO},
-            )
-            line_total = _money(line.quantity_accepted * line.unit_cost)
-            new_qty = balance.quantity_on_hand + line.quantity_accepted
-            new_value = balance.total_value + line_total
-            new_avg = _cost(new_value / new_qty) if new_qty else ZERO
-
-            movement = StockMovement.objects.create(
                 movement_date=receipt.document_date,
                 movement_type=MovementType.GOODS_RECEIPT,
-                direction=1,
-                product=line.product,
-                warehouse=receipt.warehouse,
                 quantity=line.quantity_accepted,
                 unit_cost=line.unit_cost,
-                total_cost=line_total,
-                balance_quantity_after=new_qty,
-                balance_value_after=new_value,
-                average_cost_after=new_avg,
-                source_content_type=source_type,
-                source_object_id=receipt.pk,
+                source=receipt,
                 source_doc_type=DocumentType.GOODS_RECEIPT,
                 source_doc_number=receipt.number,
                 idempotency_key=f"GR:{receipt.pk}:{line.pk}",
-                created_by=user,
+                user=user,
             )
-            balance.quantity_on_hand = new_qty
-            balance.total_value = new_value
-            balance.average_cost = new_avg
-            balance.last_movement_at = timezone.now()
-            balance.save()
 
-            total_cost += line_total
+            total_cost += movement.total_cost
             movements.append(movement)
 
             if line.purchase_order_line_id:
@@ -223,7 +303,7 @@ def post_goods_receipt(receipt, user, request):
                 exchange_rate=Decimal("1"),
                 total_debit_base=total_cost,
                 total_credit_base=total_cost,
-                source_content_type=source_type,
+                source_content_type=ContentType.objects.get_for_model(receipt),
                 source_object_id=receipt.pk,
                 source_doc_type=DocumentType.GOODS_RECEIPT,
                 source_doc_number=receipt.number,

@@ -44,7 +44,12 @@ Blocks available to child templates:
            class="nav-link {% if request.resolver_match.url_name == 'dashboard' %}nav-link-active{% endif %}">Dashboard</a>
 
         <p class="nav-group">Operations</p>
-        <a href="{% url 'sales:so_list' %}" class="nav-link {% if request.resolver_match.app_name == 'sales' %}nav-link-active{% endif %}">Sales</a>
+        <a href="{% url 'sales:so_list' %}"
+           class="nav-link {% if request.resolver_match.url_name|slice:':3' == 'so_' or request.resolver_match.url_name == 'so_list' %}nav-link-active{% endif %}">Sales orders</a>
+        <a href="{% url 'sales:delivery_list' %}"
+           class="nav-link {% if request.resolver_match.url_name|slice:':9' == 'delivery_' %}nav-link-active{% endif %}">Delivery notes</a>
+        <a href="{% url 'sales:invoice_list' %}"
+           class="nav-link {% if request.resolver_match.url_name|slice:':8' == 'invoice_' %}nav-link-active{% endif %}">Sales invoices</a>
         <a href="#" class="nav-link">Purchases</a>
         <a href="#" class="nav-link">Payments</a>
         <a href="#" class="nav-link">Inventory</a>

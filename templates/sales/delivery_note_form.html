@@ -12,6 +12,13 @@ and the standard save/cancel footer.
 
 {% block header_title %}{{ page_title }}{% endblock %}
 
+{% block breadcrumb %}
+  <a href="{% if step == 'create' %}{% url 'sales:so_detail' order.pk %}{% else %}{% url 'sales:delivery_list' %}{% endif %}"
+     class="mb-4 inline-flex items-center gap-1.5 text-sm font-medium text-muted-fg transition-colors hover:text-brand">
+    <span aria-hidden="true">&larr;</span> Back to {% if step == 'create' %}{{ order.number }}{% else %}deliveries{% endif %}
+  </a>
+{% endblock %}
+
 {% block content %}
 {% if step == "pick" %}
   <div class="card card-pad max-w-xl">
@@ -102,12 +109,17 @@ and the standard save/cancel footer.
                 <td class="px-4 py-2 text-right tabular-nums">{{ form.so_line.quantity }}</td>
                 <td class="px-4 py-2 text-right tabular-nums">{{ form.so_line.quantity_delivered }}</td>
                 <td class="px-4 py-2 text-right">
-                  <div class="inline-flex items-center gap-2">
-                    {{ form.quantity }}
-                    {% if form.so_line %}
-                      <span class="text-xs text-muted-fg">/ {{ form.so_line|default:"" }}</span>
-                    {% endif %}
+                  <div class="inline-flex items-center justify-end gap-2">
+                    <input type="number" name="{{ form.quantity.html_name }}"
+                           id="{{ form.quantity.id_for_label }}"
+                           value="{{ form.quantity.value|default:'' }}"
+                           min="0" step="0.0001"
+                           class="field w-32 text-right tabular-nums dn-qty"
+                           data-ordered="{{ form.so_line.quantity }}"
+                           data-delivered="{{ form.so_line.quantity_delivered }}">
+                    <span class="dn-hint text-xs text-muted-fg"></span>
                   </div>
+                  <span class="dn-err hidden text-xs font-medium text-danger" aria-live="polite"></span>
                   {% for e in form.quantity.errors %}<p class="error-text">{{ e }}</p>{% endfor %}
                 </td>
               </tr>
@@ -130,4 +142,35 @@ and the standard save/cancel footer.
   </form>
 
 {% endif %}
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+  // Real-time over-delivery guard — mirrors the server's remaining_to_deliver()
+  // (quantity minus quantity_delivered). UX only; the server still enforces it.
+  document.querySelectorAll('.dn-qty').forEach(inp => {
+    const td = inp.closest('td');
+    const err = td ? td.querySelector('.dn-err') : null;
+    const hint = td ? td.querySelector('.dn-hint') : null;
+    if (!err) return;
+
+    const update = () => {
+      const ordered = parseFloat(inp.dataset.ordered) || 0;
+      const delivered = parseFloat(inp.dataset.delivered) || 0;
+      const remaining = Math.max(0, ordered - delivered);
+      const val = parseFloat(inp.value) || 0;
+      if (hint) hint.textContent = `max ${remaining}`;
+      if (val > remaining) {
+        err.textContent = `Over-delivery: only ${remaining} remains to deliver.`;
+        err.classList.remove('hidden');
+        inp.style.borderColor = '#dc2626';
+      } else {
+        err.classList.add('hidden');
+        inp.style.borderColor = '';
+      }
+    };
+    inp.addEventListener('input', update);
+    update();
+  });
+</script>
 {% endblock %}

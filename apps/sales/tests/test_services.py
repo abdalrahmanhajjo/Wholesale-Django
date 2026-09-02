@@ -144,6 +144,41 @@ class DocumentDiscountAllocationTests(TestCase):
         line.refresh_from_db()
         self.assertEqual(line.allocated_document_discount_txn, ZERO)
 
+    def test_recalculate_derives_discount_from_kind_value_percent(self):
+        """PERCENT discount is applied — recalculate derives the txn total from the header."""
+        tax = f.make_tax(rate=Decimal("11.0"))
+        f.make_line(self.order, qty=Decimal("2"), price=Decimal("100"), tax=tax, line_no=1)
+        self.order.document_discount_kind = DiscountKind.PERCENT
+        self.order.document_discount_value = Decimal("10")
+        self.order.document_discount_txn = ZERO
+        self.order.save()
+
+        services.recalculate_order(self.order)
+
+        # 10% of a $200 gross = $20 header discount, allocated entirely to the single line.
+        line = self.order.lines.first()
+        self.assertEqual(line.allocated_document_discount_txn, Decimal("20.0000"))
+        self.assertEqual(self.order.document_discount_txn, Decimal("20.0000"))
+        # Net 180, tax 19.80 (exclusive), total 199.80
+        self.assertEqual(self.order.tax_txn, Decimal("19.8000"))
+        self.assertEqual(self.order.total_txn, Decimal("199.8000"))
+
+    def test_recalculate_uses_amount_discount_without_manual_txn(self):
+        """AMOUNT discount: document_discount_txn is derived — no manual set needed."""
+        f.make_line(self.order, qty=Decimal("2"), price=Decimal("100"), line_no=1)
+        self.order.document_discount_kind = DiscountKind.AMOUNT
+        self.order.document_discount_value = Decimal("40")
+        self.order.document_discount_txn = ZERO
+        self.order.save()
+
+        services.recalculate_order(self.order)
+
+        line = self.order.lines.first()
+        self.assertEqual(line.allocated_document_discount_txn, Decimal("40.0000"))
+        self.assertEqual(self.order.document_discount_txn, Decimal("40.0000"))
+        # Gross 200 − discount 40 = 160 total
+        self.assertEqual(self.order.total_txn, Decimal("160.0000"))
+
 
 class RecalculateTotalsTests(TestCase):
     """BR-022: header totals roll up from lines and reconcile to the header."""

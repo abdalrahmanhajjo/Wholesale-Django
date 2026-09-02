@@ -7,6 +7,13 @@ the same field widget styling, and a save/cancel footer.
 
 {% block header_title %}{{ page_title }}{% endblock %}
 
+{% block breadcrumb %}
+  <a href="{% if object %}{% url 'sales:so_detail' object.pk %}{% else %}{% url 'sales:so_list' %}{% endif %}"
+     class="mb-4 inline-flex items-center gap-1.5 text-sm font-medium text-muted-fg transition-colors hover:text-brand">
+    <span aria-hidden="true">&larr;</span> Back to {% if object %}{{ object.number }}{% else %}sales orders{% endif %}
+  </a>
+{% endblock %}
+
 {% block content %}
 <form method="post" novalidate class="max-w-5xl">
   {% csrf_token %}
@@ -160,9 +167,16 @@ the same field widget styling, and a save/cancel footer.
           {% endfor %}
         </tbody>
         <tfoot>
+          <tr class="border-t border-line bg-muted-bg/50 font-medium">
+            <td colspan="9" class="px-4 py-2 text-right text-xs uppercase tracking-wide text-muted-fg">
+              Document discount
+            </td>
+            <td colspan="2" class="px-4 py-2 text-right tabular-nums text-muted-fg" id="sum-discount">0.00</td>
+            <td></td>
+          </tr>
           <tr class="border-t-2 border-line bg-muted-bg font-semibold">
             <td colspan="8" class="px-4 py-3 text-right text-xs uppercase tracking-wide text-muted-fg">
-              Totals (server-recalculated, SAL-002)
+              Totals
             </td>
             <td class="px-4 py-3 text-right tabular-nums" id="sum-gross">
               {{ object.subtotal_txn|default:0|floatformat:2 }}
@@ -189,26 +203,139 @@ the same field widget styling, and a save/cancel footer.
 {% endblock %}
 
 {% block extra_scripts %}
+{{ tax_rates|json_script:"tax-rates" }}
+{{ product_map|json_script:"product-map" }}
 <script>
-  // Client-side line total preview (UX only — server recalculates on save per SAL-002)
-  document.querySelectorAll('#lines-table tbody').forEach(tbody => {
-    tbody.addEventListener('input', e => {
+  // Live line totals preview (UX only — server recalculates on save per SAL-002).
+  // Mirrors services.calculate_line: doc discount (SAL-003) is allocated
+  // proportionally by gross, with the last line absorbing rounding drift.
+  (function () {
+    const table = document.getElementById('lines-table');
+    if (!table) return;
+    const taxScript = document.getElementById('tax-rates');
+    const TAX_RATES = taxScript ? JSON.parse(taxScript.textContent) : {};
+    const prodScript = document.getElementById('product-map');
+    const PRODUCTS = prodScript ? JSON.parse(prodScript.textContent) : {};
+    const round4 = n => Math.round((n + Number.EPSILON) * 10000) / 10000;
+    const round2 = n => Math.round((n + Number.EPSILON) * 100) / 100;
+
+    // Auto-fill price/tax/unit/description when a product is picked (UX; the
+    // server stores what the user submits — the product's price is the source).
+    // A product change always overwrites these derived fields so switching
+    // products never leaves the previous product's price behind.
+    const findInRow = (row, field) =>
+      row.querySelector(`[name$="-${field}"]`);
+
+    const setField = (row, field, value) => {
+      const el = findInRow(row, field);
+      if (el && value !== undefined && value !== null) {
+        el.value = value;
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+    };
+
+    const onProductChange = e => {
       const row = e.target.closest('.line-row');
       if (!row) return;
-      const get = name => {
-        const el = row.querySelector(`[name$="-${name}"]`);
-        return el ? parseFloat(el.value) || 0 : 0;
+      const p = PRODUCTS[e.target.value];
+      if (!p || !p.price) return;
+      setField(row, 'unit_price', p.price);
+      setField(row, 'tax_code', p.tax_code);
+      setField(row, 'unit', p.unit);
+      const desc = findInRow(row, 'description');
+      if (desc) {
+        desc.value = p.name;
+        desc.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+      recalc();
+    };
+
+    const recalc = () => {
+      const rows = Array.from(table.querySelectorAll('tbody tr.line-row'));
+      if (!rows.length) return;
+
+      const data = rows.map(row => {
+        const del = row.querySelector('[name$="-DELETE"]');
+        const get = name => {
+          const el = row.querySelector(`[name$="-${name}"]`);
+          const v = el ? parseFloat(el.value) : NaN;
+          return isFinite(v) && v > 0 ? v : 0;
+        };
+        const taxSel = row.querySelector('[name$="-tax_code"]');
+        const tc = taxSel ? TAX_RATES[taxSel.value] : null;
+        const gross = round4(get('quantity') * get('unit_price'));
+        const lineDisc = Math.min(gross, round4(gross * get('discount_percent') / 100));
+        return {
+          row,
+          gross,
+          lineDisc,
+          net: gross - lineDisc,
+          rate: tc ? Number(tc.rate) : 0,
+          inclusive: tc ? tc.inclusive : false,
+          skip: del && del.checked,
+        };
+      });
+
+      const active = data.filter(d => !d.skip);
+      const totalGross = active.reduce((s, d) => s + d.gross, 0);
+
+      const kindEl = document.getElementById('id_document_discount_kind');
+      const valueEl = document.getElementById('id_document_discount_value');
+      let docDisc = 0;
+      if (kindEl && valueEl && totalGross > 0 && kindEl.value !== 'NONE') {
+        const val = parseFloat(valueEl.value) || 0;
+        if (kindEl.value === 'AMOUNT') docDisc = Math.min(totalGross, val);
+        else if (kindEl.value === 'PERCENT') docDisc = totalGross * val / 100;
+      }
+      docDisc = round4(docDisc);
+
+      let remaining = docDisc;
+      let sumGross = 0, sumTax = 0, sumTotal = 0;
+      active.forEach((d, i) => {
+        let alloc;
+        if (i === active.length - 1) alloc = remaining;
+        else if (totalGross > 0) alloc = round4(docDisc * d.gross / totalGross);
+        else alloc = 0;
+        remaining -= alloc;
+        if (remaining < 0.00005) remaining = 0;
+
+        const net = Math.max(0, d.net - alloc);
+        let taxable = net;
+        if (d.inclusive && d.rate > 0) taxable = round4(net / (1 + d.rate / 100));
+        const tax = round4(taxable * d.rate / 100);
+        const total = taxable + tax;
+
+        const cells = d.row.querySelectorAll('td');
+        if (cells[8]) cells[8].textContent = d.gross.toFixed(2);
+        if (cells[9]) cells[9].textContent = tax.toFixed(2);
+        if (cells[10]) cells[10].textContent = total.toFixed(2);
+
+        sumGross += d.gross;
+        sumTax += tax;
+        sumTotal += total;
+      });
+
+      const set = (id, v) => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = v;
       };
-      const qty = get('quantity');
-      const price = get('unit_price');
-      const disc = get('discount_percent');
-      const gross = qty * price;
-      const lineDisc = gross * disc / 100;
-      const net = gross - lineDisc;
-      const cells = row.querySelectorAll('td');
-      if (cells[8]) cells[8].textContent = gross.toFixed(2);
-      // Tax and total need tax code lookup — server handles it
+      set('sum-discount', docDisc.toFixed(2));
+      set('sum-gross', sumGross.toFixed(2));
+      set('sum-tax', sumTax.toFixed(2));
+      set('sum-total', round2(sumTotal).toFixed(2));
+    };
+
+    recalc();
+    table.querySelectorAll('tbody').forEach(tbody => {
+      ['input', 'change'].forEach(evt => tbody.addEventListener(evt, recalc));
     });
-  });
+    table.querySelectorAll('[name$="-product"]').forEach(sel => {
+      sel.addEventListener('change', onProductChange);
+    });
+    ['id_document_discount_kind', 'id_document_discount_value'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.addEventListener('input', recalc);
+    });
+  })();
 </script>
 {% endblock %}

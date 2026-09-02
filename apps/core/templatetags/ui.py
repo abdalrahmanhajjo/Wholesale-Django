@@ -10,21 +10,33 @@ state and the programmatic state from ever disagreeing.
 
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
-from django import template
+from django import forms, template
 
 register = template.Library()
 
 
 @register.simple_tag
-def a11y_field(field, **overrides):
+def a11y_field(field, label=None, line=None, **overrides):
     """
     Render one bound field with its help text and errors attached.
 
     Adds `aria-describedby` pointing at the ids `_form_field.html` gives the
     help and error paragraphs, plus `aria-invalid` when the field is in error.
-    Extra keyword arguments become widget attributes, so a caller can pass
-    `aria_label="Quantity, line 3"` for controls whose only visible label is a
-    table column header.
+
+    `label` and `line` name a control whose only visible label is a table column
+    header::
+
+        {% a11y_field lf.quantity label="Quantity" line=forloop.counter %}
+
+    The tag composes the name rather than the template doing it with `add`,
+    because `"Quantity, line "|add:3` returns the empty string — Django's `add`
+    tries int() on both sides first, falls back to `+`, and a str plus an int
+    raises, so the filter swallows it and yields "". That silently produced
+    controls with no accessible name at all, which is the exact failure the
+    label was added to fix.
+
+    Any other keyword becomes a widget attribute, with underscores turned into
+    hyphens: `data_max=5` sets `data-max="5"`.
     """
     described_by = []
     if field.help_text:
@@ -39,6 +51,9 @@ def a11y_field(field, **overrides):
         attrs["aria-invalid"] = "true"
     if field.field.required:
         attrs["aria-required"] = "true"
+
+    if label:
+        attrs["aria-label"] = f"{label}, line {line}" if line not in (None, "") else str(label)
 
     for name, value in overrides.items():
         if value not in (None, ""):
@@ -117,3 +132,27 @@ def quantity(value):
     if normalised == normalised.to_integral_value():
         return f"{int(normalised):,}"
     return f"{normalised:,f}"
+
+
+@register.filter
+def is_floatable(field):
+    """
+    Whether a floating label suits this control.
+
+    A date input renders its own placeholder text and a picker button, a select
+    always shows a value, and a checkbox has no interior — a label floating over
+    any of them collides with what the browser draws. Text-like inputs are the
+    only ones where the pattern works.
+    """
+    widget = field.field.widget
+    if isinstance(widget, forms.CheckboxInput | forms.Select | forms.RadioSelect):
+        return False
+    if getattr(widget, "input_type", "") in {
+        "date",
+        "time",
+        "datetime-local",
+        "color",
+        "file",
+    }:
+        return False
+    return True

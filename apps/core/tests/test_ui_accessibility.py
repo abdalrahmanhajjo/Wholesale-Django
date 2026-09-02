@@ -253,3 +253,232 @@ class BackLinkTests(SimpleTestCase):
         self.assertIn('href="/parties/customers/"', html)
         self.assertIn("Back to customers", html)
         self.assertIn("i-arrow-left", html)
+
+
+class ComposedFieldNameTests(SimpleTestCase):
+    """
+    Controls whose only visible label is a column header must name themselves.
+
+    This regressed silently once already: the template built the name with
+    `"Quantity, line "|add:line`, and Django's `add` returns "" for a string
+    plus an int, so every order-line control shipped with no accessible name.
+    """
+
+    def field(self):
+        from django import forms as f
+
+        class Line(f.Form):
+            quantity = f.DecimalField(label="Qty")
+
+        return Line()["quantity"]
+
+    def render(self, **kwargs):
+        from apps.core.templatetags.ui import a11y_field
+
+        return a11y_field(self.field(), **kwargs)
+
+    def test_integer_line_number_produces_a_real_name(self):
+        self.assertIn('aria-label="Quantity, line 3"', self.render(label="Quantity", line=3))
+
+    def test_string_line_number_works_the_same(self):
+        self.assertIn('aria-label="Quantity, line 3"', self.render(label="Quantity", line="3"))
+
+    def test_template_placeholder_survives_for_the_clone_script(self):
+        html = self.render(label="Quantity", line="__LINE__")
+        self.assertIn('aria-label="Quantity, line __LINE__"', html)
+
+    def test_label_without_a_line_still_names_the_control(self):
+        self.assertIn('aria-label="Quantity"', self.render(label="Quantity"))
+
+    def test_no_label_leaves_the_attribute_off_rather_than_empty(self):
+        self.assertNotIn("aria-label", self.render())
+
+    def test_extra_keywords_become_hyphenated_data_attributes(self):
+        self.assertIn('data-max="5"', self.render(data_max=5))
+
+
+class FloatingLabelTests(SimpleTestCase):
+    """
+    The pattern suits text-like inputs only.
+
+    A date input draws its own placeholder and a picker button, a select always
+    shows a value, and a checkbox has no interior — a label floating over any of
+    them collides with what the browser paints.
+    """
+
+    def fields(self):
+        from django import forms as f
+
+        class Demo(f.Form):
+            name = f.CharField(label="Name")
+            notes = f.CharField(label="Notes", widget=f.Textarea)
+            when = f.DateField(label="When", widget=f.DateInput(attrs={"type": "date"}))
+            kind = f.ChoiceField(label="Kind", choices=[("a", "A")])
+            active = f.BooleanField(label="Active", required=False)
+
+        return Demo()
+
+    def floatable(self, name):
+        from apps.core.templatetags.ui import is_floatable
+
+        return is_floatable(self.fields()[name])
+
+    def test_text_and_textarea_float(self):
+        self.assertTrue(self.floatable("name"))
+        self.assertTrue(self.floatable("notes"))
+
+    def test_date_select_and_checkbox_do_not(self):
+        self.assertFalse(self.floatable("when"))
+        self.assertFalse(self.floatable("kind"))
+        self.assertFalse(self.floatable("active"))
+
+    def test_the_partial_only_floats_where_it_fits(self):
+        form = self.fields()
+        self.assertIn(
+            "is-floating", render_to_string("core/_form_field.html", {"field": form["name"]})
+        )
+        self.assertNotIn(
+            "is-floating", render_to_string("core/_form_field.html", {"field": form["when"]})
+        )
+
+    def test_the_label_stays_a_real_label_for_the_control(self):
+        """The motion is presentation; the association must not change."""
+        html = render_to_string("core/_form_field.html", {"field": self.fields()["name"]})
+        self.assertIn('for="id_name"', html)
+
+
+class SuggestAndCheckAttributeTests(SimpleTestCase):
+    """What the mixin tells the browser about a field."""
+
+    def form(self):
+        from django import forms as f
+
+        from apps.core.form_ui import UIFormMixin
+
+        class Demo(UIFormMixin, f.Form):
+            checks = {"code": "customer-code"}
+            code = f.CharField(label="Code")
+            customer = f.ChoiceField(label="Customer", choices=[("1", "One")])
+            direction = f.ChoiceField(
+                label="Direction", choices=[("IN", "In"), ("OUT", "Out")]
+            )
+
+        return Demo()
+
+    def test_a_known_field_names_its_suggester(self):
+        attrs = self.form().fields["customer"].widget.attrs
+        self.assertEqual(attrs["data-suggest"], "customer")
+        self.assertIn("data-combobox", attrs)
+
+    def test_a_short_unknown_select_stays_a_native_control(self):
+        """Two options are faster as a dropdown than as a search box."""
+        self.assertNotIn("data-combobox", self.form().fields["direction"].widget.attrs)
+
+    def test_a_declared_check_reaches_the_field(self):
+        self.assertEqual(
+            self.form().fields["code"].widget.attrs["data-check"], "customer-code"
+        )
+
+    def test_editing_excludes_the_record_from_its_own_duplicate_check(self):
+        from django import forms as f
+
+        from apps.core.form_ui import UIFormMixin
+
+        class Bound(UIFormMixin, f.Form):
+            checks = {"code": "customer-code"}
+            code = f.CharField(label="Code")
+
+        form = Bound()
+        form.instance = type("Row", (), {"pk": 42})()
+        form.__init__()
+        self.assertEqual(form.fields["code"].widget.attrs.get("data-check-exclude"), "42")
+
+
+class TemplateCommentSyntaxTests(SimpleTestCase):
+    """
+    No template may use a multi-line `{# #}`.
+
+    Django's inline comment ends at the newline, so a multi-line one prints
+    everything after the first line straight onto the page. `{% comment %}` is
+    the tag that spans lines. This is checked as source rather than as rendered
+    output because a template only reached by an uncommon branch would never
+    show up in a page test.
+    """
+
+    def test_no_template_uses_a_multiline_inline_comment(self):
+        import pathlib
+
+        root = pathlib.Path(__file__).resolve().parents[3] / "templates"
+        offenders = []
+        for path in sorted(root.rglob("*.html")):
+            for number, line in enumerate(path.read_text().splitlines(), 1):
+                if line.count("{#") > line.count("#}"):
+                    offenders.append(f"{path.relative_to(root)}:{number}")
+        self.assertEqual(
+            offenders,
+            [],
+            "use {% comment %} for a comment that spans lines: " + ", ".join(offenders),
+        )
+
+
+class CompiledStylesheetTests(SimpleTestCase):
+    """
+    Classes the scripts add at runtime must survive the Tailwind build.
+
+    Tailwind drops any component class it cannot find in a content file. The
+    scripts were not scanned, so every class they apply was compiled away —
+    including `.combo-native`, the rule that hides the native <select> behind a
+    searchable field. The visible symptom was every such field rendering as two
+    boxes, one of them a bare dropdown.
+    """
+
+    #: Applied only from JavaScript, so only the content globs keep them alive.
+    RUNTIME_CLASSES = [
+        "combo-native",
+        "combo-list",
+        "combo-option",
+        "combo-heading",
+        "combo-empty",
+        "field-live-error",
+        "field-live-warning",
+        "field-live-ok",
+        "field-live-info",
+        "is-floating",
+        "is-filled",
+        "is-focused",
+        "is-prefilled",
+        "field-adornment",
+        "field-with-adornment",
+        "alert-close",
+        "nav-scrim",
+        "spinner",
+        "is-busy",
+        "step",
+        "step-index",
+        "step-label",
+        "step-note",
+        "step-panel",
+        "is-active",
+    ]
+
+    def test_every_runtime_class_is_in_the_compiled_stylesheet(self):
+        import pathlib
+
+        css = (
+            pathlib.Path(__file__).resolve().parents[3] / "static" / "css" / "app.css"
+        ).read_text()
+        missing = [name for name in self.RUNTIME_CLASSES if f".{name}" not in css]
+        self.assertEqual(
+            missing,
+            [],
+            "purged from app.css — add the source to tailwind.config.js content: "
+            + ", ".join(missing),
+        )
+
+    def test_the_scripts_are_scanned_for_classes(self):
+        import pathlib
+
+        config = (
+            pathlib.Path(__file__).resolve().parents[3] / "tailwind.config.js"
+        ).read_text()
+        self.assertIn("static/js", config)

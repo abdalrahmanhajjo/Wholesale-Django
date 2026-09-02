@@ -123,7 +123,12 @@ class Payment(TimeStampedModel):
     amount_base = models.DecimalField(**MONEY, default=ZERO)
     allocated_txn = models.DecimalField(**MONEY, default=ZERO)
     unallocated_txn = models.DecimalField(
-        **MONEY, default=ZERO, help_text="Advance / unapplied credit (PAY-004, BR-009)."
+        **MONEY,
+        default=ZERO,
+        help_text=(
+            "Money received but not yet matched to an invoice. It sits as a "
+            "credit on the account until it is allocated."
+        ),
     )
 
     method = models.ForeignKey(
@@ -383,7 +388,12 @@ class Allocation(TimeStampedModel):
     amount_base = models.DecimalField(**MONEY, default=ZERO)
     settlement_rate = models.DecimalField(**RATE, default=Decimal("1"))
     fx_gain_loss_base = models.DecimalField(
-        **MONEY, default=ZERO, help_text="Positive = gain, negative = loss (BR-014)."
+        **MONEY,
+        default=ZERO,
+        help_text=(
+            "Exchange difference realised when this payment settled, against "
+            "the rate on the original document. Positive is a gain."
+        ),
     )
     fx_journal_entry = models.ForeignKey(
         "ledger.JournalEntry",

@@ -1,0 +1,164 @@
+{% extends "base.html" %}
+{% comment %}
+Purchase order detail and the PUR-002 approval workflow.
+
+Every action below is gated server-side by the matching view (submit needs
+purchases.change_purchaseorder, approve/reject need core.approve_purchase_order)
+regardless of which buttons a `{% if perms.* %}` check happens to hide
+(CONTRIBUTING.md §4b, ACC-004).
+{% endcomment %}
+
+{% block header_title %}{{ order.number }}{% endblock %}
+
+{% block actions %}
+  {% if can_edit and perms.purchases.change_purchaseorder %}
+    <a href="{% url 'purchases:po_edit' order.pk %}" class="btn-ghost">Edit</a>
+  {% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="grid gap-4 lg:grid-cols-3">
+
+  <div class="space-y-4 lg:col-span-2">
+    <div class="card card-pad">
+      <div class="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p class="eyebrow">Purchase order</p>
+          <h2 class="display mt-1 text-2xl">{{ order.number }}</h2>
+          <p class="text-sm text-muted-fg">{{ order.vendor }}</p>
+        </div>
+        {% include "core/_status_badge.html" with value=order.status display=order.get_status_display %}
+      </div>
+
+      <dl class="mt-6 grid gap-x-6 gap-y-4 sm:grid-cols-2">
+        <div><dt class="eyebrow">Warehouse</dt><dd class="mt-1 text-sm">{{ order.warehouse }}</dd></div>
+        <div><dt class="eyebrow">Order date</dt><dd class="mt-1 text-sm">{{ order.document_date }}</dd></div>
+        <div><dt class="eyebrow">Expected</dt><dd class="mt-1 text-sm">{{ order.expected_date|default:"—" }}</dd></div>
+        <div><dt class="eyebrow">Payment terms</dt><dd class="mt-1 text-sm">{{ order.payment_term|default:"—" }}</dd></div>
+        <div><dt class="eyebrow">Buyer</dt><dd class="mt-1 text-sm">{{ order.buyer|default:"—" }}</dd></div>
+        <div><dt class="eyebrow">Vendor reference</dt><dd class="mt-1 text-sm">{{ order.vendor_reference|default:"—" }}</dd></div>
+      </dl>
+
+      {% if order.status == "REJECTED" and order.approval_reason %}
+        <div class="mt-5 rounded-xl2 border-l-4 border-l-danger bg-red-50 px-4 py-3">
+          <p class="text-sm font-semibold text-danger">Rejected</p>
+          <p class="mt-0.5 text-sm text-danger/80">{{ order.approval_reason }}</p>
+        </div>
+      {% endif %}
+    </div>
+
+    <div class="card">
+      <p class="card-title border-b border-line p-4 sm:p-5">Lines</p>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-line bg-muted-bg text-[11px] font-bold uppercase tracking-[0.1em] text-muted-fg">
+              <th class="px-4 py-2 text-left">Product</th>
+              <th class="px-4 py-2 text-left">Warehouse</th>
+              <th class="px-4 py-2 text-right">Qty</th>
+              <th class="px-4 py-2 text-right">Unit price</th>
+              <th class="px-4 py-2 text-right">Disc %</th>
+              <th class="px-4 py-2 text-right">Tax</th>
+              <th class="px-4 py-2 text-right">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for line in lines %}
+              <tr class="border-b border-line last:border-0">
+                <td class="px-4 py-2">
+                  <p class="font-medium">{{ line.product|default:line.description }}</p>
+                  {% if line.description and line.product %}<p class="text-xs text-muted-fg">{{ line.description }}</p>{% endif %}
+                </td>
+                <td class="px-4 py-2">{{ line.warehouse|default:order.warehouse }}</td>
+                <td class="px-4 py-2 text-right tabular-nums">{{ line.quantity }}</td>
+                <td class="px-4 py-2 text-right tabular-nums">{{ line.unit_price|floatformat:2 }}</td>
+                <td class="px-4 py-2 text-right tabular-nums">{{ line.discount_percent|floatformat:2 }}</td>
+                <td class="px-4 py-2 text-right tabular-nums">{{ line.tax_txn|floatformat:2 }}</td>
+                <td class="px-4 py-2 text-right tabular-nums font-medium">{{ line.total_txn|floatformat:2 }}</td>
+              </tr>
+            {% empty %}
+              <tr><td colspan="7" class="px-4 py-8 text-center text-sm text-muted-fg">No lines yet.</td></tr>
+            {% endfor %}
+          </tbody>
+          <tfoot>
+            <tr class="border-t-2 border-line font-semibold">
+              <td colspan="5"></td>
+              <td class="px-4 py-2 text-right text-xs uppercase tracking-wide text-muted-fg">Total</td>
+              <td class="px-4 py-2 text-right tabular-nums">{{ order.total_txn|floatformat:2 }}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+
+    {% if order.notes %}
+      <div class="card card-pad">
+        <p class="eyebrow">Notes</p>
+        <p class="mt-1 whitespace-pre-line text-sm text-muted-fg">{{ order.notes }}</p>
+      </div>
+    {% endif %}
+  </div>
+
+  <div class="space-y-4">
+    <div class="card card-pad">
+      <p class="eyebrow">Approval (PUR-002)</p>
+      <h2 class="card-title mt-2">{{ order.get_status_display }}</h2>
+
+      {% if order.status == "DRAFT" or order.status == "REJECTED" %}
+        {% if perms.purchases.change_purchaseorder %}
+          <form method="post" action="{% url 'purchases:po_submit' order.pk %}" class="mt-3">
+            {% csrf_token %}
+            <button type="submit" class="btn-primary w-full">Submit for approval</button>
+          </form>
+        {% endif %}
+      {% elif order.status == "SUBMITTED" %}
+        <p class="mt-2 text-sm text-muted-fg">Awaiting sign-off.</p>
+        {% if perms.core.approve_purchase_order %}
+          <form method="post" action="{% url 'purchases:po_approve' order.pk %}" class="mt-3">
+            {% csrf_token %}
+            <button type="submit" class="btn-accent w-full">Approve</button>
+          </form>
+          <form method="post" action="{% url 'purchases:po_reject' order.pk %}" class="mt-2 space-y-2">
+            {% csrf_token %}
+            {% include "core/_form_field.html" with field=reject_form.reason %}
+            <button type="submit" class="btn-danger w-full">Reject</button>
+          </form>
+        {% endif %}
+      {% elif order.status == "APPROVED" %}
+        <p class="mt-2 text-sm text-muted-fg">
+          Approved by {{ order.approved_by|default:"—" }} on {{ order.approved_at|date:"j M Y, H:i" }}.
+          Ready for goods receipt and billing.
+        </p>
+      {% endif %}
+    </div>
+
+    <div class="card card-pad">
+      <p class="eyebrow">Totals</p>
+      <dl class="mt-3 space-y-1.5 text-sm">
+        <div class="flex justify-between"><dt class="text-muted-fg">Subtotal</dt><dd class="tabular-nums">{{ order.subtotal_txn|floatformat:2 }}</dd></div>
+        <div class="flex justify-between"><dt class="text-muted-fg">Line discounts</dt><dd class="tabular-nums">{{ order.line_discount_txn|floatformat:2 }}</dd></div>
+        <div class="flex justify-between"><dt class="text-muted-fg">Order discount</dt><dd class="tabular-nums">{{ order.document_discount_txn|floatformat:2 }}</dd></div>
+        <div class="flex justify-between"><dt class="text-muted-fg">Tax</dt><dd class="tabular-nums">{{ order.tax_txn|floatformat:2 }}</dd></div>
+        <div class="flex justify-between border-t border-line pt-1.5 font-bold"><dt>Total</dt><dd class="tabular-nums">{{ order.total_txn|floatformat:2 }} {{ order.currency_id }}</dd></div>
+      </dl>
+    </div>
+
+    <div class="card card-pad">
+      <p class="eyebrow">Audit history</p>
+      <h2 class="card-title mt-2">What changed, and who changed it</h2>
+      <ul class="mt-4 space-y-4">
+        {% for event in audit_events %}
+          <li class="border-l-2 border-line pl-3">
+            <p class="text-xs font-bold uppercase tracking-wide text-brand-deep">{{ event.get_action_display }}</p>
+            <p class="text-sm">{{ event.user|default:"system" }}</p>
+            <p class="text-xs text-muted-fg">{{ event.occurred_at|date:"j M Y, H:i" }}</p>
+            {% if event.reason %}<p class="mt-1 text-xs italic text-muted-fg">{{ event.reason }}</p>{% endif %}
+          </li>
+        {% empty %}
+          <li class="text-sm text-muted-fg">No changes recorded yet.</li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+</div>
+{% endblock %}

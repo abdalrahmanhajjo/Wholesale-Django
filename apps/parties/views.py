@@ -20,8 +20,8 @@ from apps.core.list_views import BooleanFilter, Column, FilteredListView
 from apps.core.mixins import ActionPermissionMixin, AuditedFormMixin, BackLinkMixin
 from apps.core.models import AuditEvent
 from apps.core.permissions import EXPORT_DATA
-from apps.parties.forms import CustomerForm, VendorForm
-from apps.parties.models import Customer, Vendor
+from apps.parties.forms import CustomerForm, VendorForm, AddressForm, ContactForm
+from apps.parties.models import Customer, Vendor, Address, Contact
 
 
 # ---------------------------------------------------------------------------
@@ -269,3 +269,104 @@ class VendorUpdateView(BackLinkMixin, AuditedFormMixin, ActionPermissionMixin, U
 
     def get_success_url(self):
         return reverse("parties:vendor_detail", args=[self.object.pk])
+
+
+class PartyChildMixin(AuditedFormMixin, ActionPermissionMixin):
+    """
+    Shared behaviour for the address and contact forms: set the owning party,
+    keep the "only one default" rule true, and audit the change.
+    """
+
+    template_name = "core/settings_form.html"
+    required_permission = "parties.change_customer"
+    #: Field that marks the default row, and the fields it is unique within.
+    flag_field = ""
+    scope_fields = ()
+
+    def get_customer(self):
+        if "customer_pk" in self.kwargs:
+            return get_object_or_404(Customer, pk=self.kwargs["customer_pk"])
+        return self.object.customer if self.object else None
+
+    def clear_previous_flag(self, instance):
+        """
+        Only one default per party (and per address type) is allowed, and the
+        constraint is checked on INSERT — so the previous holder must lose the
+        flag *before* the new row is written, not after.
+        """
+        if not getattr(instance, self.flag_field, False):
+            return
+        siblings = self.model.objects.filter(customer=instance.customer)
+        if instance.pk:
+            siblings = siblings.exclude(pk=instance.pk)
+        for field in self.scope_fields:
+            siblings = siblings.filter(**{field: getattr(instance, field)})
+        siblings.filter(**{self.flag_field: True}).update(**{self.flag_field: False})
+
+    def form_valid(self, form):
+        form.instance.customer = self.get_customer()
+        form.instance.vendor = None
+        with transaction.atomic():
+            self.clear_previous_flag(form.instance)
+            return super().form_valid(form)
+
+    def get_success_url(self):
+        return reverse("parties:customer_detail", args=[self.object.customer_id])
+
+
+class CustomerAddressCreateView(PartyChildMixin, CreateView):
+    model = Address
+    form_class = AddressForm
+    flag_field = "is_default"
+    scope_fields = ("address_type",)
+    extra_context = {"page_title": "New address"}
+
+
+class AddressUpdateView(PartyChildMixin, UpdateView):
+    model = Address
+    form_class = AddressForm
+    flag_field = "is_default"
+    scope_fields = ("address_type",)
+    extra_context = {"page_title": "Edit address"}
+
+
+class CustomerContactCreateView(PartyChildMixin, CreateView):
+    model = Contact
+    form_class = ContactForm
+    flag_field = "is_primary"
+    extra_context = {"page_title": "New contact"}
+
+
+class ContactUpdateView(PartyChildMixin, UpdateView):
+    model = Contact
+    form_class = ContactForm
+    flag_field = "is_primary"
+    extra_context = {"page_title": "Edit contact"}
+
+
+class PartyChildDeleteView(ActionPermissionMixin, View):
+    """
+    POST-only. Addresses and contacts may be deleted — documents snapshot the
+    address text at posting, so removing one never rewrites history (PTY-003).
+    """
+
+    model = None
+    required_permission = "parties.change_customer"
+
+    def post(self, request, pk):
+        obj = get_object_or_404(self.model, pk=pk)
+        customer_id = obj.customer_id
+        with transaction.atomic():
+            audit.record_delete(request, obj)
+            obj.delete()
+        messages.success(request, f"{obj} removed.")
+        return redirect("parties:customer_detail", pk=customer_id)
+
+
+class AddressDeleteView(PartyChildDeleteView):
+    model = Address
+
+
+class ContactDeleteView(PartyChildDeleteView):
+    model = Contact
+

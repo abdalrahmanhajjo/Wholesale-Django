@@ -16,10 +16,20 @@ module.exports = {
         canvas: "#f4f7f6",
         cream: "#f7f7f2",
         line: "#e1e9e7",
-        "input-line": "#d7e3dc",
+        // Input boundaries are the only thing separating a field from the page,
+        // so they carry the 3:1 non-text contrast requirement (WCAG 1.4.11).
+        // The old #d7e3dc measured 1.32:1.
+        "input-line": "#788d84",
         "muted-bg": "#f1f5f4",
-        "muted-fg": "#667682",
-        danger: "#dc2626"
+        // Passes 4.5:1 on white *and* on muted-bg, where secondary text also
+        // lands (table headers, filter chips). The old #667682 was 4.27:1 there.
+        "muted-fg": "#54636f",
+        // Sidebar secondary text sits on #071a2f; slate-500 measured 3.68:1.
+        "nav-fg": "#cbd5e1",
+        "nav-muted": "#8fa0b0",
+        danger: "#dc2626",
+        // #dc2626 on red-50 is 4.41:1, so message bodies use the darker step.
+        "danger-strong": "#b91c1c"
       },
       fontFamily: {
         sans: ["Aptos", "Segoe UI", "system-ui", "sans-serif"]

@@ -7,11 +7,7 @@
 <form method="post" novalidate class="max-w-4xl">
   {% csrf_token %}
 
-  {% if form.non_field_errors %}
-    <div class="card card-pad mb-5 border-l-4 border-l-danger">
-      {% for error in form.non_field_errors %}<p class="text-sm text-danger">{{ error }}</p>{% endfor %}
-    </div>
-  {% endif %}
+  {% include "core/_form_errors.html" with form=form %}
 
   <div class="card card-pad">
     {% if form_hint %}<p class="text-sm text-muted-fg">{{ form_hint }}</p>{% endif %}
@@ -23,7 +19,7 @@
   </div>
 
   <div class="mt-5 flex items-center gap-2">
-    <button type="submit" class="btn-primary">Save</button>
+    <button type="submit" class="btn-primary">Save changes</button>
     <a href="{{ cancel_url|default:'/' }}" class="btn-ghost">Cancel</a>
   </div>
 </form>

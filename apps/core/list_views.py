@@ -293,6 +293,13 @@ class FilteredListView(ActionPermissionMixin, ListView):
                 ),
                 "create_url_name": self.create_url_name,
                 "create_label": self.create_label,
+                # When a column already links to the record, the trailing
+                # "View" cell is a second link to the same place — a duplicate
+                # tab stop and a second identical entry in a screen reader's
+                # link list. The template drops it in that case.
+                "has_linked_column": any(c.link for c in self.columns),
+                "record_label": self.model._meta.verbose_name,
+                "record_label_plural": self.model._meta.verbose_name_plural,
                 "page_title": self.page_title or self.model._meta.verbose_name_plural.title(),
                 "page_subtitle": self.page_subtitle,
                 "rows": [

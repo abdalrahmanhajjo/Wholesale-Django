@@ -22,7 +22,7 @@ The audit history is shown on the record itself, which is what ACC-005 asks for:
       <div class="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p class="eyebrow">Customer</p>
-          <h2 class="display mt-1 text-2xl">{{ customer.name }}</h2>
+          <h1 class="display mt-1 text-2xl">{{ customer.name }}</h1>
           <p class="font-mono text-xs text-muted-fg">{{ customer.code }}</p>
         </div>
         <div class="flex gap-2">
@@ -88,7 +88,7 @@ The audit history is shown on the record itself, which is what ACC-005 asks for:
         </form>
         <p class="help mt-2">
           Customers referenced by posted transactions are deactivated, never
-          deleted (PTY-008).
+          deleted.
         </p>
       {% else %}
         <p class="mt-3 text-sm text-muted-fg">You have view-only access.</p>

@@ -1,8 +1,8 @@
 {% extends "base.html" %}
 {% comment %}
 Create / edit a sales order with header fields and a line formset (SAL-001..SAL-004).
-The layout follows customer_form.html: card sections with eyebrow labels,
-the same field widget styling, and a save/cancel footer.
+The layout follows customer_form.html: card sections with section headings, the
+same field widget styling, and a save/cancel footer.
 {% endcomment %}
 
 {% block header_title %}{{ page_title }}{% endblock %}
@@ -11,17 +11,11 @@ the same field widget styling, and a save/cancel footer.
 <form method="post" novalidate class="max-w-5xl">
   {% csrf_token %}
 
-  {% if form.non_field_errors %}
-    <div class="card card-pad mb-5 border-l-4 border-l-danger">
-      {% for error in form.non_field_errors %}
-        <p class="text-sm text-danger">{{ error }}</p>
-      {% endfor %}
-    </div>
-  {% endif %}
+  {% include "core/_form_errors.html" with form=form formset=line_formset %}
 
   {# ---- Header fields ---- #}
-  <div class="card card-pad">
-    <p class="eyebrow">Order details</p>
+  <section class="card card-pad" aria-labelledby="sec-order">
+    <h2 class="section-heading" id="sec-order">Order details</h2>
     <div class="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {% include "core/_form_field.html" with field=form.customer %}
       {% include "core/_form_field.html" with field=form.warehouse %}
@@ -35,80 +29,84 @@ the same field widget styling, and a save/cancel footer.
       {% include "core/_form_field.html" with field=form.customer_reference %}
       {% include "core/_form_field.html" with field=form.salesperson %}
     </div>
-  </div>
+  </section>
 
-  <div class="card card-pad mt-4">
-    <p class="eyebrow">Addresses</p>
+  <section class="card card-pad mt-4" aria-labelledby="sec-addresses">
+    <h2 class="section-heading" id="sec-addresses">Addresses</h2>
     <div class="mt-4 grid gap-4 sm:grid-cols-2">
       {% include "core/_form_field.html" with field=form.billing_address_text %}
       {% include "core/_form_field.html" with field=form.shipping_address_text %}
     </div>
-  </div>
+  </section>
 
-  <div class="card card-pad mt-4">
-    <p class="eyebrow">Document discount (SAL-003)</p>
+  <section class="card card-pad mt-4" aria-labelledby="sec-discount">
+    <h2 class="section-heading" id="sec-discount">Document discount</h2>
+    <p class="mt-1 text-sm text-muted-fg">Applied to the order as a whole, after any per-line discounts.</p>
     <div class="mt-4 grid gap-4 sm:grid-cols-2">
       {% include "core/_form_field.html" with field=form.document_discount_kind %}
       {% include "core/_form_field.html" with field=form.document_discount_value %}
     </div>
-  </div>
+  </section>
 
-  <div class="card card-pad mt-4">
-    <p class="eyebrow">Notes</p>
+  <section class="card card-pad mt-4" aria-labelledby="sec-notes">
+    <h2 class="section-heading" id="sec-notes">Notes</h2>
     <div class="mt-4 grid gap-4 sm:grid-cols-2">
       {% include "core/_form_field.html" with field=form.notes %}
       {% include "core/_form_field.html" with field=form.internal_notes %}
     </div>
-  </div>
+  </section>
 
   {# ---- Lines formset (SAL-001) ---- #}
-  <div class="card mt-4">
-    <div class="flex items-center justify-between gap-3 border-b border-line px-5 py-4">
+  <section class="card mt-4" aria-labelledby="sec-lines">
+    <div class="flex flex-wrap items-center justify-between gap-3 border-b border-line px-5 py-4">
       <div>
-        <p class="eyebrow">Lines</p>
-        <h2 class="card-title mt-1">Order lines with discount &amp; tax (SAL-002)</h2>
+        <p class="section-heading">Lines</p>
+        <h2 class="card-title mt-1" id="sec-lines">Order lines, with discount and tax</h2>
       </div>
-      <button type="button" id="add-line" class="btn-ghost btn-sm">Add line</button>
+      <button type="button" id="add-line" class="btn-ghost">Add line</button>
     </div>
 
     {{ line_formset.management_form }}
 
-    {% if line_formset.non_form_errors %}
-      <div class="mx-5 mt-4 rounded-xl2 border-l-4 border-l-danger bg-red-50 px-4 py-3">
-        {% for error in line_formset.non_form_errors %}
-          <p class="text-sm text-danger">{{ error }}</p>
-        {% endfor %}
-      </div>
-    {% endif %}
+    <p class="border-b border-line px-5 py-2 text-sm text-muted-fg" id="line-limit" role="status">
+      Up to 10 lines per order.
+    </p>
 
-    <div class="overflow-x-auto">
+    {% comment %}
+    A twelve-column editable grid cannot be read at a phone width, so the
+    region scrolls horizontally — and takes focus, so it can be scrolled from
+    the keyboard (WCAG 2.1.1). A stacked small-screen layout is the follow-on
+    change tracked in the audit.
+    {% endcomment %}
+    <div class="scroll-region" tabindex="0" role="region" aria-label="Order lines">
       <table class="w-full text-sm" id="lines-table">
+        <caption class="sr-only">Order lines. Each row is one product with its quantity, price, discount and tax code.</caption>
         <thead>
           <tr class="border-b border-line bg-muted-bg text-[11px] font-bold uppercase tracking-[0.1em] text-muted-fg">
-            <th class="w-10 px-4 py-3">#</th>
-            <th class="px-4 py-3 text-left">Product</th>
-            <th class="px-4 py-3 text-left">Description</th>
-            <th class="px-4 py-3 text-left">Unit</th>
-            <th class="px-4 py-3 text-right">Qty</th>
-            <th class="px-4 py-3 text-right">Unit price</th>
-            <th class="px-4 py-3 text-right">Disc %</th>
-            <th class="px-4 py-3 text-left">Tax code</th>
-            <th class="px-4 py-3 text-right">Gross</th>
-            <th class="px-4 py-3 text-right">Tax</th>
-            <th class="px-4 py-3 text-right">Total</th>
-            <th class="w-16 px-4 py-3">Del</th>
+            <th scope="col" class="w-10 px-4 py-3">#</th>
+            <th scope="col" class="px-4 py-3 text-left">Product</th>
+            <th scope="col" class="px-4 py-3 text-left">Description</th>
+            <th scope="col" class="px-4 py-3 text-left">Unit</th>
+            <th scope="col" class="px-4 py-3 text-right">Qty</th>
+            <th scope="col" class="px-4 py-3 text-right">Unit price</th>
+            <th scope="col" class="px-4 py-3 text-right">Disc %</th>
+            <th scope="col" class="px-4 py-3 text-left">Tax code</th>
+            <th scope="col" class="px-4 py-3 text-right">Gross</th>
+            <th scope="col" class="px-4 py-3 text-right">Tax</th>
+            <th scope="col" class="px-4 py-3 text-right">Total</th>
+            <th scope="col" class="w-24 px-4 py-3">Remove</th>
           </tr>
         </thead>
         <tbody>
           {% for lf in line_formset %}
-            {% include "sales/_so_line_row.html" with lf=lf %}
+            {% include "sales/_so_line_row.html" with lf=lf line=forloop.counter %}
           {% endfor %}
         </tbody>
         <tfoot>
           <tr class="border-t-2 border-line bg-muted-bg font-semibold">
-            <td colspan="8" class="px-4 py-3 text-right text-xs uppercase tracking-wide text-muted-fg">
-              Totals (server-recalculated, SAL-002)
-            </td>
+            <th colspan="8" scope="row" class="px-4 py-3 text-right text-xs font-bold uppercase tracking-wide text-muted-fg">
+              Totals, recalculated on save
+            </th>
             <td class="px-4 py-3 text-right tabular-nums" id="sum-gross">
               {{ object.subtotal_txn|default:0|floatformat:2 }}
             </td>
@@ -124,28 +122,44 @@ the same field widget styling, and a save/cancel footer.
       </table>
     </div>
     <template id="empty-line-template">
-      {% include "sales/_so_line_row.html" with lf=line_formset.empty_form %}
+      {% include "sales/_so_line_row.html" with lf=line_formset.empty_form line="__LINE__" %}
     </template>
-  </div>
+  </section>
 
-  <div class="mt-5 flex items-center gap-2">
-    <button type="submit" class="btn-primary">Save</button>
+  <div class="mt-5 flex flex-wrap items-center gap-2">
+    <button type="submit" class="btn-primary">
+      {% if object %}Save changes{% else %}Create sales order{% endif %}
+    </button>
     <a href="{% if object %}{% url 'sales:so_detail' object.pk %}{% else %}{% url 'sales:so_list' %}{% endif %}"
        class="btn-ghost">Cancel</a>
+    <p class="basis-full text-sm text-muted-fg sm:basis-auto sm:pl-2">
+      Saved as a draft. Nothing reaches the ledger until the order is posted.
+    </p>
   </div>
 </form>
 {% endblock %}
 
 {% block extra_scripts %}
 <script>
+(() => {
   const formsetTotal = document.getElementById('id_lines-TOTAL_FORMS');
   const addLineButton = document.getElementById('add-line');
   const lineTemplate = document.getElementById('empty-line-template');
   const lineBody = document.querySelector('#lines-table tbody');
+  const limitNote = document.getElementById('line-limit');
+  if (!formsetTotal || !addLineButton || !lineTemplate || !lineBody) return;
   const maxLines = 10;
 
+  // A control that silently stops working is an unexplained dead end, so the
+  // note next to it says why. role="status" announces the change.
   function updateAddLineState() {
-    addLineButton.disabled = Number(formsetTotal.value) >= maxLines;
+    const atLimit = Number(formsetTotal.value) >= maxLines;
+    addLineButton.disabled = atLimit;
+    if (limitNote) {
+      limitNote.textContent = atLimit
+        ? 'Line limit reached — an order can hold 10 lines. Remove a line to add another.'
+        : 'Up to ' + maxLines + ' lines per order.';
+    }
   }
 
   addLineButton.addEventListener('click', () => {
@@ -162,32 +176,67 @@ the same field widget styling, and a save/cancel footer.
         }
       }
     });
+    // The row's accessible names carry the human line number, not the
+    // zero-based formset index.
+    const lineNumber = String(index + 1);
+    fragment.querySelectorAll('[aria-label], [data-line]').forEach(element => {
+      if (element.hasAttribute('aria-label')) {
+        element.setAttribute('aria-label', element.getAttribute('aria-label').replaceAll('__LINE__', lineNumber));
+      }
+      if (element.hasAttribute('data-line')) element.setAttribute('data-line', lineNumber);
+    });
+    fragment.querySelectorAll('.sr-only').forEach(element => {
+      element.textContent = element.textContent.replaceAll('__LINE__', lineNumber);
+    });
+    const row = fragment.querySelector('.line-row');
     lineBody.appendChild(fragment);
     formsetTotal.value = index + 1;
     updateAddLineState();
+    // Land in the row that was just created rather than making the user tab to it.
+    const firstInput = row && row.querySelector('select, input:not([type=hidden]), textarea');
+    if (firstInput) firstInput.focus();
+  });
+
+  // Taking back a row that has never been saved. Removing a row from the middle
+  // would leave the formset indexes non-contiguous, which Django rejects, so
+  // only a trailing row is deleted outright; anything else is emptied, and an
+  // empty extra form is ignored on save.
+  lineBody.addEventListener('click', event => {
+    const button = event.target.closest('.remove-new-line');
+    if (!button) return;
+    const row = button.closest('.line-row');
+    if (!row) return;
+    const isLast = row === lineBody.lastElementChild;
+    if (isLast && Number(formsetTotal.value) > 0) {
+      row.remove();
+      formsetTotal.value = Number(formsetTotal.value) - 1;
+    } else {
+      row.querySelectorAll('input:not([type=hidden]), select, textarea').forEach(field => {
+        if (field.type === 'checkbox' || field.type === 'radio') field.checked = false;
+        else field.value = '';
+      });
+      row.hidden = true;
+    }
+    updateAddLineState();
+    addLineButton.focus();
   });
 
   updateAddLineState();
 
-  // Client-side line total preview (UX only — server recalculates on save per SAL-002)
-  document.querySelectorAll('#lines-table tbody').forEach(tbody => {
-    tbody.addEventListener('input', e => {
-      const row = e.target.closest('.line-row');
-      if (!row) return;
-      const get = name => {
-        const el = row.querySelector(`[name$="-${name}"]`);
-        return el ? parseFloat(el.value) || 0 : 0;
-      };
-      const qty = get('quantity');
-      const price = get('unit_price');
-      const disc = get('discount_percent');
-      const gross = qty * price;
-      const lineDisc = gross * disc / 100;
-      const net = gross - lineDisc;
-      const grossCell = row.querySelector('.line-gross');
-      if (grossCell) grossCell.textContent = gross.toFixed(2);
-      // Tax and total need tax code lookup — server handles it
-    });
+  // Line total preview. The server recalculates on save, so this only saves the
+  // user a round trip to see roughly where a line lands.
+  lineBody.addEventListener('input', event => {
+    const row = event.target.closest('.line-row');
+    if (!row) return;
+    const get = name => {
+      const el = row.querySelector(`[name$="-${name}"]`);
+      return el ? parseFloat(el.value) || 0 : 0;
+    };
+    const gross = get('quantity') * get('unit_price');
+    const net = gross - (gross * get('discount_percent') / 100);
+    const grossCell = row.querySelector('.line-gross');
+    if (grossCell) grossCell.textContent = net.toFixed(2);
   });
+})();
 </script>
 {% endblock %}

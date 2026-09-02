@@ -133,6 +133,35 @@ class SalesOrderLineForm(UIFormMixin, forms.ModelForm):
             is_active=True
         )
 
+    def clean(self):
+        """
+        Say what is wrong in words, before the database says it in SQL.
+
+        These bounds are enforced by check constraints — so_line_qty_positive,
+        so_line_price_nonneg, so_line_discount_range — which is right, because a
+        constraint is the only guarantee that holds for every writer. But when a
+        person trips one through this form, Django reports it as
+        'Constraint "so_line_discount_range" is violated', which names an
+        implementation detail and says nothing about what to do. Validating here
+        means the constraint stays as the backstop it should be, and the person
+        gets a sentence.
+        """
+        cleaned = super().clean()
+        quantity = cleaned.get("quantity")
+        price = cleaned.get("unit_price")
+        discount = cleaned.get("discount_percent")
+
+        if quantity is not None and quantity <= 0:
+            self.add_error("quantity", "Enter a quantity greater than zero.")
+        if price is not None and price < 0:
+            self.add_error("unit_price", "A unit price cannot be negative.")
+        if discount is not None and not (0 <= discount <= 100):
+            self.add_error(
+                "discount_percent",
+                "A line discount is a percentage, so it has to be between 0 and 100.",
+            )
+        return cleaned
+
 
 # 10 lines max for SO (can adjust)
 #: The screen says "Up to 10 lines per order" and the add-line script stops at

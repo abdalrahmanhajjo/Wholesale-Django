@@ -9,7 +9,7 @@ No database is touched — this is template behaviour only.
 
 from django import forms
 from django.template.loader import get_template, render_to_string
-from django.test import SimpleTestCase
+from django.test import SimpleTestCase, TestCase
 
 
 class DemoForm(forms.Form):
@@ -572,3 +572,76 @@ class GroupedSectionTests(SimpleTestCase):
         for name in ("form-group", "form-group-title", "form-group-hint", "form-group-body"):
             with self.subTest(css_class=name):
                 self.assertIn(f".{name}", css)
+
+
+class LineBoundValidationTests(TestCase):
+    """
+    A person tripping a check constraint should get a sentence, not its name.
+
+    The bounds are enforced by so_line_qty_positive, so_line_price_nonneg and
+    so_line_discount_range, which is right — a constraint is the only guarantee
+    that holds for every writer. But Django surfaces a violation as
+    'Constraint "so_line_discount_range" is violated', which names an
+    implementation detail and says nothing about what to do. The form checks
+    first so the constraint stays the backstop it should be.
+
+    A TestCase rather than a SimpleTestCase because validating a model form
+    runs `validate_constraints`, and Django evaluates a CheckConstraint by
+    asking the database — which is also what makes this work: a field carrying
+    a form error is excluded from that pass, so the raw message never appears.
+    """
+
+    def errors_for(self, **overrides):
+        from apps.sales.forms import SalesOrderLineForm
+
+        data = {"quantity": "1", "unit_price": "10", "discount_percent": "0"}
+        data.update(overrides)
+        form = SalesOrderLineForm(data=data)
+        form.is_valid()
+        return [m for msgs in form.errors.values() for m in msgs]
+
+    def test_a_discount_over_one_hundred_is_explained(self):
+        messages = self.errors_for(discount_percent="150")
+        self.assertTrue(any("between 0 and 100" in m for m in messages), messages)
+        self.assertFalse(any("Constraint" in m for m in messages), messages)
+
+    def test_a_negative_discount_is_explained(self):
+        self.assertTrue(
+            any("between 0 and 100" in m for m in self.errors_for(discount_percent="-5"))
+        )
+
+    def test_a_zero_quantity_is_explained(self):
+        self.assertTrue(any("greater than zero" in m for m in self.errors_for(quantity="0")))
+
+    def test_a_negative_price_is_explained(self):
+        self.assertTrue(
+            any("cannot be negative" in m for m in self.errors_for(unit_price="-1"))
+        )
+
+    def test_a_valid_line_reports_no_bound_error(self):
+        messages = self.errors_for(quantity="2", unit_price="10", discount_percent="15")
+        for phrase in ("between 0 and 100", "greater than zero", "cannot be negative"):
+            self.assertFalse(any(phrase in m for m in messages), messages)
+
+
+class ReadOnlyNotDisabledTests(SimpleTestCase):
+    """
+    A field the server requires must never be disabled in the browser.
+
+    A disabled input is not submitted at all, so gating the document discount
+    value with `disabled` produced "Document discount value — This field is
+    required" on every submit: the error it was added to prevent. `readOnly`
+    refuses edits and still posts the value.
+    """
+
+    def test_the_discount_gate_uses_readonly(self):
+        import pathlib
+
+        source = (
+            pathlib.Path(__file__).resolve().parents[3]
+            / "templates"
+            / "sales"
+            / "so_form.html"
+        ).read_text()
+        self.assertIn("value.readOnly", source)
+        self.assertNotIn("value.disabled", source)

@@ -365,6 +365,8 @@
   .field:disabled, .field[readonly] {
     @apply cursor-not-allowed border-line bg-muted-bg text-muted-fg;
   }
+  /* A read-only field still submits its value, which is why it is used instead
+     of disabled wherever the server requires the field. */
 
   .field-live-warning { @apply font-medium text-amber-900; }
   .field-live-info { @apply text-muted-fg; }
@@ -468,7 +470,15 @@
     /* Narrower than the twelve-column version needed, so it fits more screens
        before the region has to scroll. */
     .lines-stack { min-width: 58rem; }
-    .lines-stack .line-sub-label { @apply sr-only; }
+    /* The column header names the first control in a cell, so its label is
+       hidden — but nothing names the second one. "0" sitting under a unit price
+       could be anything; it is the discount. The secondary label stays
+       visible, small and muted. */
+    .lines-stack .line-sub .line-sub-label { @apply sr-only; }
+    .lines-stack .line-sub-secondary .line-sub-label {
+      @apply not-sr-only mb-0.5 block text-[10px] font-semibold uppercase
+             tracking-[0.06em] text-muted-fg;
+    }
     .lines-stack td .field { @apply w-full min-w-0 px-2 text-[13px]; }
 
     .lines-stack .line-cell-number { width: 3.5rem; }

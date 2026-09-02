@@ -334,7 +334,11 @@ simply visible.
       }
       const sync = () => {
         const chosen = kind.value && kind.value !== 'NONE';
-        value.disabled = !chosen;
+        // readOnly, not disabled: a disabled input is not submitted at all, so
+        // the server saw the field missing and reported it as required — which
+        // is exactly the error this was meant to prevent. readOnly still posts
+        // the value while refusing edits.
+        value.readOnly = !chosen;
         if (!chosen) value.value = '0';
         if (note) {
           // Keyed on the value, not the visible label, so translating the

@@ -131,6 +131,8 @@ Blocks available to child templates:
           <li><a href="{% url 'core:paymentterm_list' %}" class="nav-link {% if '/settings/payment-terms/' in request.path %}nav-link-active{% endif %}" {% if '/settings/payment-terms/' in request.path %}aria-current="page"{% endif %}>Payment terms</a></li>
           <li><a href="{% url 'core:sequence_list' %}" class="nav-link {% if '/settings/number-series/' in request.path %}nav-link-active{% endif %}" {% if '/settings/number-series/' in request.path %}aria-current="page"{% endif %}>Number series</a></li>
           <li><a href="{% url 'core:fiscalperiod_list' %}" class="nav-link {% if '/settings/fiscal-periods/' in request.path %}nav-link-active{% endif %}" {% if '/settings/fiscal-periods/' in request.path %}aria-current="page"{% endif %}>Fiscal periods</a></li>
+          <li><a href="{% url 'core:account_list' %}" class="nav-link {% if '/settings/chart-of-accounts/' in request.path %}nav-link-active{% endif %}">Chart of accounts</a></li>
+        <li><a href="{% url 'core:mapping_list' %}" class="nav-link {% if '/settings/account-mappings/' in request.path %}nav-link-active{% endif %}">Account mappings</a></li>
         </ul>
 
         {% if user.is_staff %}

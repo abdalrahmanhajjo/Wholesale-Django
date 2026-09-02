@@ -135,12 +135,18 @@ class SalesOrderLineForm(UIFormMixin, forms.ModelForm):
 
 
 # 10 lines max for SO (can adjust)
+#: The screen says "Up to 10 lines per order" and the add-line script stops at
+#: ten, but a limit the browser alone enforces is not a limit — the form is a
+#: plain POST and TOTAL_FORMS is whatever the client sends. validate_max makes
+#: the server the authority, which is where it has to be.
 SalesOrderLineFormSet = inlineformset_factory(
     SalesOrder,
     SalesOrderLine,
     form=SalesOrderLineForm,
     extra=1,
     can_delete=True,
+    max_num=10,
+    validate_max=True,
     min_num=0,
     validate_min=False,
 )

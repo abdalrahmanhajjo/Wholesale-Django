@@ -26,7 +26,7 @@ from django.views.generic import (
 
 from apps.core import audit
 from apps.core.list_views import ChoiceFilter, Column, DateRangeFilter, FilteredListView
-from apps.core.mixins import ActionPermissionMixin, ConfirmationRequiredMixin
+from apps.core.mixins import ActionPermissionMixin, BackLinkMixin, ConfirmationRequiredMixin
 from apps.core.models import ZERO, AuditEvent, Company, DocumentStatus, TaxCode
 from apps.core.permissions import (
     APPROVE_SALES_ORDER,
@@ -98,7 +98,7 @@ def _number_lines(formset):
 # ---------------------------------------------------------------------------
 class SalesOrderListView(FilteredListView):
     model = SalesOrder
-    permission_required = "sales.view_salesorder"
+    required_permission = "sales.view_salesorder"
     page_title = "Sales Orders"
     page_subtitle = "Orders awaiting fulfilment, or already completed."
     create_url_name = "sales:so_create"
@@ -158,7 +158,9 @@ class SalesOrderListView(FilteredListView):
 # ---------------------------------------------------------------------------
 # Create / Update with audit (ACC-005)
 # ---------------------------------------------------------------------------
-class SalesOrderCreateView(ActionPermissionMixin, CreateView):
+class SalesOrderCreateView(BackLinkMixin, ActionPermissionMixin, CreateView):
+    back_url_name = "sales:so_list"
+    back_label = "Back to sales orders"
     model = SalesOrder
     form_class = SalesOrderForm
     template_name = "sales/so_form.html"
@@ -181,38 +183,43 @@ class SalesOrderCreateView(ActionPermissionMixin, CreateView):
         return ctx
 
     def form_valid(self, form):
+        """
+        Nothing is written until the lines are valid.
+
+        Saving the header first and warning about the lines afterwards leaves
+        two problems behind. A document number is drawn from a controlled
+        sequence (CFG-008, NFR-008), so a rejected submit burns one and puts a
+        gap in the numbering, which is exactly the thing an auditor asks about.
+        And the order it leaves in the database has no lines, so it is not a
+        document anyone can act on. Returning early inside `atomic()` does not
+        undo either: only an exception rolls a block back, and this path raises
+        nothing.
+        """
         formset = self.get_formset()
-        ctx = self.get_context_data(form=form, line_formset=formset)
+        if not formset.is_valid():
+            return self.render_to_response(
+                self.get_context_data(form=form, line_formset=formset)
+            )
 
         with transaction.atomic():
-            # Generate number first so the object is saved
             form.instance.number = services.allocate_so_number()
             form.instance.created_by = self.request.user
             form.instance.updated_by = self.request.user
             form.instance.status = DocumentStatus.DRAFT
             self.object = form.save()
 
-            if formset.is_valid():
-                formset.instance = self.object
-                _number_lines(formset)
-                formset.save()
+            formset.instance = self.object
+            _number_lines(formset)
+            formset.save()
 
-                # Full recalculation (SAL-002)
-                services.recalculate_order(self.object)
+            # Full recalculation (SAL-002)
+            services.recalculate_order(self.object)
 
-                audit.record_create(self.request, self.object)
-                messages.success(
-                    self.request,
-                    f"Sales order {self.object.number} created.",
-                )
-            else:
-                # If lines are invalid, still save header but warn
-                audit.record_create(self.request, self.object)
-                messages.warning(
-                    self.request,
-                    f"Order {self.object.number} saved. " "Please fix the line errors below.",
-                )
-                return self.render_to_response(ctx)
+            audit.record_create(self.request, self.object)
+            messages.success(
+                self.request,
+                f"Sales order {self.object.number} created.",
+            )
 
         return redirect(self.get_success_url())
 
@@ -220,7 +227,9 @@ class SalesOrderCreateView(ActionPermissionMixin, CreateView):
         return reverse("sales:so_detail", args=[self.object.pk])
 
 
-class SalesOrderUpdateView(ActionPermissionMixin, UpdateView):
+class SalesOrderUpdateView(BackLinkMixin, ActionPermissionMixin, UpdateView):
+    back_to_object = True
+    back_label = "Back to this order"
     model = SalesOrder
     form_class = SalesOrderForm
     template_name = "sales/so_form.html"
@@ -288,7 +297,9 @@ class SalesOrderUpdateView(ActionPermissionMixin, UpdateView):
 # ---------------------------------------------------------------------------
 # Detail view
 # ---------------------------------------------------------------------------
-class SalesOrderDetailView(ActionPermissionMixin, DetailView):
+class SalesOrderDetailView(BackLinkMixin, ActionPermissionMixin, DetailView):
+    back_url_name = "sales:so_list"
+    back_label = "Back to sales orders"
     model = SalesOrder
     template_name = "sales/so_detail.html"
     required_permission = "sales.view_salesorder"
@@ -454,7 +465,7 @@ class DeliveryOrderSelectForm(forms.Form):
         )
 
 
-class DeliveryNoteCreateView(ActionPermissionMixin, TemplateView):
+class DeliveryNoteCreateView(BackLinkMixin, ActionPermissionMixin, TemplateView):
     """
     Create a delivery note against an approved sales order.
 
@@ -463,6 +474,9 @@ class DeliveryNoteCreateView(ActionPermissionMixin, TemplateView):
     pre-filled from what still needs delivering. POST validates, creates and
     posts the note (SAL-005), then redirects to its detail.
     """
+
+    back_url_name = "sales:delivery_list"
+    back_label = "Back to delivery notes"
 
     template_name = "sales/delivery_note_form.html"
     required_permission = "inventory.add_deliverynote"
@@ -590,7 +604,9 @@ class DeliveryNoteCreateView(ActionPermissionMixin, TemplateView):
             )
 
 
-class DeliveryNoteDetailView(ActionPermissionMixin, DetailView):
+class DeliveryNoteDetailView(BackLinkMixin, ActionPermissionMixin, DetailView):
+    back_url_name = "sales:delivery_list"
+    back_label = "Back to delivery notes"
     model = DeliveryNote
     template_name = "sales/delivery_note_detail.html"
     context_object_name = "note"
@@ -635,7 +651,7 @@ class DeliveryNotePostView(ActionPermissionMixin, View):
 # ---------------------------------------------------------------------------
 class SalesInvoiceListView(FilteredListView):
     model = SalesInvoice
-    permission_required = "sales.view_salesinvoice"
+    required_permission = "sales.view_salesinvoice"
     page_title = "Sales invoices"
     page_subtitle = "Amounts billed to customers and posted to the ledger."
     create_url_name = "sales:invoice_create"
@@ -686,7 +702,7 @@ class SalesInvoiceListView(FilteredListView):
         ]
 
 
-class SalesInvoiceCreateView(ActionPermissionMixin, TemplateView):
+class SalesInvoiceCreateView(BackLinkMixin, ActionPermissionMixin, TemplateView):
     """
     Create a sales invoice (SAL-006).
 
@@ -696,6 +712,9 @@ class SalesInvoiceCreateView(ActionPermissionMixin, TemplateView):
     again and drafts the invoice (DRAFT — submit and post are separate steps),
     then redirects to its detail.
     """
+
+    back_url_name = "sales:invoice_list"
+    back_label = "Back to invoices"
 
     template_name = "sales/invoice_form.html"
     required_permission = "sales.add_salesinvoice"
@@ -781,7 +800,9 @@ class SalesInvoiceCreateView(ActionPermissionMixin, TemplateView):
             return self.render_to_response(self.get_context_data(rows=rows))
 
 
-class SalesInvoiceDetailView(ActionPermissionMixin, DetailView):
+class SalesInvoiceDetailView(BackLinkMixin, ActionPermissionMixin, DetailView):
+    back_url_name = "sales:invoice_list"
+    back_label = "Back to invoices"
     model = SalesInvoice
     template_name = "sales/invoice_detail.html"
     context_object_name = "invoice"
@@ -845,8 +866,11 @@ class SalesInvoicePostView(ActionPermissionMixin, View):
         return redirect("sales:invoice_detail", pk=pk)
 
 
-class SalesInvoicePrintView(ActionPermissionMixin, TemplateView):
+class SalesInvoicePrintView(BackLinkMixin, ActionPermissionMixin, TemplateView):
     """Printable invoice (PTY-003) — snapshots only, no dynamic values."""
+
+    back_url_name = "sales:invoice_list"
+    back_label = "Back to invoices"
 
     template_name = "sales/invoice_print.html"
     required_permission = "sales.view_salesinvoice"

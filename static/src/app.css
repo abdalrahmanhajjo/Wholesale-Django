@@ -444,24 +444,48 @@
   }
 
 
-  /* ================================================ order-line columns == */
+  /* ================================================ order lines ======== */
   /*
-   * Twelve editable columns cannot share the width of a form card: each input
-   * came out around seventy pixels, showing "search p" and "Overrides tl" and
-   * nothing legible. The table is given the width its columns actually need
-   * and the region scrolls, which is honest — at md and up the row is a grid,
-   * and below md it stacks into a card per line and this minimum is dropped.
+   * Seven columns, not twelve, because the fields are not equally important.
+   * Related pairs share a cell with the secondary control beneath the primary
+   * one — description under product, unit under quantity, discount under price
+   * — which gives the product search real width instead of the seventy pixels
+   * that produced "search produ".
+   *
+   * The sub-labels are for the stacked layout, where there is no column header
+   * to read from; at md and up the header says it and they are hidden.
    */
+  .line-sub { @apply block; }
+  .line-sub + .line-sub { @apply mt-1.5; }
+  .line-sub-label { @apply mb-1 block text-[11px] font-semibold text-muted-fg; }
+  .line-sub-secondary .field { @apply h-8 text-[13px] text-muted-fg; }
+  .line-sub-secondary .field:focus { @apply text-ink; }
+
+  .line-total-main { @apply block text-sm font-bold text-ink; }
+  .line-total-parts { @apply mt-0.5 block text-[11px] text-muted-fg; }
+
   @media (min-width: 768px) {
-    .lines-stack { min-width: 68rem; }
-    .lines-stack td .field,
-    .lines-stack td select,
-    .lines-stack td input { @apply w-full min-w-0 px-2 text-[13px]; }
-    .lines-stack .combo-input { @apply pr-7; }
-    .lines-stack th, .lines-stack td { @apply px-2; }
-    /* The two ends stay narrow so the editable middle gets the room. */
-    .lines-stack th:first-child, .lines-stack td:first-child { @apply w-12; }
-    .lines-stack th:last-child, .lines-stack td:last-child { @apply w-24; }
+    /* Narrower than the twelve-column version needed, so it fits more screens
+       before the region has to scroll. */
+    .lines-stack { min-width: 58rem; }
+    .lines-stack .line-sub-label { @apply sr-only; }
+    .lines-stack td .field { @apply w-full min-w-0 px-2 text-[13px]; }
+
+    .lines-stack .line-cell-number { width: 3.5rem; }
+    .lines-stack .line-cell-item   { width: 34%; }
+    .lines-stack .line-cell-qty    { width: 12%; }
+    .lines-stack .line-cell-price  { width: 15%; }
+    .lines-stack .line-cell-tax    { width: 15%; }
+    .lines-stack .line-cell-total  { width: 13%; }
+    .lines-stack .line-cell-action { width: 6.5rem; }
+
+    /* Inside a cell there is no room for a decorative magnifier, and it was
+       printing over the placeholder. */
+    .lines-stack .combo::after { @apply hidden; }
+    .lines-stack .combo-input { @apply pr-2; }
+    /* The list is positioned against a narrow cell, so it needs a floor of its
+       own or every option wraps onto two lines and the list is unreadable. */
+    .lines-stack .combo-list { min-width: 18rem; }
   }
 
   /* ==================================================== list toolbar ==== */

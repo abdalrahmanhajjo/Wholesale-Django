@@ -77,18 +77,13 @@ simply visible.
         <caption class="sr-only">Order lines. Each row is one product with its quantity, price, discount and tax code.</caption>
         <thead>
           <tr class="border-b border-line bg-muted-bg text-[11px] font-bold uppercase tracking-[0.1em] text-muted-fg">
-            <th scope="col" class="w-10 px-4 py-3">#</th>
-            <th scope="col" class="px-4 py-3 text-left">Product</th>
-            <th scope="col" class="px-4 py-3 text-left">Description</th>
-            <th scope="col" class="px-4 py-3 text-left">Unit</th>
-            <th scope="col" class="px-4 py-3 text-right">Qty</th>
-            <th scope="col" class="px-4 py-3 text-right">Unit price</th>
-            <th scope="col" class="px-4 py-3 text-right">Disc %</th>
-            <th scope="col" class="px-4 py-3 text-left">Tax code</th>
-            <th scope="col" class="px-4 py-3 text-right">Gross</th>
-            <th scope="col" class="px-4 py-3 text-right">Tax</th>
-            <th scope="col" class="px-4 py-3 text-right">Total</th>
-            <th scope="col" class="w-24 px-4 py-3">Remove</th>
+            <th scope="col" class="px-3 py-3 text-left">#</th>
+            <th scope="col" class="px-3 py-3 text-left">Item</th>
+            <th scope="col" class="px-3 py-3 text-left">Quantity</th>
+            <th scope="col" class="px-3 py-3 text-left">Unit price</th>
+            <th scope="col" class="px-3 py-3 text-left">Tax code</th>
+            <th scope="col" class="px-3 py-3 text-right">Line total</th>
+            <th scope="col" class="px-3 py-3 text-center">Remove</th>
           </tr>
         </thead>
         <tbody>
@@ -98,18 +93,20 @@ simply visible.
         </tbody>
         <tfoot>
           <tr class="border-t-2 border-line bg-muted-bg font-semibold">
-            <th colspan="7" scope="row" class="px-4 py-3 text-right text-xs font-bold uppercase tracking-wide text-muted-fg">
+            <th colspan="4" scope="row" class="px-3 py-3 text-right text-xs font-bold uppercase tracking-wide text-muted-fg">
               Totals, recalculated on save
             </th>
-            <td data-label="Document discount" class="px-4 py-3 text-right tabular-nums" id="sum-discount">0.00</td>
-            <td data-label="Gross" class="px-4 py-3 text-right tabular-nums" id="sum-gross">
-              {{ object.subtotal_txn|default:0|floatformat:2 }}
-            </td>
-            <td data-label="Tax" class="px-4 py-3 text-right tabular-nums" id="sum-tax">
-              {{ object.tax_txn|default:0|floatformat:2 }}
-            </td>
-            <td data-label="Total" class="px-4 py-3 text-right tabular-nums text-brand-deep" id="sum-total">
-              {{ object.total_txn|default:0|floatformat:2 }}
+            <td data-label="Document discount" class="px-3 py-3 text-right tabular-nums" id="sum-discount">0.00</td>
+            <td data-label="Order total" class="px-3 py-3 text-right align-top">
+              <span class="line-total-main tabular-nums text-brand-deep" id="sum-total">
+                {{ object.total_txn|default:0|floatformat:2 }}
+              </span>
+              <span class="line-total-parts">
+                <span class="tabular-nums" id="sum-gross">{{ object.subtotal_txn|default:0|floatformat:2 }}</span>
+                <span aria-hidden="true"> gross · </span>
+                <span class="tabular-nums" id="sum-tax">{{ object.tax_txn|default:0|floatformat:2 }}</span>
+                <span aria-hidden="true"> tax</span>
+              </span>
             </td>
             <td></td>
           </tr>
@@ -274,10 +271,15 @@ simply visible.
         const tax = round4(taxable * d.rate / 100);
         const total = taxable + tax;
 
-        const cells = d.row.querySelectorAll('td');
-        if (cells[8]) cells[8].textContent = d.gross.toFixed(2);
-        if (cells[9]) cells[9].textContent = tax.toFixed(2);
-        if (cells[10]) cells[10].textContent = total.toFixed(2);
+        // By class, not by column index. The index broke silently the moment
+        // the row was relaid out, writing totals into the wrong cells.
+        const put = (selector, value) => {
+          const el = d.row.querySelector(selector);
+          if (el) el.textContent = value.toFixed(2);
+        };
+        put('.line-gross', d.gross);
+        put('.line-tax', tax);
+        put('.line-total', total);
 
         sumGross += d.gross;
         sumTax += tax;

@@ -53,6 +53,23 @@ AUTOCOMPLETE_BY_NAME = {
     "customer_reference": "off",
 }
 
+#: Which suggester backs a field, by field name. A select listed here searches
+#: the server as you type and shows a second line of context per result, instead
+#: of filtering the options already in the page.
+SUGGEST_BY_NAME = {
+    "customer": "customer",
+    "vendor": "vendor",
+    "product": "product",
+    "warehouse": "warehouse",
+    "default_warehouse": "warehouse",
+    "money_account": "money_account",
+    "currency": "currency",
+    "payment_term": "payment_term",
+    "tax_code": "tax_code",
+    "default_tax_code": "tax_code",
+    "sales_order": "sales_order",
+}
+
 #: Placeholders that apply wherever the field name appears. A form's own
 #: `placeholders` dict overrides these.
 PLACEHOLDER_BY_NAME = {
@@ -89,11 +106,20 @@ class UIFormMixin:
         many options they hold.
     ``plain_selects``
         Select fields to leave as native controls regardless of size.
+    ``checks``
+        ``{field_name: rule}``. The rule is asked of /settings/check/ while the
+        user types — a code already taken, a name close to an existing one.
+        Only the database can answer these, and only the server enforces them;
+        this just says it sooner.
+    ``suggest_kinds``
+        Override or extend SUGGEST_BY_NAME for this form.
     """
 
     placeholders = {}
     autocomplete_fields = ()
     plain_selects = ()
+    checks = {}
+    suggest_kinds = {}
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -123,6 +149,7 @@ class UIFormMixin:
         self._placeholder(name, attrs)
         self._keyboard(name, field, attrs)
         self._validation(name, field, attrs)
+        self._check(name, attrs)
 
         autocomplete = AUTOCOMPLETE_BY_NAME.get(name)
         if autocomplete:
@@ -187,6 +214,17 @@ class UIFormMixin:
         if getattr(field, "max_length", None):
             attrs.setdefault("maxlength", str(field.max_length))
 
+    # -- server-side checks -------------------------------------------------
+    def _check(self, name, attrs):
+        rule = self.checks.get(name)
+        if not rule:
+            return
+        attrs.setdefault("data-check", rule)
+        # Editing a record must not report that record as its own duplicate.
+        instance_pk = getattr(getattr(self, "instance", None), "pk", None)
+        if instance_pk:
+            attrs.setdefault("data-check-exclude", str(instance_pk))
+
     # -- selects -----------------------------------------------------------
     def _select(self, name, field, attrs):
         """
@@ -203,9 +241,12 @@ class UIFormMixin:
             option_count = len(field.choices)
         except TypeError:  # a queryset that is not sized without evaluating
             option_count = COMBOBOX_THRESHOLD + 1
-        if name in self.autocomplete_fields or option_count > COMBOBOX_THRESHOLD:
+        kind = self.suggest_kinds.get(name, SUGGEST_BY_NAME.get(name))
+        if name in self.autocomplete_fields or option_count > COMBOBOX_THRESHOLD or kind:
             attrs.setdefault("data-combobox", "")
             attrs.setdefault(
                 "data-combobox-placeholder",
                 self.placeholders.get(name, f"Search {field.label or name}…".lower()),
             )
+            if kind:
+                attrs.setdefault("data-suggest", kind)

@@ -543,3 +543,32 @@ class MoneyFieldDetectionTests(SimpleTestCase):
         from apps.sales.forms import SalesOrderForm
 
         self.assertEqual(self.rule(SalesOrderForm(), "document_discount_value"), "decimal")
+
+
+class GroupedSectionTests(SimpleTestCase):
+    """
+    Related groups share one card rather than taking a card each.
+
+    Step 3 of the sales order held addresses, the document discount and notes in
+    three separate panels — six fields, three borders, three headings — while
+    steps 1 and 2 are a single card apiece. A rule between groups separates them
+    as clearly and costs a fraction of the height.
+    """
+
+    def css(self):
+        import pathlib
+
+        return (
+            (pathlib.Path(__file__).resolve().parents[3] / "static" / "css" / "app.css")
+            .read_text()
+            .replace(" ", "")
+        )
+
+    def test_a_rule_separates_adjacent_groups(self):
+        self.assertIn(".form-group+.form-group", self.css())
+
+    def test_the_group_classes_survive_the_build(self):
+        css = self.css()
+        for name in ("form-group", "form-group-title", "form-group-hint", "form-group-body"):
+            with self.subTest(css_class=name):
+                self.assertIn(f".{name}", css)

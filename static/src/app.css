@@ -510,6 +510,28 @@
   .toolbar-actions { @apply flex flex-wrap items-center gap-2 sm:pt-[1.6rem]; }
   .toolbar .help { @apply mt-1; }
 
+
+  /* ================================================= grouped sections === */
+  /*
+   * Several related groups inside one card, instead of a card each.
+   *
+   * Step 3 of the sales order held addresses, the document discount and notes
+   * in three separate cards — six fields spread over three panels, each with
+   * its own border and heading, while steps 1 and 2 are a single card apiece.
+   * A rule between groups separates them just as well as a gap between cards
+   * and costs a fraction of the height.
+   */
+  .form-group { @apply px-5 py-5 sm:px-6; }
+  .form-group + .form-group { @apply border-t border-line; }
+  .form-group-title { @apply text-sm font-bold text-ink; }
+  .form-group-hint { @apply mt-0.5 text-sm text-muted-fg; }
+  .form-group-body { @apply mt-4 grid gap-x-5 gap-y-4 sm:grid-cols-2; }
+  .form-group-body-3 { @apply mt-4 grid gap-x-5 gap-y-4 sm:grid-cols-2 lg:grid-cols-3; }
+
+  /* A control that cannot apply yet says so rather than sitting there enabled
+     and inert. */
+  .field:disabled + .field-note, .field-note { @apply mt-1 text-[13px] text-muted-fg; }
+
   /* Ink is invisible against the navy sidebar and the navy panels. */
   .on-dark { --focus-ring: #ffffff; --focus-ring-offset: #071a2f; }
 

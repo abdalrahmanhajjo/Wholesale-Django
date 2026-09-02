@@ -120,37 +120,44 @@ simply visible.
   </div>
 
   {# ---- Step 3 ---- #}
+  {% comment %}
+  One section, three groups. Addresses, the discount and the notes were a card
+  each — six fields across three panels, where steps 1 and 2 are a single card
+  apiece. A rule between groups separates them as clearly as a gap between cards
+  and costs a fraction of the height.
+  {% endcomment %}
   <div data-step="Delivery and terms">
-  <section class="form-section" aria-labelledby="sec-addresses">
+  <section class="form-section" aria-labelledby="sec-terms">
     <div class="form-section-head">
-      <h2 class="form-section-title" id="sec-addresses">Addresses</h2>
-      <p class="form-section-hint">Leave the shipping address blank to deliver to the billing address.</p>
+      <h2 class="form-section-title" id="sec-terms">Delivery and terms</h2>
+      <p class="form-section-hint">Where the order goes, what it is discounted by, and anything to record against it.</p>
     </div>
-    <div class="form-section-body">
-      {% include "core/_form_field.html" with field=form.billing_address_text %}
-      {% include "core/_form_field.html" with field=form.shipping_address_text %}
-    </div>
-  </section>
 
-  <section class="form-section" aria-labelledby="sec-discount">
-    <div class="form-section-head">
-      <h2 class="form-section-title" id="sec-discount">Document discount</h2>
-      <p class="form-section-hint">Applied to the order as a whole, after any per-line discounts.</p>
+    <div class="form-group" role="group" aria-labelledby="grp-addresses">
+      <h3 class="form-group-title" id="grp-addresses">Addresses</h3>
+      <p class="form-group-hint">Leave the shipping address blank to deliver to the billing address.</p>
+      <div class="form-group-body">
+        {% include "core/_form_field.html" with field=form.billing_address_text %}
+        {% include "core/_form_field.html" with field=form.shipping_address_text %}
+      </div>
     </div>
-    <div class="form-section-body">
-      {% include "core/_form_field.html" with field=form.document_discount_kind %}
-      {% include "core/_form_field.html" with field=form.document_discount_value %}
-    </div>
-  </section>
 
-  <section class="form-section" aria-labelledby="sec-notes">
-    <div class="form-section-head">
-      <h2 class="form-section-title" id="sec-notes">Notes</h2>
-      <p class="form-section-hint">Notes print on the order. Internal notes never leave the system.</p>
+    <div class="form-group" role="group" aria-labelledby="grp-discount">
+      <h3 class="form-group-title" id="grp-discount">Document discount</h3>
+      <p class="form-group-hint">Applied to the order as a whole, after any per-line discounts.</p>
+      <div class="form-group-body">
+        {% include "core/_form_field.html" with field=form.document_discount_kind %}
+        {% include "core/_form_field.html" with field=form.document_discount_value wrapper_class="discount-value" %}
+      </div>
     </div>
-    <div class="form-section-body">
-      {% include "core/_form_field.html" with field=form.notes %}
-      {% include "core/_form_field.html" with field=form.internal_notes %}
+
+    <div class="form-group" role="group" aria-labelledby="grp-notes">
+      <h3 class="form-group-title" id="grp-notes">Notes</h3>
+      <p class="form-group-hint">Notes print on the order. Internal notes never leave the system.</p>
+      <div class="form-group-body">
+        {% include "core/_form_field.html" with field=form.notes %}
+        {% include "core/_form_field.html" with field=form.internal_notes %}
+      </div>
     </div>
   </section>
   </div>
@@ -309,6 +316,40 @@ simply visible.
       const el = document.getElementById(id);
       if (el) el.addEventListener('input', recalc);
     });
+
+    // A discount value means nothing until a kind is chosen, and its unit
+    // depends on which one — a percentage or an amount. Rather than leave a box
+    // that accepts a number and then ignores it, the field is disabled until
+    // the kind says what the number would mean, and the label says so.
+    (function () {
+      const kind = document.getElementById('id_document_discount_kind');
+      const value = document.getElementById('id_document_discount_value');
+      if (!kind || !value) return;
+      const wrap = value.closest('.field-wrap');
+      let note = wrap && wrap.querySelector('.field-note');
+      if (wrap && !note) {
+        note = document.createElement('p');
+        note.className = 'field-note';
+        wrap.appendChild(note);
+      }
+      const sync = () => {
+        const chosen = kind.value && kind.value !== 'NONE';
+        value.disabled = !chosen;
+        if (!chosen) value.value = '0';
+        if (note) {
+          // Keyed on the value, not the visible label, so translating the
+          // choice does not change what the hint says.
+          note.textContent = !chosen
+            ? 'Choose a discount kind first.'
+            : kind.value === 'PERCENT'
+              ? 'A percentage of the order total.'
+              : 'An amount in the order currency.';
+        }
+        recalc();
+      };
+      kind.addEventListener('change', sync);
+      sync();
+    })();
   })();
 </script>
 

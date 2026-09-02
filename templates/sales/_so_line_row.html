@@ -1,3 +1,15 @@
+{% load ui %}{% comment %}
+One order line.
+
+Every control here takes its visible label from a column header and has no
+<label> of its own, so a screen reader announced eight unnamed comboboxes and
+spin buttons per row with no way to tell line 3's quantity from line 4's. Each
+input now carries an aria-label naming the column and the line.
+
+`line` is supplied by the caller: the loop counter for existing rows, and the
+literal __LINE__ for the empty-form template, which the add-line script swaps
+for the real number when it clones the row.
+{% endcomment %}
 <tr class="border-b border-line last:border-0 line-row">
   <td class="px-4 py-2 align-top">
     {% for hidden in lf.hidden_fields %}
@@ -6,37 +18,45 @@
     {% endfor %}
     <span class="line-number">{{ lf.line_no.value|default:"New" }}</span>
   </td>
+
   <td class="px-4 py-2 align-top">
     {% if lf.non_field_errors %}
       {% for error in lf.non_field_errors %}<p class="error-text">{{ error }}</p>{% endfor %}
     {% endif %}
-    {{ lf.product }}
-    {% for error in lf.product.errors %}<p class="error-text">{{ error }}</p>{% endfor %}
+    {% a11y_field lf.product aria_label="Product, line "|add:line %}
+    {% if lf.product.errors %}<p class="error-text" id="{% error_id lf.product %}">{{ lf.product.errors|join:" " }}</p>{% endif %}
   </td>
+
   <td class="px-4 py-2 align-top">
-    {{ lf.description }}
-    {% for error in lf.description.errors %}<p class="error-text">{{ error }}</p>{% endfor %}
+    {% a11y_field lf.description aria_label="Description, line "|add:line %}
+    {% if lf.description.errors %}<p class="error-text" id="{% error_id lf.description %}">{{ lf.description.errors|join:" " }}</p>{% endif %}
   </td>
+
   <td class="px-4 py-2 align-top">
-    {{ lf.unit }}
-    {% for error in lf.unit.errors %}<p class="error-text">{{ error }}</p>{% endfor %}
+    {% a11y_field lf.unit aria_label="Unit, line "|add:line %}
+    {% if lf.unit.errors %}<p class="error-text" id="{% error_id lf.unit %}">{{ lf.unit.errors|join:" " }}</p>{% endif %}
   </td>
+
   <td class="px-4 py-2 align-top">
-    {{ lf.quantity }}
-    {% for error in lf.quantity.errors %}<p class="error-text">{{ error }}</p>{% endfor %}
+    {% a11y_field lf.quantity aria_label="Quantity, line "|add:line %}
+    {% if lf.quantity.errors %}<p class="error-text" id="{% error_id lf.quantity %}">{{ lf.quantity.errors|join:" " }}</p>{% endif %}
   </td>
+
   <td class="px-4 py-2 align-top">
-    {{ lf.unit_price }}
-    {% for error in lf.unit_price.errors %}<p class="error-text">{{ error }}</p>{% endfor %}
+    {% a11y_field lf.unit_price aria_label="Unit price, line "|add:line %}
+    {% if lf.unit_price.errors %}<p class="error-text" id="{% error_id lf.unit_price %}">{{ lf.unit_price.errors|join:" " }}</p>{% endif %}
   </td>
+
   <td class="px-4 py-2 align-top">
-    {{ lf.discount_percent }}
-    {% for error in lf.discount_percent.errors %}<p class="error-text">{{ error }}</p>{% endfor %}
+    {% a11y_field lf.discount_percent aria_label="Discount percent, line "|add:line %}
+    {% if lf.discount_percent.errors %}<p class="error-text" id="{% error_id lf.discount_percent %}">{{ lf.discount_percent.errors|join:" " }}</p>{% endif %}
   </td>
+
   <td class="px-4 py-2 align-top">
-    {{ lf.tax_code }}
-    {% for error in lf.tax_code.errors %}<p class="error-text">{{ error }}</p>{% endfor %}
+    {% a11y_field lf.tax_code aria_label="Tax code, line "|add:line %}
+    {% if lf.tax_code.errors %}<p class="error-text" id="{% error_id lf.tax_code %}">{{ lf.tax_code.errors|join:" " }}</p>{% endif %}
   </td>
+
   <td class="px-4 py-2 text-right align-top tabular-nums line-gross">
     {% if lf.instance.pk %}{{ lf.instance.gross_txn|floatformat:2 }}{% else %}—{% endif %}
   </td>
@@ -46,11 +66,24 @@
   <td class="px-4 py-2 text-right align-top tabular-nums font-semibold">
     {% if lf.instance.pk %}{{ lf.instance.total_txn|floatformat:2 }}{% else %}—{% endif %}
   </td>
+
   <td class="px-4 py-2 text-center align-top">
     {% if lf.instance.pk %}
-      <label class="flex items-center justify-center" aria-label="Delete line">
-        {{ lf.DELETE }}
-      </label>
+      {% comment %}
+      The old markup put aria-label on the <label> wrapping the checkbox. A
+      wrapping label names its control from its own text content, and the only
+      content was the input itself, so the checkbox had no accessible name at
+      all. The name goes on the control.
+      {% endcomment %}
+      <span class="flex items-center justify-center">
+        {% a11y_field lf.DELETE aria_label="Remove line "|add:line %}
+      </span>
+    {% else %}
+      {# A row added by mistake could not be taken back: DELETE only renders for
+         saved lines, so the only way out was to reload and lose the form. #}
+      <button type="button" class="remove-new-line btn-ghost btn-sm" data-line="{{ line }}">
+        Remove<span class="sr-only"> line {{ line }}</span>
+      </button>
     {% endif %}
   </td>
 </tr>

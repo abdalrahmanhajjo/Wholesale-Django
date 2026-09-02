@@ -10,11 +10,7 @@ Used for both customers and vendors — `party_kind` switches the copy.
 <form method="post" novalidate class="max-w-4xl">
   {% csrf_token %}
 
-  {% if form.non_field_errors %}
-    <div class="card card-pad mb-5 border-l-4 border-l-danger">
-      {% for error in form.non_field_errors %}<p class="text-sm text-danger">{{ error }}</p>{% endfor %}
-    </div>
-  {% endif %}
+  {% include "core/_form_errors.html" with form=form %}
 
   {% if duplicate_warnings %}
     {# PTY-007: a warning for review, not a block — two real companies can share a name. #}
@@ -32,7 +28,7 @@ Used for both customers and vendors — `party_kind` switches the copy.
   {% endif %}
 
   <div class="card card-pad">
-    <p class="eyebrow">Identity</p>
+    <h2 class="section-heading" id="party-identity">Identity</h2>
     <div class="mt-4 grid gap-4 sm:grid-cols-2">
       {% include "core/_form_field.html" with field=form.code %}
       {% include "core/_form_field.html" with field=form.name %}
@@ -42,7 +38,7 @@ Used for both customers and vendors — `party_kind` switches the copy.
   </div>
 
   <div class="card card-pad mt-4">
-    <p class="eyebrow">Contact</p>
+    <h2 class="section-heading" id="party-contact">Contact</h2>
     <div class="mt-4 grid gap-4 sm:grid-cols-3">
       {% include "core/_form_field.html" with field=form.email %}
       {% include "core/_form_field.html" with field=form.phone %}
@@ -51,7 +47,7 @@ Used for both customers and vendors — `party_kind` switches the copy.
   </div>
 
   <div class="card card-pad mt-4">
-    <p class="eyebrow">Commercial</p>
+    <h2 class="section-heading" id="party-commercial">Commercial</h2>
     <div class="mt-4 grid gap-4 sm:grid-cols-2">
       {% include "core/_form_field.html" with field=form.currency %}
       {% include "core/_form_field.html" with field=form.payment_term %}
@@ -64,7 +60,7 @@ Used for both customers and vendors — `party_kind` switches the copy.
 
   {% if form.credit_limit %}
   <div class="card card-pad mt-4">
-    <p class="eyebrow">Credit control (PTY-004)</p>
+    <h2 class="section-heading" id="party-credit">Credit control</h2>
     <div class="mt-4 grid gap-4 sm:grid-cols-3">
       {% include "core/_form_field.html" with field=form.credit_limit %}
       {% include "core/_form_field.html" with field=form.credit_hold %}
@@ -74,7 +70,7 @@ Used for both customers and vendors — `party_kind` switches the copy.
   {% endif %}
 
   <div class="card card-pad mt-4">
-    <p class="eyebrow">Other</p>
+    <h2 class="section-heading" id="party-other">Other</h2>
     <div class="mt-4 grid gap-4">
       {% include "core/_form_field.html" with field=form.notes %}
       {% include "core/_form_field.html" with field=form.is_active %}
@@ -82,7 +78,7 @@ Used for both customers and vendors — `party_kind` switches the copy.
   </div>
 
   <div class="mt-5 flex items-center gap-2">
-    <button type="submit" class="btn-primary">Save</button>
+    <button type="submit" class="btn-primary">{% if object %}Save changes{% elif party_kind == 'vendor' %}Create vendor{% else %}Create customer{% endif %}</button>
     <a href="{% if object %}{{ object.get_absolute_url }}{% elif party_kind == 'vendor' %}{% url 'parties:vendor_list' %}{% else %}{% url 'parties:customer_list' %}{% endif %}"
        class="btn-ghost">Cancel</a>
   </div>

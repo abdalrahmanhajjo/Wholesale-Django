@@ -7,14 +7,10 @@
 <form method="post" novalidate class="max-w-2xl">
   {% csrf_token %}
 
-  {% if form.non_field_errors %}
-    <div class="card card-pad mb-5 border-l-4 border-l-danger">
-      {% for error in form.non_field_errors %}<p class="text-sm text-danger">{{ error }}</p>{% endfor %}
-    </div>
-  {% endif %}
+  {% include "core/_form_errors.html" with form=form %}
 
   <div class="card card-pad">
-    <p class="eyebrow">Currency</p>
+    <h2 class="section-heading" id="cur-details">Currency</h2>
     <div class="mt-4 grid gap-4 sm:grid-cols-2">
       {% include "core/_form_field.html" with field=form.code %}
       {% include "core/_form_field.html" with field=form.name %}
@@ -28,7 +24,7 @@
   </div>
 
   <div class="mt-5 flex items-center gap-2">
-    <button type="submit" class="btn-primary">Save</button>
+    <button type="submit" class="btn-primary">{% if object %}Save changes{% else %}Create currency{% endif %}</button>
     <a href="{% url 'core:currency_list' %}" class="btn-ghost">Cancel</a>
   </div>
 </form>

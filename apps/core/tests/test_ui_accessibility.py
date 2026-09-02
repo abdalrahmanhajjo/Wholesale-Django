@@ -392,3 +392,93 @@ class SuggestAndCheckAttributeTests(SimpleTestCase):
         form.instance = type("Row", (), {"pk": 42})()
         form.__init__()
         self.assertEqual(form.fields["code"].widget.attrs.get("data-check-exclude"), "42")
+
+
+class TemplateCommentSyntaxTests(SimpleTestCase):
+    """
+    No template may use a multi-line `{# #}`.
+
+    Django's inline comment ends at the newline, so a multi-line one prints
+    everything after the first line straight onto the page. `{% comment %}` is
+    the tag that spans lines. This is checked as source rather than as rendered
+    output because a template only reached by an uncommon branch would never
+    show up in a page test.
+    """
+
+    def test_no_template_uses_a_multiline_inline_comment(self):
+        import pathlib
+
+        root = pathlib.Path(__file__).resolve().parents[3] / "templates"
+        offenders = []
+        for path in sorted(root.rglob("*.html")):
+            for number, line in enumerate(path.read_text().splitlines(), 1):
+                if line.count("{#") > line.count("#}"):
+                    offenders.append(f"{path.relative_to(root)}:{number}")
+        self.assertEqual(
+            offenders,
+            [],
+            "use {% comment %} for a comment that spans lines: " + ", ".join(offenders),
+        )
+
+
+class CompiledStylesheetTests(SimpleTestCase):
+    """
+    Classes the scripts add at runtime must survive the Tailwind build.
+
+    Tailwind drops any component class it cannot find in a content file. The
+    scripts were not scanned, so every class they apply was compiled away —
+    including `.combo-native`, the rule that hides the native <select> behind a
+    searchable field. The visible symptom was every such field rendering as two
+    boxes, one of them a bare dropdown.
+    """
+
+    #: Applied only from JavaScript, so only the content globs keep them alive.
+    RUNTIME_CLASSES = [
+        "combo-native",
+        "combo-list",
+        "combo-option",
+        "combo-heading",
+        "combo-empty",
+        "field-live-error",
+        "field-live-warning",
+        "field-live-ok",
+        "field-live-info",
+        "is-floating",
+        "is-filled",
+        "is-focused",
+        "is-prefilled",
+        "field-adornment",
+        "field-with-adornment",
+        "alert-close",
+        "nav-scrim",
+        "spinner",
+        "is-busy",
+        "step",
+        "step-index",
+        "step-label",
+        "step-note",
+        "step-panel",
+        "is-active",
+    ]
+
+    def test_every_runtime_class_is_in_the_compiled_stylesheet(self):
+        import pathlib
+
+        css = (
+            pathlib.Path(__file__).resolve().parents[3] / "static" / "css" / "app.css"
+        ).read_text()
+        missing = [name for name in self.RUNTIME_CLASSES if f".{name}" not in css]
+        self.assertEqual(
+            missing,
+            [],
+            "purged from app.css — add the source to tailwind.config.js content: "
+            + ", ".join(missing),
+        )
+
+    def test_the_scripts_are_scanned_for_classes(self):
+        import pathlib
+
+        config = (
+            pathlib.Path(__file__).resolve().parents[3] / "tailwind.config.js"
+        ).read_text()
+        self.assertIn("static/js", config)

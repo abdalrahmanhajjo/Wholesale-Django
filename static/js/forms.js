@@ -179,6 +179,16 @@
 
   var ICONS = { error: "&#9888;", warning: "&#9888;", ok: "&#10003;", info: "&#8505;" };
   var PREFIX = { error: "Error: ", warning: "Warning: ", ok: "", info: "" };
+  // Written out in full rather than built with "field-live-" + level: Tailwind
+  // scans for whole strings, so a concatenated class name is invisible to it
+  // and gets compiled out of the stylesheet.
+  var LIVE_CLASS = {
+    error: "field-live field-live-error",
+    warning: "field-live field-live-warning",
+    ok: "field-live field-live-ok",
+    info: "field-live field-live-info"
+  };
+  var NOTICE_CLASS = { warning: "alert-warning", info: "alert-info" };
 
   function say(field, level, text) {
     var node = liveNode(field);
@@ -193,7 +203,7 @@
       return;
     }
 
-    node.className = "field-live field-live-" + level;
+    node.className = LIVE_CLASS[level] || "field-live";
     node.innerHTML = '<span aria-hidden="true">' + ICONS[level] + "</span><span></span>";
     var body = node.lastChild;
     if (PREFIX[level]) {
@@ -569,7 +579,7 @@
       }]);
     }
     notices.forEach(function (notice) {
-      var box = el("div", "alert-" + (notice.level === "warning" ? "warning" : "info"));
+      var box = el("div", NOTICE_CLASS[notice.level] || NOTICE_CLASS.info);
       // A credit hold changes what the user should do next, so it is announced.
       box.setAttribute("role", notice.level === "warning" ? "alert" : "status");
       box.innerHTML = '<svg class="icon shrink-0" aria-hidden="true"><use href="#i-' +

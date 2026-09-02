@@ -101,11 +101,22 @@ class EveryPageRendersTests(TestCase):
                         f"{name}: “{label.strip()}” is not a place",
                     )
 
-    def test_no_page_leaks_an_unresolved_template_variable(self):
+    def test_no_page_leaks_template_source(self):
+        """
+        Both halves of this matter, and only the first was checked before.
+
+        Django's `{# #}` comment is single-line. A multi-line one is not a
+        comment at all: the first line is discarded and the rest is printed to
+        the page. Four of them shipped that way, one of them into a table cell
+        on the sales order form, and nothing noticed because the assertion
+        only looked for `{{`.
+        """
         for name, url in PAGES:
             with self.subTest(page=name):
                 body = self.client.get(url).content.decode()
-                self.assertNotIn("{{", body, f"{name} rendered a raw template tag")
+                self.assertNotIn("{{", body, f"{name} rendered a raw template variable")
+                self.assertNotIn("{#", body, f"{name} rendered a raw template comment")
+                self.assertNotIn("{%", body, f"{name} rendered a raw template tag")
 
     def test_shared_shell_is_present_everywhere(self):
         """The icon sprite and form layer are what the components depend on."""

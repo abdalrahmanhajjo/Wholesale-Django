@@ -163,8 +163,10 @@ module-specific empty message.
             {% if not has_linked_column %}
               <td data-label="" class="px-4 py-3 text-right">
                 {% if row.object.get_absolute_url %}
-                  {# "View" alone repeats once per row in a screen reader's link
-                     list, so the record name rides along invisibly. #}
+                    {% comment %}
+                  "View" alone repeats once per row in a screen reader's link
+                  list, so the record name rides along invisibly.
+                  {% endcomment %}
                   <a href="{{ row.object.get_absolute_url }}" class="text-xs font-semibold text-muted-fg underline underline-offset-2 hover:text-ink">
                     View<span class="sr-only"> {{ row.object }}</span></a>
                 {% endif %}

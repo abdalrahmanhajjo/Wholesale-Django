@@ -80,8 +80,10 @@ value may be an int or a string.
         {% a11y_field lf.DELETE label="Remove" line=line %}
       </span>
     {% else %}
-      {# A row added by mistake could not be taken back: DELETE only renders for
-         saved lines, so the only way out was to reload and lose the form. #}
+      {% comment %}
+      A row added by mistake could not be taken back: DELETE only renders
+      for saved lines, so the only way out was to reload and lose the form.
+      {% endcomment %}
       <button type="button" class="remove-new-line btn-ghost btn-sm" data-line="{{ line }}">
         Remove<span class="sr-only"> line {{ line }}</span>
       </button>

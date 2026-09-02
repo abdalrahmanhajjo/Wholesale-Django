@@ -122,8 +122,15 @@ def record(
 
     content_type = object_id = None
     if instance is not None and instance.pk is not None:
-        content_type = ContentType.objects.get_for_model(instance)
-        object_id = instance.pk
+        # AuditEvent.object_id is a BigIntegerField, so the generic foreign key
+        # can only point at models with an integer primary key. A model with a
+        # natural key (Currency.code = "USD") is still fully recorded — action,
+        # user, time, object_repr and the field diff — it just has no target to
+        # click through to. Widening object_id to a CharField would remove this
+        # limitation, but that is a schema change on a shared database.
+        if isinstance(instance.pk, int):
+            content_type = ContentType.objects.get_for_model(instance)
+            object_id = instance.pk
 
     return AuditEvent.objects.create(
         action=action,

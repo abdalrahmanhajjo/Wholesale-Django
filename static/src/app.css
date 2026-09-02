@@ -15,6 +15,16 @@
    it to white because ink is invisible on navy.
 --------------------------------------------------------------------------- */
 @layer base {
+  /*
+   * `hidden` is an attribute, not a class, and its user-agent rule is
+   * display:none at the lowest possible specificity. Any utility that sets a
+   * display — and .btn sets inline-flex — beats it, so `el.hidden = true` did
+   * nothing to a button. The steps script relies on exactly that to keep Back
+   * off the first step and Save off every step but the last, and both were
+   * showing throughout.
+   */
+  [hidden] { display: none !important; }
+
   :root {
     --focus-ring: #07172b;
     --focus-ring-offset: #ffffff;
@@ -137,15 +147,45 @@
     clip: rect(0 0 0 0);
   }
   .combo-list {
-    @apply absolute z-30 mt-1 max-h-64 w-full overflow-y-auto rounded-xl2 border
-           border-input-line bg-white py-1 shadow-[0_12px_32px_rgba(7,26,47,.14)];
+    @apply absolute z-40 mt-1.5 max-h-72 w-full overflow-y-auto overscroll-contain
+           rounded-xl2 border border-line bg-white p-1
+           shadow-[0_1px_2px_rgba(7,26,47,.04),0_16px_40px_rgba(7,26,47,.16)];
+    scrollbar-width: thin;
   }
   .combo-option {
-    @apply cursor-pointer px-3 py-2 text-sm text-ink;
+    @apply relative cursor-pointer rounded-lg px-3 py-2 text-sm text-ink;
   }
-  .combo-option:hover, .combo-option.is-active { @apply bg-muted-bg; }
-  .combo-option[aria-selected="true"] { @apply font-semibold text-brand-deep; }
-  .combo-empty { @apply px-3 py-3 text-sm text-muted-fg; }
+  .combo-option:hover { @apply bg-muted-bg; }
+  /* The keyboard position is a stronger mark than hover, so the two are
+     distinguishable when the pointer happens to rest on another row. */
+  .combo-option.is-active { @apply bg-ink text-white; }
+  .combo-option.is-active .combo-option-detail { @apply text-slate-300; }
+  .combo-option.is-active mark { @apply bg-white/25 text-white; }
+  .combo-option[aria-selected="true"] .combo-option-label { @apply text-brand-deep; }
+  .combo-option[aria-selected="true"]::after {
+    content: "✓";
+    @apply absolute right-3 top-2 text-xs font-bold text-brand-deep;
+  }
+  .combo-option.is-active[aria-selected="true"]::after { @apply text-white; }
+  /* What was typed, marked inside each result. */
+  .combo-option mark { @apply rounded bg-brand-tint px-0.5 font-semibold text-brand-deep; }
+  .combo-empty { @apply px-3 py-4 text-sm text-muted-fg; }
+  .combo-foot {
+    @apply mt-1 flex items-center justify-between gap-3 border-t border-line
+           px-3 pb-1 pt-2 text-[11px] text-muted-fg;
+  }
+  .combo-key {
+    @apply rounded border border-line bg-muted-bg px-1 font-mono text-[10px] text-ink;
+  }
+  .combo-input { @apply pr-9; }
+  /* A search field should look like one. */
+  .combo::after {
+    content: "";
+    @apply pointer-events-none absolute right-3 top-3 h-4 w-4 bg-muted-fg;
+    -webkit-mask: var(--combo-icon) center / contain no-repeat;
+    mask: var(--combo-icon) center / contain no-repeat;
+  }
+  .combo { --combo-icon: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='M21 21l-4.2-4.2'/%3E%3C/svg%3E"); }
 
   /* ================================================== buttons: busy ===== */
   .btn.is-busy { @apply cursor-progress opacity-90; }
@@ -280,7 +320,11 @@
    * template, so column behaviour cannot drift between screens.
    */
   .form-shell { @apply mx-auto flex w-full flex-col gap-4; }
-  .form-section { @apply card overflow-hidden; }
+  /* Not overflow-hidden: a suggestion list is positioned inside the section and
+     was being cut off at the card's edge — the list showed three of five
+     matches with the rest clipped away. The header's border is rounded by the
+     card instead. */
+  .form-section { @apply card; }
   .form-section-head {
     @apply flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1
            border-b border-line px-5 py-4 sm:px-6;
@@ -345,9 +389,12 @@
   }
 
   /* ============================================== currency adornment ===== */
-  .field-wrap.has-adornment { @apply relative; }
+  /* The currency sits inside the input, so it is anchored to a wrapper around
+     the control alone. Anchored to .field-wrap it fell to the bottom of the
+     whole group — under the help text and the validation message. */
+  .field-control { @apply relative block; }
   .field-adornment {
-    @apply pointer-events-none absolute bottom-0 left-3 flex h-10 items-center
+    @apply pointer-events-none absolute inset-y-0 left-3 flex items-center
            text-sm font-semibold text-muted-fg;
   }
   .field-with-adornment { @apply pl-12 text-right tabular-nums; }

@@ -23,6 +23,7 @@ attributes only let the browser say the same thing sooner and more kindly.
 """
 
 from django import forms
+from django.forms import ModelChoiceField
 
 #: Selects longer than this get a type-to-filter combobox. Below it, the native
 #: control is faster and already accessible, so it is left alone.
@@ -87,8 +88,28 @@ PLACEHOLDER_BY_NAME = {
 }
 
 
-def _is_money(field):
-    return isinstance(field, forms.DecimalField) and (field.decimal_places or 0) >= 2
+#: MONEY, QTY and PCT are all four decimal places in this schema, so the number
+#: of decimals cannot tell an amount from a quantity or a percentage. The name
+#: can. Getting it wrong is visible: an exchange rate was being shown with a
+#: currency symbol beside it and grouped like a sum of money.
+NOT_MONEY_WORDS = ("rate", "percent", "quantity", "qty", "days", "decimal", "level")
+MONEY_WORDS = ("amount", "price", "total", "subtotal", "limit", "balance", "cost", "credit")
+
+
+def _is_money(field, name=""):
+    """
+    Whether this field holds an amount of money.
+
+    Only an amount gets thousands grouping and a currency beside the box. A
+    quantity, a percentage and a rate are all numbers, and none of them are
+    money.
+    """
+    if not isinstance(field, forms.DecimalField):
+        return False
+    lowered = name.lower()
+    if any(word in lowered for word in NOT_MONEY_WORDS):
+        return False
+    return any(word in lowered for word in MONEY_WORDS)
 
 
 class UIFormMixin:
@@ -195,7 +216,7 @@ class UIFormMixin:
             rule = "phone"
         elif isinstance(field, forms.DateField):
             rule = "date"
-        elif _is_money(field):
+        elif _is_money(field, name):
             rule = "money"
         elif isinstance(field, forms.DecimalField):
             rule = "decimal"
@@ -237,12 +258,20 @@ class UIFormMixin:
         """
         if name in self.plain_selects:
             return
-        try:
-            option_count = len(field.choices)
-        except TypeError:  # a queryset that is not sized without evaluating
-            option_count = COMBOBOX_THRESHOLD + 1
+
         kind = self.suggest_kinds.get(name, SUGGEST_BY_NAME.get(name))
-        if name in self.autocomplete_fields or option_count > COMBOBOX_THRESHOLD or kind:
+
+        if isinstance(field, ModelChoiceField):
+            # A field backed by a table is always worth searching, and asking
+            # how many rows it holds costs a COUNT query per select per render —
+            # eight of them on the sales order form alone, for a decision that
+            # is the same every time.
+            searchable = True
+        else:
+            # Static choices are already in memory, so counting them is free.
+            searchable = len(field.choices) > COMBOBOX_THRESHOLD
+
+        if name in self.autocomplete_fields or searchable or kind:
             attrs.setdefault("data-combobox", "")
             attrs.setdefault(
                 "data-combobox-placeholder",

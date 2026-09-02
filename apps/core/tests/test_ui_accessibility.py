@@ -482,3 +482,75 @@ class CompiledStylesheetTests(SimpleTestCase):
             pathlib.Path(__file__).resolve().parents[3] / "tailwind.config.js"
         ).read_text()
         self.assertIn("static/js", config)
+
+
+class DropdownLayoutTests(SimpleTestCase):
+    """
+    Rules the suggestion list depends on, each of which had already broken it.
+
+    A card that clips its own overflow cut the list off after three results; a
+    display utility silently beat the `hidden` attribute so the wizard's Back
+    and Save buttons showed on every step.
+    """
+
+    def css(self):
+        import pathlib
+
+        return (
+            pathlib.Path(__file__).resolve().parents[3] / "static" / "css" / "app.css"
+        ).read_text()
+
+    def test_hidden_attribute_beats_a_display_utility(self):
+        """
+        `.btn` sets inline-flex, which outranks the user-agent rule for
+        [hidden]. Without this, `el.hidden = true` does nothing to a button.
+        """
+        self.assertIn("[hidden]{display:none!important}", self.css())
+
+    def test_a_form_section_does_not_clip_its_own_dropdown(self):
+        import re
+
+        section = re.search(r"\.form-section\{([^}]*)\}", self.css())
+        self.assertIsNotNone(section, ".form-section missing from the stylesheet")
+        self.assertNotIn("overflow:hidden", section.group(1))
+
+
+class MoneyFieldDetectionTests(SimpleTestCase):
+    """
+    Only an amount is money.
+
+    MONEY, QTY and PCT are all four decimal places in this schema, so counting
+    decimals classified an exchange rate and a discount percentage as money —
+    both were shown grouped with a currency symbol beside the box.
+    """
+
+    def rule(self, form, name):
+        return form.fields[name].widget.attrs.get("data-rule")
+
+    def test_amounts_are_money(self):
+        from apps.payments.forms import PaymentForm
+        from apps.sales.forms import SalesOrderLineForm
+
+        self.assertEqual(self.rule(PaymentForm(), "amount_txn"), "money")
+        self.assertEqual(self.rule(SalesOrderLineForm(), "unit_price"), "money")
+
+    def test_a_rate_is_not_money(self):
+        from apps.sales.forms import SalesOrderForm
+
+        self.assertEqual(self.rule(SalesOrderForm(), "exchange_rate"), "decimal")
+
+    def test_a_percentage_is_not_money(self):
+        from apps.sales.forms import SalesOrderLineForm
+
+        self.assertEqual(self.rule(SalesOrderLineForm(), "discount_percent"), "decimal")
+
+    def test_a_quantity_is_not_money(self):
+        from apps.sales.forms import SalesOrderLineForm
+
+        self.assertEqual(self.rule(SalesOrderLineForm(), "quantity"), "decimal")
+
+    def test_a_discount_that_may_be_a_percentage_is_not_money(self):
+        """Its unit depends on document_discount_kind, so no currency is shown."""
+        from apps.sales.forms import SalesOrderForm
+
+        self.assertEqual(self.rule(SalesOrderForm(), "document_discount_value"), "decimal")

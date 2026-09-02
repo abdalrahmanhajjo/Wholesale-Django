@@ -297,54 +297,31 @@ class ComposedFieldNameTests(SimpleTestCase):
         self.assertIn('data-max="5"', self.render(data_max=5))
 
 
-class FloatingLabelTests(SimpleTestCase):
+class LabelPlacementTests(SimpleTestCase):
     """
-    The pattern suits text-like inputs only.
+    Labels sit above their field, never inside it.
 
-    A date input draws its own placeholder and a picker button, a select always
-    shows a value, and a checkbox has no interior — a label floating over any of
-    them collides with what the browser paints.
+    A floating label and a placeholder compete for the same pixels, and these
+    forms need the placeholder: it carries the expected format. On a textarea
+    the two printed over each other and neither could be read.
     """
 
-    def fields(self):
+    def field(self):
         from django import forms as f
 
         class Demo(f.Form):
             name = f.CharField(label="Name")
-            notes = f.CharField(label="Notes", widget=f.Textarea)
-            when = f.DateField(label="When", widget=f.DateInput(attrs={"type": "date"}))
-            kind = f.ChoiceField(label="Kind", choices=[("a", "A")])
-            active = f.BooleanField(label="Active", required=False)
 
-        return Demo()
+        return Demo()["name"]
 
-    def floatable(self, name):
-        from apps.core.templatetags.ui import is_floatable
+    def test_the_partial_does_not_float_labels(self):
+        html = render_to_string("core/_form_field.html", {"field": self.field()})
+        self.assertNotIn("is-floating", html)
 
-        return is_floatable(self.fields()[name])
-
-    def test_text_and_textarea_float(self):
-        self.assertTrue(self.floatable("name"))
-        self.assertTrue(self.floatable("notes"))
-
-    def test_date_select_and_checkbox_do_not(self):
-        self.assertFalse(self.floatable("when"))
-        self.assertFalse(self.floatable("kind"))
-        self.assertFalse(self.floatable("active"))
-
-    def test_the_partial_only_floats_where_it_fits(self):
-        form = self.fields()
-        self.assertIn(
-            "is-floating", render_to_string("core/_form_field.html", {"field": form["name"]})
-        )
-        self.assertNotIn(
-            "is-floating", render_to_string("core/_form_field.html", {"field": form["when"]})
-        )
-
-    def test_the_label_stays_a_real_label_for_the_control(self):
-        """The motion is presentation; the association must not change."""
-        html = render_to_string("core/_form_field.html", {"field": self.fields()["name"]})
+    def test_the_label_names_its_control(self):
+        html = render_to_string("core/_form_field.html", {"field": self.field()})
         self.assertIn('for="id_name"', html)
+        self.assertIn("Name", html)
 
 
 class SuggestAndCheckAttributeTests(SimpleTestCase):
@@ -443,9 +420,6 @@ class CompiledStylesheetTests(SimpleTestCase):
         "field-live-warning",
         "field-live-ok",
         "field-live-info",
-        "is-floating",
-        "is-filled",
-        "is-focused",
         "is-prefilled",
         "field-adornment",
         "field-with-adornment",

@@ -43,9 +43,8 @@ module-specific empty message.
 <div class="card">
 
   {# ------------------------------------------------------------ toolbar #}
-  <form method="get" class="flex flex-wrap items-end gap-3 border-b border-line p-4 sm:p-5"
-        role="search" aria-label="Filter {{ record_label_plural }}">
-    <div class="min-w-[220px] flex-1">
+  <form method="get" class="toolbar" role="search" aria-label="Filter {{ record_label_plural }}">
+    <div class="toolbar-field">
       <label for="q" class="label">Search</label>
       <input type="search" name="q" id="q" value="{{ search_term }}"
              class="field" aria-describedby="q-help"
@@ -55,7 +54,7 @@ module-specific empty message.
 
     {% for f in filters %}
       {% if f.kind == "choice" %}
-        <div>
+        <div class="toolbar-field">
           <label for="f-{{ f.name }}" class="label">{{ f.label }}</label>
           <select name="{{ f.name }}" id="f-{{ f.name }}" class="field pr-8">
             <option value="">{{ f.blank_label }}</option>
@@ -66,7 +65,7 @@ module-specific empty message.
         </div>
       {% else %}
         {# A date range is two controls answering one question, so it is a group. #}
-        <fieldset>
+        <fieldset class="toolbar-field">
           <legend class="label">{{ f.label }}</legend>
           <div class="flex items-center gap-2">
             <input type="date" name="{{ f.name }}_from" value="{{ f.value_from }}"
@@ -81,10 +80,12 @@ module-specific empty message.
 
     {% if current_sort %}<input type="hidden" name="sort" value="{{ current_sort }}">{% endif %}
 
-    <button type="submit" class="btn-primary">Apply filters</button>
-    {% if active_filters %}
-      <a href="{{ request.path }}" class="btn-ghost">Clear filters</a>
-    {% endif %}
+    <div class="toolbar-actions">
+      <button type="submit" class="btn-primary">Apply filters</button>
+      {% if active_filters %}
+        <a href="{{ request.path }}" class="btn-ghost">Clear filters</a>
+      {% endif %}
+    </div>
   </form>
 
   {% comment %}

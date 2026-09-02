@@ -36,7 +36,7 @@ CHECKBOX_CLASS = (
 )
 TEXTAREA_CLASS = (
     "block w-full rounded-xl2 border border-input-line bg-white px-3 py-2 "
-    "text-sm text-ink placeholder:text-muted-fg focus:border-ink"
+    "text-sm leading-6 text-ink placeholder:text-muted-fg focus:border-ink"
 )
 
 #: Autofill hints keyed by the field names this domain actually uses. Getting

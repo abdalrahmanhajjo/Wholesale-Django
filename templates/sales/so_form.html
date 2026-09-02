@@ -15,7 +15,7 @@ are sections of one form shown and hidden, never separate requests: nothing is
 saved until the whole order is complete, and with JavaScript off all three are
 simply visible.
 {% endcomment %}
-<form method="post" novalidate class="form-shell max-w-5xl" data-steps
+<form method="post" novalidate class="form-shell max-w-6xl" data-steps
       data-draft-key="sales-order-{{ object.pk|default:'new' }}">
   {% csrf_token %}
 
@@ -46,7 +46,7 @@ simply visible.
   </div>
 
   {# ---- Step 2 ---- #}
-  <div data-step="Lines">
+  <div data-step="Lines" class="w-full">
   <section class="form-section" aria-labelledby="sec-lines">
     <div class="form-section-head">
       <div>

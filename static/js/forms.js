@@ -281,7 +281,6 @@
     if (field.hasAttribute("aria-invalid")) field.dataset.serverError = "yes";
 
     var wrap = field.closest(".field-wrap");
-    if (wrap && (field.value || "").trim()) wrap.classList.add("is-filled");
 
     var run = debounce(function () {
       // Judging a half-typed email is how live validation earns its bad name,
@@ -298,21 +297,15 @@
         field.dataset.serverError = "no";
         field.removeAttribute("aria-invalid");
       }
-      if (wrap) wrap.classList.toggle("is-filled", !!(field.value || "").trim());
       run();
     });
 
     field.addEventListener("focus", function () {
-      if (wrap) wrap.classList.add("is-focused");
       unformatMoney(field);
     });
 
     field.addEventListener("blur", function () {
       field.dataset.touched = "yes";
-      if (wrap) {
-        wrap.classList.remove("is-focused");
-        wrap.classList.toggle("is-filled", !!(field.value || "").trim());
-      }
       formatMoney(field);
       check(field);
     });
@@ -443,8 +436,6 @@
     function sync() {
       var chosen = select.options[select.selectedIndex];
       input.value = chosen && chosen.value ? textOf(chosen) : "";
-      var w = input.closest(".field-wrap");
-      if (w) w.classList.toggle("is-filled", !!input.value);
     }
 
     function close() {
@@ -598,7 +589,7 @@
           target.dispatchEvent(new Event("change", { bubbles: true }));
           var w = target.closest(".field-wrap");
           if (w) {
-            w.classList.add("is-prefilled", "is-filled");
+            w.classList.add("is-prefilled");
             setTimeout(function () { w.classList.remove("is-prefilled"); }, 1400);
           }
           filled.push(labelOf(target));

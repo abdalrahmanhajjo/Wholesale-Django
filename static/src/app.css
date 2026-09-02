@@ -365,6 +365,8 @@
   .field:disabled, .field[readonly] {
     @apply cursor-not-allowed border-line bg-muted-bg text-muted-fg;
   }
+  /* A read-only field still submits its value, which is why it is used instead
+     of disabled wherever the server requires the field. */
 
   .field-live-warning { @apply font-medium text-amber-900; }
   .field-live-info { @apply text-muted-fg; }
@@ -468,7 +470,15 @@
     /* Narrower than the twelve-column version needed, so it fits more screens
        before the region has to scroll. */
     .lines-stack { min-width: 58rem; }
-    .lines-stack .line-sub-label { @apply sr-only; }
+    /* The column header names the first control in a cell, so its label is
+       hidden — but nothing names the second one. "0" sitting under a unit price
+       could be anything; it is the discount. The secondary label stays
+       visible, small and muted. */
+    .lines-stack .line-sub .line-sub-label { @apply sr-only; }
+    .lines-stack .line-sub-secondary .line-sub-label {
+      @apply not-sr-only mb-0.5 block text-[10px] font-semibold uppercase
+             tracking-[0.06em] text-muted-fg;
+    }
     .lines-stack td .field { @apply w-full min-w-0 px-2 text-[13px]; }
 
     .lines-stack .line-cell-number { width: 3.5rem; }
@@ -509,6 +519,28 @@
   /* The buttons align with the inputs, not with the labels above them. */
   .toolbar-actions { @apply flex flex-wrap items-center gap-2 sm:pt-[1.6rem]; }
   .toolbar .help { @apply mt-1; }
+
+
+  /* ================================================= grouped sections === */
+  /*
+   * Several related groups inside one card, instead of a card each.
+   *
+   * Step 3 of the sales order held addresses, the document discount and notes
+   * in three separate cards — six fields spread over three panels, each with
+   * its own border and heading, while steps 1 and 2 are a single card apiece.
+   * A rule between groups separates them just as well as a gap between cards
+   * and costs a fraction of the height.
+   */
+  .form-group { @apply px-5 py-5 sm:px-6; }
+  .form-group + .form-group { @apply border-t border-line; }
+  .form-group-title { @apply text-sm font-bold text-ink; }
+  .form-group-hint { @apply mt-0.5 text-sm text-muted-fg; }
+  .form-group-body { @apply mt-4 grid gap-x-5 gap-y-4 sm:grid-cols-2; }
+  .form-group-body-3 { @apply mt-4 grid gap-x-5 gap-y-4 sm:grid-cols-2 lg:grid-cols-3; }
+
+  /* A control that cannot apply yet says so rather than sitting there enabled
+     and inert. */
+  .field:disabled + .field-note, .field-note { @apply mt-1 text-[13px] text-muted-fg; }
 
   /* Ink is invisible against the navy sidebar and the navy panels. */
   .on-dark { --focus-ring: #ffffff; --focus-ring-offset: #071a2f; }

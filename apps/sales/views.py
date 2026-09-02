@@ -25,6 +25,7 @@ from django.views.generic import (
 )
 
 from apps.core import audit
+from apps.core.context import company
 from apps.core.list_views import ChoiceFilter, Column, DateRangeFilter, FilteredListView
 from apps.core.mixins import ActionPermissionMixin, BackLinkMixin, ConfirmationRequiredMixin
 from apps.core.models import (
@@ -173,6 +174,20 @@ class SalesOrderCreateView(BackLinkMixin, ActionPermissionMixin, CreateView):
     template_name = "sales/so_form.html"
     required_permission = "sales.add_salesorder"
     extra_context = {"page_title": "New sales order"}
+
+    def get_initial(self):
+        """
+        Start on the company's base currency.
+
+        It is the answer on almost every order and the system already knows it;
+        leaving the field empty only produces a "this field is required" on
+        submit for a value nobody had to think about. Set here rather than on
+        the form so constructing a form still touches no database — and the
+        company row is already cached for the page shell.
+        """
+        initial = super().get_initial()
+        initial.setdefault("currency", company(self.request).get("base_currency") or "")
+        return initial
 
     def get_formset(self):
         return SalesOrderLineFormSet(

@@ -30,7 +30,7 @@ status actions and audit history.
       <div class="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p class="eyebrow">Sales order</p>
-          <h1 class="display mt-1 text-2xl">{{ order.customer }}</h1>
+          <h2 class="display mt-1 text-2xl">{{ order.customer }}</h2>
           <p class="font-mono text-xs text-muted-fg">{{ order.number }}</p>
         </div>
         <div class="flex gap-2">
@@ -182,9 +182,11 @@ status actions and audit history.
       </div>
 
       {% if order.status == "DRAFT" and perms.sales.change_salesorder %}
-        <form method="post" action="{% url 'sales:so_submit' order.pk %}" class="mt-4">
+        <form method="post" data-guard-unsaved="off"
+              data-confirm="Submit {{ order.number }} for approval? It becomes read-only until it is approved or rejected."
+              action="{% url 'sales:so_submit' order.pk %}" class="mt-4">
           {% csrf_token %}
-          <button type="submit" class="btn-accent w-full">Submit for approval</button>
+          <button type="submit" data-busy-label="Submitting…" class="btn-accent w-full">Submit for approval</button>
         </form>
       {% endif %}
 
@@ -195,30 +197,36 @@ status actions and audit history.
             <p class="mt-0.5 text-sm text-danger/80">{{ order.approval_reason }}</p>
           {% endif %}
         </div>
-        <form method="post" action="{% url 'sales:so_submit' order.pk %}" class="mt-3">
+        <form method="post" data-guard-unsaved="off"
+              data-confirm="Resubmit {{ order.number }} for approval?"
+              action="{% url 'sales:so_submit' order.pk %}" class="mt-3">
           {% csrf_token %}
           <button type="submit" class="btn-accent w-full">Edit fixes done — resubmit for approval</button>
         </form>
       {% endif %}
 
       {% if order.status == "SUBMITTED" and perms.core.approve_sales_order %}
-        <form method="post" action="{% url 'sales:so_approve' order.pk %}" class="mt-4 space-y-3">
+        <form method="post" data-guard-unsaved="off"
+              data-confirm="Approve {{ order.number }}? This releases it for delivery."
+              action="{% url 'sales:so_approve' order.pk %}" class="mt-4 space-y-3">
           {% csrf_token %}
           <input type="hidden" name="confirm" value="yes">
           <label for="approval-reason" class="sr-only">Reason for approval</label>
           <input type="text" id="approval-reason" name="reason"
                  placeholder="Reason for approval (required)"
                  class="field" required>
-          <button type="submit" class="btn-accent w-full">Approve</button>
+          <button type="submit" data-busy-label="Approving…" class="btn-accent w-full">Approve</button>
         </form>
-        <form method="post" action="{% url 'sales:so_reject' order.pk %}" class="mt-3 space-y-3">
+        <form method="post" data-guard-unsaved="off"
+              data-confirm="Reject {{ order.number }}? The reason you entered is recorded in the audit trail."
+              action="{% url 'sales:so_reject' order.pk %}" class="mt-3 space-y-3">
           {% csrf_token %}
           <input type="hidden" name="confirm" value="yes">
           <label for="rejection-reason" class="sr-only">Reason for rejection</label>
           <input type="text" id="rejection-reason" name="reason"
                  placeholder="Reason for rejection (required)"
                  class="field" required>
-          <button type="submit" class="btn-danger w-full">Reject</button>
+          <button type="submit" data-busy-label="Rejecting…" class="btn-danger w-full">Reject</button>
         </form>
       {% endif %}
 

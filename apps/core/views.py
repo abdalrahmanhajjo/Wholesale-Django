@@ -26,7 +26,7 @@ from apps.core.list_views import (
     DateRangeFilter,
     FilteredListView,
 )
-from apps.core.mixins import ActionPermissionMixin, AuditedFormMixin
+from apps.core.mixins import ActionPermissionMixin, AuditedFormMixin, BackLinkMixin
 from apps.core.models import (
     Company,
     Currency,
@@ -141,7 +141,9 @@ class CurrencyListView(FilteredListView):
         ]
 
 
-class CurrencyCreateView(AuditedFormMixin, ActionPermissionMixin, CreateView):
+class CurrencyCreateView(BackLinkMixin, AuditedFormMixin, ActionPermissionMixin, CreateView):
+    back_url_name = "core:currency_list"
+    back_label = "Back to currencies"
     model = Currency
     form_class = CurrencyForm
     template_name = "core/currency_form.html"
@@ -150,7 +152,9 @@ class CurrencyCreateView(AuditedFormMixin, ActionPermissionMixin, CreateView):
     extra_context = {"page_title": "New currency"}
 
 
-class CurrencyUpdateView(AuditedFormMixin, ActionPermissionMixin, UpdateView):
+class CurrencyUpdateView(BackLinkMixin, AuditedFormMixin, ActionPermissionMixin, UpdateView):
+    back_url_name = "core:currency_list"
+    back_label = "Back to currencies"
     model = Currency
     form_class = CurrencyForm
     template_name = "core/currency_form.html"
@@ -209,7 +213,9 @@ class TaxCodeListView(FilteredListView):
         ]
 
 
-class TaxCodeCreateView(AuditedFormMixin, ActionPermissionMixin, CreateView):
+class TaxCodeCreateView(BackLinkMixin, AuditedFormMixin, ActionPermissionMixin, CreateView):
+    back_url_name = "core:taxcode_list"
+    back_label = "Back to tax codes"
     model = TaxCode
     form_class = TaxCodeForm
     template_name = "core/taxcode_form.html"
@@ -218,7 +224,9 @@ class TaxCodeCreateView(AuditedFormMixin, ActionPermissionMixin, CreateView):
     extra_context = {"page_title": "New tax code"}
 
 
-class TaxCodeUpdateView(AuditedFormMixin, ActionPermissionMixin, UpdateView):
+class TaxCodeUpdateView(BackLinkMixin, AuditedFormMixin, ActionPermissionMixin, UpdateView):
+    back_url_name = "core:taxcode_list"
+    back_label = "Back to tax codes"
     model = TaxCode
     form_class = TaxCodeForm
     template_name = "core/taxcode_form.html"
@@ -267,7 +275,11 @@ class PaymentTermListView(FilteredListView):
         return [("Payment terms", totals["total"]), ("Active", totals["active"])]
 
 
-class PaymentTermCreateView(AuditedFormMixin, ActionPermissionMixin, CreateView):
+class PaymentTermCreateView(
+    BackLinkMixin, AuditedFormMixin, ActionPermissionMixin, CreateView
+):
+    back_url_name = "core:paymentterm_list"
+    back_label = "Back to payment terms"
     model = PaymentTerm
     form_class = PaymentTermForm
     template_name = "core/settings_form.html"
@@ -275,17 +287,19 @@ class PaymentTermCreateView(AuditedFormMixin, ActionPermissionMixin, CreateView)
     success_url = reverse_lazy("core:paymentterm_list")
     extra_context = {
         "page_title": "New payment term",
-        "cancel_url": "/settings/payment-terms/",
     }
 
 
-class PaymentTermUpdateView(AuditedFormMixin, ActionPermissionMixin, UpdateView):
+class PaymentTermUpdateView(
+    BackLinkMixin, AuditedFormMixin, ActionPermissionMixin, UpdateView
+):
+    back_url_name = "core:paymentterm_list"
+    back_label = "Back to payment terms"
     model = PaymentTerm
     form_class = PaymentTermForm
     template_name = "core/settings_form.html"
     required_permission = MANAGE_CONFIGURATION
     success_url = reverse_lazy("core:paymentterm_list")
-    extra_context = {"cancel_url": "/settings/payment-terms/"}
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
@@ -296,11 +310,14 @@ class PaymentTermUpdateView(AuditedFormMixin, ActionPermissionMixin, UpdateView)
 # ---------------------------------------------------------------------------
 # Company settings (CFG-001, CFG-010)
 # ---------------------------------------------------------------------------
-class CompanySettingsView(AuditedFormMixin, ActionPermissionMixin, UpdateView):
+class CompanySettingsView(BackLinkMixin, AuditedFormMixin, ActionPermissionMixin, UpdateView):
     """
     A singleton screen: one row, edited in place. There is no list and no
     create — the company is seeded, and BRD 3.1 allows exactly one.
     """
+
+    back_url_name = "dashboard"
+    back_label = "Back to dashboard"
 
     model = Company
     form_class = CompanyForm
@@ -309,7 +326,6 @@ class CompanySettingsView(AuditedFormMixin, ActionPermissionMixin, UpdateView):
     success_url = reverse_lazy("core:company_settings")
     extra_context = {
         "page_title": "Company settings",
-        "cancel_url": "/",
         "form_hint": "These values appear on every document and drive system-wide policy.",
     }
 
@@ -362,7 +378,11 @@ class DocumentSequenceListView(FilteredListView):
         return [("Series", totals["total"]), ("Active", totals["active"])]
 
 
-class DocumentSequenceCreateView(AuditedFormMixin, ActionPermissionMixin, CreateView):
+class DocumentSequenceCreateView(
+    BackLinkMixin, AuditedFormMixin, ActionPermissionMixin, CreateView
+):
+    back_url_name = "core:sequence_list"
+    back_label = "Back to number series"
     model = DocumentSequence
     form_class = DocumentSequenceForm
     template_name = "core/settings_form.html"
@@ -370,17 +390,19 @@ class DocumentSequenceCreateView(AuditedFormMixin, ActionPermissionMixin, Create
     success_url = reverse_lazy("core:sequence_list")
     extra_context = {
         "page_title": "New number series",
-        "cancel_url": "/settings/number-series/",
     }
 
 
-class DocumentSequenceUpdateView(AuditedFormMixin, ActionPermissionMixin, UpdateView):
+class DocumentSequenceUpdateView(
+    BackLinkMixin, AuditedFormMixin, ActionPermissionMixin, UpdateView
+):
+    back_url_name = "core:sequence_list"
+    back_label = "Back to number series"
     model = DocumentSequence
     form_class = DocumentSequenceForm
     template_name = "core/settings_form.html"
     required_permission = MANAGE_CONFIGURATION
     success_url = reverse_lazy("core:sequence_list")
-    extra_context = {"cancel_url": "/settings/number-series/"}
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)

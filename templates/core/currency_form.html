@@ -24,7 +24,7 @@
   </div>
 
   <div class="mt-5 flex items-center gap-2">
-    <button type="submit" class="btn-primary">{% if object %}Save changes{% else %}Create currency{% endif %}</button>
+    <button type="submit" class="btn-primary" data-busy-label="Saving currency…">{% if object %}Save changes{% else %}Create currency{% endif %}</button>
     <a href="{% url 'core:currency_list' %}" class="btn-ghost">Cancel</a>
   </div>
 </form>

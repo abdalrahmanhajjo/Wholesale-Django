@@ -13,11 +13,17 @@ module-specific empty message.
 
 {% block actions %}
   {% if can_export %}
-    <a href="?{{ querystring }}{% if querystring %}&{% endif %}export=csv" class="btn-ghost">Export CSV</a>
+    <a href="?{{ querystring }}{% if querystring %}&{% endif %}export=csv" class="btn-ghost">
+      <svg class="icon" aria-hidden="true"><use href="#i-download"></use></svg>
+      <span>Export CSV</span>
+    </a>
   {% endif %}
   {% block list_actions %}{% endblock %}
   {% if create_url_name and can_create %}
-    <a href="{% url create_url_name %}" class="btn-primary">{{ create_label }}</a>
+    <a href="{% url create_url_name %}" class="btn-primary">
+      <svg class="icon" aria-hidden="true"><use href="#i-plus"></use></svg>
+      <span>{{ create_label }}</span>
+    </a>
   {% endif %}
 {% endblock %}
 
@@ -42,7 +48,8 @@ module-specific empty message.
     <div class="min-w-[220px] flex-1">
       <label for="q" class="label">Search</label>
       <input type="search" name="q" id="q" value="{{ search_term }}"
-             class="field" aria-describedby="q-help">
+             class="field" aria-describedby="q-help"
+             placeholder="Name, code or reference">
       <p class="help" id="q-help">Matches name, code and reference.</p>
     </div>
 
@@ -101,7 +108,7 @@ module-specific empty message.
   (WCAG 2.1.1).
   {% endcomment %}
   <div class="scroll-region" tabindex="0" role="region" aria-label="{{ page_title }} table">
-    <table class="w-full text-sm">
+    <table class="table-stack w-full text-sm">
       <caption class="sr-only">
         {{ page_title }}. {{ total_count }} record{{ total_count|pluralize }}{% if is_paginated %}, showing {{ page_obj.start_index }} to {{ page_obj.end_index }}{% endif %}.
       </caption>
@@ -143,7 +150,8 @@ module-specific empty message.
         {% for row in rows %}
           <tr class="border-b border-line last:border-0 hover:bg-muted-bg/60">
             {% for cell in row.cells %}
-              <td class="px-4 py-3 text-{{ cell.column.align }} {{ cell.column.css }}
+              <td data-label="{{ cell.column.label }}"
+                  class="px-4 py-3 text-{{ cell.column.align }} {{ cell.column.css }}
                          {% if cell.column.money %}tabular-nums font-medium{% endif %}">
                 {% if cell.column.link %}
                   <a href="{{ row.object.get_absolute_url }}" class="font-semibold text-ink underline decoration-line underline-offset-2 hover:text-brand-deep hover:decoration-brand-deep">{{ cell.display }}</a>
@@ -153,7 +161,7 @@ module-specific empty message.
               </td>
             {% endfor %}
             {% if not has_linked_column %}
-              <td class="px-4 py-3 text-right">
+              <td data-label="" class="px-4 py-3 text-right">
                 {% if row.object.get_absolute_url %}
                   {# "View" alone repeats once per row in a screen reader's link
                      list, so the record name rides along invisibly. #}

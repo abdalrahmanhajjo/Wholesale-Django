@@ -33,6 +33,7 @@ from django.contrib.auth.mixins import AccessMixin, LoginRequiredMixin
 from django.core.exceptions import PermissionDenied
 from django.db import transaction
 from django.shortcuts import redirect
+from django.urls import reverse
 
 from apps.core import audit
 
@@ -225,4 +226,40 @@ class AuditedFormMixin:
             if hasattr(form, "duplicate_warnings") and form.is_bound and form.is_valid()
             else []
         )
+        return ctx
+
+
+class BackLinkMixin:
+    """
+    Supplies the return arrow that base.html renders above the page heading.
+
+    Declared rather than hand-written per template, so a screen with no obvious
+    way back is a missing attribute rather than something nobody noticed. Two
+    forms:
+
+        back_url_name = "parties:customer_list"   # a named route
+        back_to_object = True                     # the record being edited
+
+    `back_label` names the destination. "Back" on its own is useless to anyone
+    reading a list of links out of context, so it is always a real place.
+    """
+
+    back_url_name = None
+    back_to_object = False
+    back_label = "Back"
+
+    def get_back_url(self):
+        if self.back_to_object:
+            obj = getattr(self, "object", None)
+            if obj is not None and hasattr(obj, "get_absolute_url"):
+                return obj.get_absolute_url()
+        if self.back_url_name:
+            return reverse(self.back_url_name)
+        return None
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        # setdefault, so a view with a more specific answer keeps it.
+        ctx.setdefault("back_url", self.get_back_url())
+        ctx.setdefault("back_label", self.back_label)
         return ctx

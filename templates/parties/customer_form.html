@@ -78,7 +78,7 @@ Used for both customers and vendors — `party_kind` switches the copy.
   </div>
 
   <div class="mt-5 flex items-center gap-2">
-    <button type="submit" class="btn-primary">{% if object %}Save changes{% elif party_kind == 'vendor' %}Create vendor{% else %}Create customer{% endif %}</button>
+    <button type="submit" class="btn-primary" data-busy-label="Saving…">{% if object %}Save changes{% elif party_kind == 'vendor' %}Create vendor{% else %}Create customer{% endif %}</button>
     <a href="{% if object %}{{ object.get_absolute_url }}{% elif party_kind == 'vendor' %}{% url 'parties:vendor_list' %}{% else %}{% url 'parties:customer_list' %}{% endif %}"
        class="btn-ghost">Cancel</a>
   </div>

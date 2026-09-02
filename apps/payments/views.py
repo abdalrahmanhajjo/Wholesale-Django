@@ -9,7 +9,7 @@ from django.views.generic import CreateView, DetailView, UpdateView
 
 from apps.core import audit
 from apps.core.list_views import ChoiceFilter, Column, DateRangeFilter, FilteredListView
-from apps.core.mixins import ActionPermissionMixin
+from apps.core.mixins import ActionPermissionMixin, BackLinkMixin
 from apps.core.models import AuditEvent, DocumentStatus
 from apps.core.permissions import EXPORT_DATA
 from apps.payments import services
@@ -78,7 +78,9 @@ class PaymentListView(FilteredListView):
         ]
 
 
-class PaymentCreateView(ActionPermissionMixin, CreateView):
+class PaymentCreateView(BackLinkMixin, ActionPermissionMixin, CreateView):
+    back_url_name = "payments:payment_list"
+    back_label = "Back to the payment register"
     model = Payment
     form_class = PaymentForm
     template_name = "payments/payment_form.html"
@@ -102,7 +104,9 @@ class PaymentCreateView(ActionPermissionMixin, CreateView):
         return redirect(self.object)
 
 
-class PaymentUpdateView(ActionPermissionMixin, UpdateView):
+class PaymentUpdateView(BackLinkMixin, ActionPermissionMixin, UpdateView):
+    back_to_object = True
+    back_label = "Back to this payment"
     model = Payment
     form_class = PaymentForm
     template_name = "payments/payment_form.html"
@@ -133,7 +137,9 @@ class PaymentUpdateView(ActionPermissionMixin, UpdateView):
         return redirect(self.object)
 
 
-class PaymentDetailView(ActionPermissionMixin, DetailView):
+class PaymentDetailView(BackLinkMixin, ActionPermissionMixin, DetailView):
+    back_url_name = "payments:payment_list"
+    back_label = "Back to the payment register"
     model = Payment
     template_name = "payments/payment_detail.html"
     context_object_name = "payment"

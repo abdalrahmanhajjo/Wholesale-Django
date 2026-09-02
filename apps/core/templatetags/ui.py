@@ -8,6 +8,8 @@ only known once the form is bound. Rendering through this tag keeps the visible
 state and the programmatic state from ever disagreeing.
 """
 
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
+
 from django import template
 
 register = template.Library()
@@ -75,3 +77,43 @@ def error_count(form, *formsets):
         for inline in formset.forms:
             total += sum(len(errors) for errors in inline.errors.values())
     return total
+
+
+@register.filter
+def money(value, currency=""):
+    """
+    Format an amount the way a ledger prints it.
+
+    `{{ payment.amount_txn|money:payment.currency_id }}` → ``USD 1,234,567.00``
+
+    Grouping is not decoration. Without it, 1234567.00 and 123456.00 are
+    distinguished by counting characters, which is exactly the mistake an
+    accounting screen should not invite. Two decimal places always, so a column
+    of figures aligns on the point.
+    """
+    if value is None or value == "":
+        return "—"
+    try:
+        amount = Decimal(str(value))
+    except (InvalidOperation, TypeError, ValueError):
+        return value
+    quantised = amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    formatted = f"{quantised:,.2f}"
+    return f"{currency} {formatted}".strip() if currency else formatted
+
+
+@register.filter
+def quantity(value):
+    """A count or a weight: grouped, but without forcing money's two decimals."""
+    if value is None or value == "":
+        return "—"
+    try:
+        amount = Decimal(str(value))
+    except (InvalidOperation, TypeError, ValueError):
+        return value
+    normalised = amount.normalize()
+    # normalize() renders a whole number in exponent form — Decimal("1000")
+    # becomes 1E+3 — which formats as the literal "1E+3". Go through int.
+    if normalised == normalised.to_integral_value():
+        return f"{int(normalised):,}"
+    return f"{normalised:,f}"

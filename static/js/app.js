@@ -31,6 +31,74 @@
     target.scrollIntoView({ block: "center" });
   });
 
+
+  /* ------------------------------------------------------- messages ------*/
+  // A message that cannot be dismissed sits there through the next three
+  // things the user does. Errors stay until dismissed; confirmations retire
+  // on their own.
+  document.querySelectorAll("[data-dismissible]").forEach(function (alert) {
+    var close = document.createElement("button");
+    close.type = "button";
+    close.className = "alert-close";
+    close.setAttribute("aria-label", "Dismiss this message");
+    close.innerHTML = '<svg class="icon" aria-hidden="true"><use href="#i-close"></use></svg>';
+    close.addEventListener("click", function () { alert.remove(); });
+    alert.appendChild(close);
+
+    var after = Number(alert.dataset.autodismiss || 0);
+    if (!after) return;
+    var timer = setTimeout(function () { alert.remove(); }, after);
+    // Reading it, or tabbing into it, cancels the countdown.
+    ["mouseenter", "focusin"].forEach(function (name) {
+      alert.addEventListener(name, function () { clearTimeout(timer); });
+    });
+  });
+
+  /* ----------------------------------------------------- back links ------*/
+  // The link points at a real URL and works on its own. Only when the previous
+  // page genuinely was that URL is it turned into a history step, so the
+  // forward button keeps working and no duplicate entry is pushed.
+  document.querySelectorAll("a[data-back-to]").forEach(function (link) {
+    link.addEventListener("click", function (event) {
+      if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
+      if (!document.referrer) return;
+      try {
+        var from = new URL(document.referrer);
+        var to = new URL(link.href);
+        if (from.origin === to.origin && from.pathname === to.pathname && history.length > 1) {
+          event.preventDefault();
+          history.back();
+        }
+      } catch (err) { /* a malformed referrer just means the plain link runs */ }
+    });
+  });
+
+  /* -------------------------------------------------- nav progress -------*/
+  // Server-rendered navigation gives no feedback between click and paint. The
+  // bar only appears after 180ms, so quick pages never flash it.
+  var progress = document.getElementById("nav-progress");
+  if (progress) {
+    var pending = null;
+    document.addEventListener("click", function (event) {
+      var link = event.target.closest("a[href]");
+      if (!link || link.target || link.hasAttribute("download")) return;
+      if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
+      if (link.getAttribute("href").charAt(0) === "#") return;
+      try {
+        if (new URL(link.href).origin !== window.location.origin) return;
+      } catch (err) { return; }
+      pending = setTimeout(function () {
+        progress.hidden = false;
+        progress.classList.add("is-running");
+      }, 180);
+    });
+    window.addEventListener("pageshow", function () {
+      clearTimeout(pending);
+      progress.hidden = true;
+      progress.classList.remove("is-running");
+    });
+  }
+
   /* ------------------------------------------------------------ sidebar --*/
   var sidebar = document.getElementById("sidebar");
   var toggle = document.getElementById("sidebar-toggle");

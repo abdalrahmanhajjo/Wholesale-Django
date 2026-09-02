@@ -48,7 +48,7 @@
   </div>
 
   <div class="mt-5 flex items-center gap-2">
-    <button type="submit" class="btn-primary">
+    <button type="submit" class="btn-primary" data-busy-label="Saving payment…">
       {% if object %}Save changes{% else %}Create draft payment{% endif %}
     </button>
     <a href="{% if object %}{{ object.get_absolute_url }}{% else %}{% url 'payments:payment_list' %}{% endif %}" class="btn-ghost">Cancel</a>

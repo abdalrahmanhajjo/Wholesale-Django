@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load ui %}
 
 {% block header_title %}{{ payment.number }}{% endblock %}
 
@@ -16,7 +17,7 @@
       <div class="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p class="eyebrow">{{ payment.get_direction_display }}</p>
-          <h1 class="display mt-1 text-2xl">{{ payment.party }}</h1>
+          <h2 class="display mt-1 text-2xl">{{ payment.party }}</h2>
           <p class="font-mono text-xs text-muted-fg">{{ payment.number }}</p>
         </div>
         {% include "core/_status_badge.html" with value=payment.status display=payment.get_status_display %}
@@ -34,11 +35,11 @@
     <div class="card card-pad">
       <p class="eyebrow">Value</p>
       <dl class="mt-4 grid gap-4 sm:grid-cols-3">
-        <div><dt class="eyebrow">Transaction amount</dt><dd class="mt-1 text-xl font-semibold tabular-nums">{{ payment.currency_id }} {{ payment.amount_txn|floatformat:2 }}</dd></div>
+        <div><dt class="eyebrow">Transaction amount</dt><dd class="mt-1 text-xl font-semibold tabular-nums">{{ payment.amount_txn|money:payment.currency_id }}</dd></div>
         <div><dt class="eyebrow">Exchange rate</dt><dd class="mt-1 text-xl tabular-nums">{{ payment.exchange_rate }}</dd></div>
-        <div><dt class="eyebrow">Base amount</dt><dd class="mt-1 text-xl font-semibold tabular-nums">{{ payment.amount_base|floatformat:2 }}</dd></div>
-        <div><dt class="eyebrow">Allocated</dt><dd class="mt-1 text-sm tabular-nums">{{ payment.allocated_txn|floatformat:2 }}</dd></div>
-        <div><dt class="eyebrow">Unallocated advance</dt><dd class="mt-1 text-sm tabular-nums">{{ payment.unallocated_txn|floatformat:2 }}</dd></div>
+        <div><dt class="eyebrow">Base amount</dt><dd class="mt-1 text-xl font-semibold tabular-nums">{{ payment.amount_base|money:base_currency }}</dd></div>
+        <div><dt class="eyebrow">Allocated</dt><dd class="mt-1 text-sm tabular-nums">{{ payment.allocated_txn|money:payment.currency_id }}</dd></div>
+        <div><dt class="eyebrow">Unallocated advance</dt><dd class="mt-1 text-sm tabular-nums">{{ payment.unallocated_txn|money:payment.currency_id }}</dd></div>
       </dl>
       {% if payment.narration %}<div class="mt-5 border-t border-line pt-4"><p class="eyebrow">Narration</p><p class="mt-1 whitespace-pre-line text-sm">{{ payment.narration }}</p></div>{% endif %}
     </div>

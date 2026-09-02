@@ -12,12 +12,11 @@ it.
 
 import json
 
-from django.contrib.auth.models import Group
 from django.test import TestCase
 
-from apps.accounts.models import User
 from apps.core.permissions import OWNER_ADMIN
 from apps.core.suggest import build_registry
+from apps.core.tests.factories import make_user
 from apps.parties.models import Customer
 
 
@@ -28,9 +27,8 @@ def body(response):
 class SuggestPermissionTests(TestCase):
     @classmethod
     def setUpTestData(cls):
-        cls.admin = User.objects.create_user(username="sug-admin", password="testpass-12345")
-        cls.admin.groups.add(Group.objects.get(name=OWNER_ADMIN))
-        cls.nobody = User.objects.create_user(username="sug-nobody", password="testpass-12345")
+        cls.admin = make_user("sug-admin", OWNER_ADMIN)
+        cls.nobody = make_user("sug-nobody")
 
     def test_anonymous_is_sent_to_sign_in(self):
         response = self.client.get("/settings/suggest/customer/?q=a")
@@ -65,8 +63,7 @@ class SuggestPermissionTests(TestCase):
 class SuggestResultTests(TestCase):
     @classmethod
     def setUpTestData(cls):
-        cls.user = User.objects.create_user(username="sug-user", password="testpass-12345")
-        cls.user.groups.add(Group.objects.get(name=OWNER_ADMIN))
+        cls.user = make_user("sug-user", OWNER_ADMIN)
         cls.match = Customer.objects.create(
             code="SUG-1", name="Mohammad Trading", currency_id="USD"
         )
@@ -114,8 +111,7 @@ class SuggestResultTests(TestCase):
 class PrefillTests(TestCase):
     @classmethod
     def setUpTestData(cls):
-        cls.user = User.objects.create_user(username="pre-user", password="testpass-12345")
-        cls.user.groups.add(Group.objects.get(name=OWNER_ADMIN))
+        cls.user = make_user("pre-user", OWNER_ADMIN)
         cls.customer = Customer.objects.create(
             code="PRE-1", name="Prefill Co", currency_id="USD"
         )
@@ -145,7 +141,7 @@ class PrefillTests(TestCase):
         self.assertIn("Two invoices overdue", notices[0]["text"])
 
     def test_permission_is_enforced_on_prefill_as_well(self):
-        stranger = User.objects.create_user(username="pre-nobody", password="testpass-12345")
+        stranger = make_user("pre-nobody")
         self.client.force_login(stranger)
         response = self.client.get(f"/settings/suggest/customer/{self.customer.pk}/prefill/")
         self.assertEqual(response.status_code, 403)
@@ -154,8 +150,7 @@ class PrefillTests(TestCase):
 class BusinessCheckTests(TestCase):
     @classmethod
     def setUpTestData(cls):
-        cls.user = User.objects.create_user(username="chk-user", password="testpass-12345")
-        cls.user.groups.add(Group.objects.get(name=OWNER_ADMIN))
+        cls.user = make_user("chk-user", OWNER_ADMIN)
         cls.existing = Customer.objects.create(
             code="CHK-1", name="Existing Trading", currency_id="USD"
         )
@@ -196,9 +191,7 @@ class BusinessCheckTests(TestCase):
         self.assertEqual(self.client.get("/settings/check/?rule=made-up").status_code, 404)
 
     def test_a_check_still_requires_the_permission_to_see_the_data(self):
-        self.client.force_login(
-            User.objects.create_user(username="chk-nobody", password="x-12345")
-        )
+        self.client.force_login(make_user("chk-nobody"))
         self.assertEqual(
             self.client.get("/settings/check/?rule=customer-code&value=CHK-1").status_code, 403
         )

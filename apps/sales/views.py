@@ -7,20 +7,17 @@ Follows the parties/views.py worked example exactly:
   - ConfirmationRequiredMixin for approve/reject
 """
 
+from django import forms
 from django.contrib import messages
 from django.db import transaction
-from django.db.models import Q, Count, Sum
-from django import forms
-from django.forms import Form, IntegerField, ModelChoiceField
-from django.shortcuts import get_object_or_404, redirect
-from django.urls import reverse, reverse_lazy
-from django.utils import timezone
 from django.db.models import Count, Q, Sum
 from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse
+from django.utils import timezone
 from django.views.generic import (
     CreateView,
     DetailView,
+    TemplateView,
     UpdateView,
     View,
 )
@@ -28,18 +25,16 @@ from django.views.generic import (
 from apps.core import audit
 from apps.core.list_views import ChoiceFilter, Column, DateRangeFilter, FilteredListView
 from apps.core.mixins import ActionPermissionMixin, ConfirmationRequiredMixin
-from apps.core.models import AuditEvent, DocumentStatus, ZERO
-from apps.core.permissions import APPROVE_SALES_ORDER, EXPORT_DATA, POST_DELIVERY
-
-from apps.inventory.models import DeliveryNote, DeliveryNoteLine
-from apps.sales.forms import (
-    DeliveryLineFormSet, DeliveryNoteForm, SalesOrderForm, SalesOrderLineFormSet,
-)
-from apps.sales.models import SalesOrder, SalesOrderLine
 from apps.core.models import EDITABLE_STATES, AuditEvent, DocumentStatus
-from apps.core.permissions import APPROVE_SALES_ORDER, EXPORT_DATA
+from apps.core.permissions import APPROVE_SALES_ORDER, EXPORT_DATA, POST_DELIVERY
+from apps.inventory.models import DeliveryNote
 from apps.sales import services
-from apps.sales.forms import SalesOrderForm, SalesOrderLineFormSet
+from apps.sales.forms import (
+    DeliveryLineFormSet,
+    DeliveryNoteForm,
+    SalesOrderForm,
+    SalesOrderLineFormSet,
+)
 from apps.sales.models import SalesOrder
 
 
@@ -367,8 +362,12 @@ class DeliveryNoteListView(FilteredListView):
     ]
 
     search_fields = [
-        "number", "customer__name", "customer__code", "sales_order__number",
-        "carrier", "tracking_reference",
+        "number",
+        "customer__name",
+        "customer__code",
+        "sales_order__number",
+        "carrier",
+        "tracking_reference",
     ]
     trigram_search_fields = ["customer__name"]
 
@@ -378,11 +377,7 @@ class DeliveryNoteListView(FilteredListView):
     ]
 
     def get_queryset(self):
-        return (
-            super()
-            .get_queryset()
-            .select_related("customer", "warehouse", "sales_order")
-        )
+        return super().get_queryset().select_related("customer", "warehouse", "sales_order")
 
     def get_summary(self):
         agg = DeliveryNote.objects.aggregate(
@@ -410,8 +405,9 @@ class DeliveryOrderSelectForm(forms.Form):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["order"].queryset = (
-            SalesOrder.objects
-            .filter(status__in=[DocumentStatus.APPROVED, DocumentStatus.PARTIAL])
+            SalesOrder.objects.filter(
+                status__in=[DocumentStatus.APPROVED, DocumentStatus.PARTIAL]
+            )
             .select_related("customer", "warehouse")
             .order_by("-document_date")
         )
@@ -453,8 +449,7 @@ class DeliveryNoteCreateView(ActionPermissionMixin, TemplateView):
         formset = DeliveryLineFormSet(
             self.request.POST or None,
             initial=[
-                {"sales_order_line": ln.pk, "quantity": remaining}
-                for ln, remaining in rows
+                {"sales_order_line": ln.pk, "quantity": remaining} for ln, remaining in rows
             ],
             prefix="lines",
         )
@@ -539,9 +534,7 @@ class DeliveryNoteCreateView(ActionPermissionMixin, TemplateView):
                 notes=header.cleaned_data.get("notes", ""),
                 carrier=header.cleaned_data.get("carrier", ""),
                 tracking_reference=header.cleaned_data.get("tracking_reference", ""),
-                shipping_address_text=header.cleaned_data.get(
-                    "shipping_address_text", ""
-                ),
+                shipping_address_text=header.cleaned_data.get("shipping_address_text", ""),
             )
             services.post_delivery(note, request.user)
             messages.success(
@@ -566,15 +559,11 @@ class DeliveryNoteDetailView(ActionPermissionMixin, DetailView):
         ctx = super().get_context_data(**kwargs)
         ctx["page_title"] = self.object.number
         ctx["page_subtitle"] = f"Delivery for {self.object.customer}"
-        ctx["audit_events"] = (
-            AuditEvent.objects
-            .filter(
-                content_type__app_label="inventory",
-                content_type__model="deliverynote",
-                object_id=self.object.pk,
-            )
-            .select_related("user")[:20]
-        )
+        ctx["audit_events"] = AuditEvent.objects.filter(
+            content_type__app_label="inventory",
+            content_type__model="deliverynote",
+            object_id=self.object.pk,
+        ).select_related("user")[:20]
         return ctx
 
 

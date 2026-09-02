@@ -10,10 +10,9 @@ from django import forms
 from django.core.exceptions import ValidationError
 from django.forms import formset_factory, inlineformset_factory
 
-from apps.core.models import DocumentStatus
-from apps.inventory.models import DeliveryNote, DeliveryNoteLine
-from apps.sales.models import SalesOrder, SalesOrderLine, DiscountKind
-from apps.sales.services import recalculate_order, remaining_to_deliver
+from apps.inventory.models import DeliveryNote
+from apps.sales.models import DiscountKind, SalesOrder, SalesOrderLine
+from apps.sales.services import remaining_to_deliver
 
 
 class SalesOrderForm(forms.ModelForm):
@@ -158,12 +157,19 @@ class DeliveryNoteForm(forms.ModelForm):
     created as DRAFT and posted separately (warehouse double-check).
 
     """
+
     class Meta:
         model = DeliveryNote
         fields = [
-            "customer", "sales_order", "warehouse", "document_date",
-            "reference", "carrier", "tracking_reference",
-            "shipping_address_text", "notes",
+            "customer",
+            "sales_order",
+            "warehouse",
+            "document_date",
+            "reference",
+            "carrier",
+            "tracking_reference",
+            "shipping_address_text",
+            "notes",
         ]
         widgets = {
             "customer": forms.HiddenInput(),
@@ -172,7 +178,9 @@ class DeliveryNoteForm(forms.ModelForm):
             "shipping_address_text": forms.Textarea(attrs={"rows": 2}),
             "notes": forms.Textarea(attrs={"rows": 2}),
             "carrier": forms.TextInput(attrs={"placeholder": "Carrier (optional)"}),
-            "tracking_reference": forms.TextInput(attrs={"placeholder": "Tracking (optional)"}),
+            "tracking_reference": forms.TextInput(
+                attrs={"placeholder": "Tracking (optional)"}
+            ),
         }
 
     def __init__(self, *args, **kwargs):
@@ -192,8 +200,8 @@ class DeliveryNoteForm(forms.ModelForm):
                 )
             else:
                 widget.attrs.setdefault("class", "field")
-        self.fields["warehouse"].queryset = (
-            self.fields["warehouse"].queryset.filter(is_active=True)
+        self.fields["warehouse"].queryset = self.fields["warehouse"].queryset.filter(
+            is_active=True
         )
 
 

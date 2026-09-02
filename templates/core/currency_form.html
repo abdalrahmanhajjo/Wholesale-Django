@@ -4,27 +4,32 @@
 {% block header_title %}{{ page_title }}{% endblock %}
 
 {% block content %}
-<form method="post" novalidate class="max-w-2xl">
+<form method="post" novalidate class="form-shell max-w-2xl">
   {% csrf_token %}
 
   {% include "core/_form_errors.html" with form=form %}
+  <div data-notice-slot class="space-y-2 empty:hidden"></div>
 
-  <div class="card card-pad">
-    <h2 class="section-heading" id="cur-details">Currency</h2>
-    <div class="mt-4 grid gap-4 sm:grid-cols-2">
+  <section class="form-section" aria-labelledby="s-currency">
+    <div class="form-section-head">
+      <h2 class="form-section-title" id="s-currency">Currency</h2>
+      <p class="form-section-hint">The ISO code is fixed once created, because documents refer to it.</p>
+    </div>
+    <div class="form-section-body">
       {% include "core/_form_field.html" with field=form.code %}
       {% include "core/_form_field.html" with field=form.name %}
       {% include "core/_form_field.html" with field=form.symbol %}
       {% include "core/_form_field.html" with field=form.decimal_places %}
-    </div>
-    <div class="mt-4 grid gap-4 sm:grid-cols-2">
       {% include "core/_form_field.html" with field=form.is_base %}
       {% include "core/_form_field.html" with field=form.is_active %}
     </div>
-  </div>
+  </section>
 
-  <div class="mt-5 flex items-center gap-2">
-    <button type="submit" class="btn-primary" data-busy-label="Saving currency…">{% if object %}Save changes{% else %}Create currency{% endif %}</button>
+  <div class="form-actions">
+    <button type="submit" class="btn-primary"
+            data-busy-label="{% if object %}Saving changes…{% else %}Creating…{% endif %}">
+      {% if object %}Save changes{% else %}Create currency{% endif %}
+    </button>
     <a href="{% url 'core:currency_list' %}" class="btn-ghost">Cancel</a>
   </div>
 </form>

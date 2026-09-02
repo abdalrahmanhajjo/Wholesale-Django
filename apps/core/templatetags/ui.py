@@ -10,7 +10,7 @@ state and the programmatic state from ever disagreeing.
 
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
-from django import template
+from django import forms, template
 
 register = template.Library()
 
@@ -132,3 +132,27 @@ def quantity(value):
     if normalised == normalised.to_integral_value():
         return f"{int(normalised):,}"
     return f"{normalised:,f}"
+
+
+@register.filter
+def is_floatable(field):
+    """
+    Whether a floating label suits this control.
+
+    A date input renders its own placeholder text and a picker button, a select
+    always shows a value, and a checkbox has no interior — a label floating over
+    any of them collides with what the browser draws. Text-like inputs are the
+    only ones where the pattern works.
+    """
+    widget = field.field.widget
+    if isinstance(widget, forms.CheckboxInput | forms.Select | forms.RadioSelect):
+        return False
+    if getattr(widget, "input_type", "") in {
+        "date",
+        "time",
+        "datetime-local",
+        "color",
+        "file",
+    }:
+        return False
+    return True

@@ -3,25 +3,29 @@ One form field, rendered consistently. Every module includes this rather than
 styling its own inputs, so validation errors, help text and required markers
 look the same everywhere (UX-002, UX-008, NFR-012).
 
-The input is rendered through `a11y_field` so that the help text and any error
-are attached with aria-describedby, and the invalid state is announced rather
-than only coloured.
+The input is rendered through `a11y_field` so the help text and any error are
+attached with aria-describedby and the invalid state is announced, not merely
+coloured.
+
+The label floats: it sits where a placeholder would and rises when the field is
+focused or filled. It stays a real <label for=...> the whole time — the motion
+is presentation only, and the placeholder appears on focus so the two never
+print over each other. Pass `floating=False` for a control the pattern does not
+suit, such as a checkbox or a date input the browser already decorates.
 {% endcomment %}
-<div class="field-wrap {{ wrapper_class|default:'' }}">
+<div class="field-wrap {% if floating|default_if_none:True and field|is_floatable %}is-floating{% endif %} {{ wrapper_class|default:'' }}">
   {% if field.field.widget.input_type == "checkbox" %}
-    <div class="flex h-full items-end pb-2">
-      <label for="{{ field.id_for_label }}" class="flex items-center gap-2.5 text-sm font-semibold">
-        {% a11y_field field %}
-        <span>{{ field.label }}</span>
-      </label>
+    <div class="flex h-full items-center gap-2.5 pt-5">
+      {% a11y_field field %}
+      <label for="{{ field.id_for_label }}" class="text-sm font-semibold">{{ field.label }}</label>
     </div>
   {% else %}
     <label for="{{ field.id_for_label }}" class="label">
       {{ field.label }}
       {% comment %}
-      "Optional" is spelled out rather than marking required fields with a
-      bare asterisk: most fields here are required, and an asterisk that is
-      hidden from assistive technology tells a screen-reader user nothing.
+      "Optional" is spelled out rather than marking required fields with a bare
+      asterisk: most fields here are required, and an asterisk hidden from
+      assistive technology tells a screen-reader user nothing.
       {% endcomment %}
       {% if not field.field.required %}<span class="label-optional">(optional)</span>{% endif %}
     </label>

@@ -2,7 +2,7 @@
 
 from django.urls import path
 
-from apps.core import views
+from apps.core import api, views
 
 app_name = "core"
 
@@ -41,4 +41,9 @@ urlpatterns = [
         name="sequence_edit",
     ),
     path("fiscal-periods/", views.FiscalPeriodListView.as_view(), name="fiscalperiod_list"),
+    # Read-only JSON the form layer calls while someone is typing. Each is
+    # permission-checked against the same permission its list screen requires.
+    path("suggest/<slug:kind>/", api.suggest, name="suggest"),
+    path("suggest/<slug:kind>/<str:pk>/prefill/", api.prefill, name="suggest_prefill"),
+    path("check/", api.check, name="check"),
 ]

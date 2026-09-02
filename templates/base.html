@@ -34,7 +34,8 @@ Blocks available to child templates:
   {% block extra_head %}{% endblock %}
 </head>
 
-<body class="h-full bg-canvas font-sans text-ink antialiased">
+<body class="h-full bg-canvas font-sans text-ink antialiased"
+      data-base-currency="{{ base_currency }}">
 {% include "core/_icons.html" %}
 {# Perceived performance: server-rendered navigation has no spinner of its own,
    so a click that takes a second looks like a click that did nothing. #}
@@ -248,6 +249,7 @@ Blocks available to child templates:
 </div>
 <script src="{% static 'js/app.js' %}" defer></script>
 <script src="{% static 'js/forms.js' %}" defer></script>
+<script src="{% static 'js/steps.js' %}" defer></script>
 {% block extra_scripts %}{% endblock %}
 </body>
 </html>

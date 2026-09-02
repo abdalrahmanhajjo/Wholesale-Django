@@ -295,3 +295,100 @@ class ComposedFieldNameTests(SimpleTestCase):
 
     def test_extra_keywords_become_hyphenated_data_attributes(self):
         self.assertIn('data-max="5"', self.render(data_max=5))
+
+
+class FloatingLabelTests(SimpleTestCase):
+    """
+    The pattern suits text-like inputs only.
+
+    A date input draws its own placeholder and a picker button, a select always
+    shows a value, and a checkbox has no interior — a label floating over any of
+    them collides with what the browser paints.
+    """
+
+    def fields(self):
+        from django import forms as f
+
+        class Demo(f.Form):
+            name = f.CharField(label="Name")
+            notes = f.CharField(label="Notes", widget=f.Textarea)
+            when = f.DateField(label="When", widget=f.DateInput(attrs={"type": "date"}))
+            kind = f.ChoiceField(label="Kind", choices=[("a", "A")])
+            active = f.BooleanField(label="Active", required=False)
+
+        return Demo()
+
+    def floatable(self, name):
+        from apps.core.templatetags.ui import is_floatable
+
+        return is_floatable(self.fields()[name])
+
+    def test_text_and_textarea_float(self):
+        self.assertTrue(self.floatable("name"))
+        self.assertTrue(self.floatable("notes"))
+
+    def test_date_select_and_checkbox_do_not(self):
+        self.assertFalse(self.floatable("when"))
+        self.assertFalse(self.floatable("kind"))
+        self.assertFalse(self.floatable("active"))
+
+    def test_the_partial_only_floats_where_it_fits(self):
+        form = self.fields()
+        self.assertIn(
+            "is-floating", render_to_string("core/_form_field.html", {"field": form["name"]})
+        )
+        self.assertNotIn(
+            "is-floating", render_to_string("core/_form_field.html", {"field": form["when"]})
+        )
+
+    def test_the_label_stays_a_real_label_for_the_control(self):
+        """The motion is presentation; the association must not change."""
+        html = render_to_string("core/_form_field.html", {"field": self.fields()["name"]})
+        self.assertIn('for="id_name"', html)
+
+
+class SuggestAndCheckAttributeTests(SimpleTestCase):
+    """What the mixin tells the browser about a field."""
+
+    def form(self):
+        from django import forms as f
+
+        from apps.core.form_ui import UIFormMixin
+
+        class Demo(UIFormMixin, f.Form):
+            checks = {"code": "customer-code"}
+            code = f.CharField(label="Code")
+            customer = f.ChoiceField(label="Customer", choices=[("1", "One")])
+            direction = f.ChoiceField(
+                label="Direction", choices=[("IN", "In"), ("OUT", "Out")]
+            )
+
+        return Demo()
+
+    def test_a_known_field_names_its_suggester(self):
+        attrs = self.form().fields["customer"].widget.attrs
+        self.assertEqual(attrs["data-suggest"], "customer")
+        self.assertIn("data-combobox", attrs)
+
+    def test_a_short_unknown_select_stays_a_native_control(self):
+        """Two options are faster as a dropdown than as a search box."""
+        self.assertNotIn("data-combobox", self.form().fields["direction"].widget.attrs)
+
+    def test_a_declared_check_reaches_the_field(self):
+        self.assertEqual(
+            self.form().fields["code"].widget.attrs["data-check"], "customer-code"
+        )
+
+    def test_editing_excludes_the_record_from_its_own_duplicate_check(self):
+        from django import forms as f
+
+        from apps.core.form_ui import UIFormMixin
+
+        class Bound(UIFormMixin, f.Form):
+            checks = {"code": "customer-code"}
+            code = f.CharField(label="Code")
+
+        form = Bound()
+        form.instance = type("Row", (), {"pk": 42})()
+        form.__init__()
+        self.assertEqual(form.fields["code"].widget.attrs.get("data-check-exclude"), "42")

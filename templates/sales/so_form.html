@@ -8,15 +8,28 @@ same field widget styling, and a save/cancel footer.
 {% block header_title %}{{ page_title }}{% endblock %}
 
 {% block content %}
-<form method="post" novalidate class="max-w-5xl">
+{% comment %}
+Eleven header fields, an address block, a discount, notes and a twelve-column
+line grid is too much to meet at once, so it is presented in three steps. They
+are sections of one form shown and hidden, never separate requests: nothing is
+saved until the whole order is complete, and with JavaScript off all three are
+simply visible.
+{% endcomment %}
+<form method="post" novalidate class="form-shell max-w-5xl" data-steps
+      data-draft-key="sales-order-{{ object.pk|default:'new' }}">
   {% csrf_token %}
 
   {% include "core/_form_errors.html" with form=form formset=line_formset %}
+  <div data-notice-slot data-draft-slot class="space-y-2 empty:hidden"></div>
 
-  {# ---- Header fields ---- #}
-  <section class="card card-pad" aria-labelledby="sec-order">
-    <h2 class="section-heading" id="sec-order">Order details</h2>
-    <div class="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+  {# ---- Step 1 ---- #}
+  <div data-step="Order">
+  <section class="form-section" aria-labelledby="sec-order">
+    <div class="form-section-head">
+      <h2 class="form-section-title" id="sec-order">Order details</h2>
+      <p class="form-section-hint">Choosing the customer fills in their currency, payment term, warehouse and tax code. Change any of it if this order differs.</p>
+    </div>
+    <div class="form-section-body form-section-body-3">
       {% include "core/_form_field.html" with field=form.customer %}
       {% include "core/_form_field.html" with field=form.warehouse %}
       {% include "core/_form_field.html" with field=form.currency %}
@@ -30,40 +43,20 @@ same field widget styling, and a save/cancel footer.
       {% include "core/_form_field.html" with field=form.salesperson %}
     </div>
   </section>
+  </div>
 
-  <section class="card card-pad mt-4" aria-labelledby="sec-addresses">
-    <h2 class="section-heading" id="sec-addresses">Addresses</h2>
-    <div class="mt-4 grid gap-4 sm:grid-cols-2">
-      {% include "core/_form_field.html" with field=form.billing_address_text %}
-      {% include "core/_form_field.html" with field=form.shipping_address_text %}
-    </div>
-  </section>
-
-  <section class="card card-pad mt-4" aria-labelledby="sec-discount">
-    <h2 class="section-heading" id="sec-discount">Document discount</h2>
-    <p class="mt-1 text-sm text-muted-fg">Applied to the order as a whole, after any per-line discounts.</p>
-    <div class="mt-4 grid gap-4 sm:grid-cols-2">
-      {% include "core/_form_field.html" with field=form.document_discount_kind %}
-      {% include "core/_form_field.html" with field=form.document_discount_value %}
-    </div>
-  </section>
-
-  <section class="card card-pad mt-4" aria-labelledby="sec-notes">
-    <h2 class="section-heading" id="sec-notes">Notes</h2>
-    <div class="mt-4 grid gap-4 sm:grid-cols-2">
-      {% include "core/_form_field.html" with field=form.notes %}
-      {% include "core/_form_field.html" with field=form.internal_notes %}
-    </div>
-  </section>
-
-  {# ---- Lines formset (SAL-001) ---- #}
-  <section class="card mt-4" aria-labelledby="sec-lines">
-    <div class="flex flex-wrap items-center justify-between gap-3 border-b border-line px-5 py-4">
+  {# ---- Step 2 ---- #}
+  <div data-step="Lines">
+  <section class="form-section" aria-labelledby="sec-lines">
+    <div class="form-section-head">
       <div>
-        <p class="section-heading">Lines</p>
-        <h2 class="card-title mt-1" id="sec-lines">Order lines, with discount and tax</h2>
+        <h2 class="form-section-title" id="sec-lines">Order lines</h2>
+        <p class="form-section-hint">Choosing a product fills in its description, unit, price and tax code.</p>
       </div>
-      <button type="button" id="add-line" class="btn-ghost">Add line</button>
+      <button type="button" id="add-line" class="btn-ghost">
+        <svg class="icon" aria-hidden="true"><use href="#i-plus"></use></svg>
+        <span>Add line</span>
+      </button>
     </div>
 
     {{ line_formset.management_form }}
@@ -126,14 +119,51 @@ same field widget styling, and a save/cancel footer.
       {% include "sales/_so_line_row.html" with lf=line_formset.empty_form line="__LINE__" %}
     </template>
   </section>
+  </div>
 
-  <div class="mt-5 flex flex-wrap items-center gap-2">
+  {# ---- Step 3 ---- #}
+  <div data-step="Delivery and terms">
+  <section class="form-section" aria-labelledby="sec-addresses">
+    <div class="form-section-head">
+      <h2 class="form-section-title" id="sec-addresses">Addresses</h2>
+      <p class="form-section-hint">Leave the shipping address blank to deliver to the billing address.</p>
+    </div>
+    <div class="form-section-body">
+      {% include "core/_form_field.html" with field=form.billing_address_text %}
+      {% include "core/_form_field.html" with field=form.shipping_address_text %}
+    </div>
+  </section>
+
+  <section class="form-section" aria-labelledby="sec-discount">
+    <div class="form-section-head">
+      <h2 class="form-section-title" id="sec-discount">Document discount</h2>
+      <p class="form-section-hint">Applied to the order as a whole, after any per-line discounts.</p>
+    </div>
+    <div class="form-section-body">
+      {% include "core/_form_field.html" with field=form.document_discount_kind %}
+      {% include "core/_form_field.html" with field=form.document_discount_value %}
+    </div>
+  </section>
+
+  <section class="form-section" aria-labelledby="sec-notes">
+    <div class="form-section-head">
+      <h2 class="form-section-title" id="sec-notes">Notes</h2>
+      <p class="form-section-hint">Notes print on the order. Internal notes never leave the system.</p>
+    </div>
+    <div class="form-section-body">
+      {% include "core/_form_field.html" with field=form.notes %}
+      {% include "core/_form_field.html" with field=form.internal_notes %}
+    </div>
+  </section>
+  </div>
+
+  <div class="form-actions">
     <button type="submit" class="btn-primary" data-busy-label="Saving order…">
       {% if object %}Save changes{% else %}Create sales order{% endif %}
     </button>
     <a href="{% if object %}{% url 'sales:so_detail' object.pk %}{% else %}{% url 'sales:so_list' %}{% endif %}"
        class="btn-ghost">Cancel</a>
-    <p class="basis-full text-sm text-muted-fg sm:basis-auto sm:pl-2">
+    <p class="form-actions-hint">
       Saved as a draft. Nothing reaches the ledger until the order is posted.
     </p>
   </div>

@@ -1,83 +1,101 @@
 {% extends "base.html" %}
+{% comment %}
+Record a customer receipt or a vendor payment (PAY-001, PAY-002).
+
+Direction is asked first because it decides which party field applies, and the
+one that does not is cleared rather than left to submit a stale value.
+{% endcomment %}
 
 {% block header_title %}{{ page_title }}{% endblock %}
 
 {% block content %}
-<form method="post" novalidate class="max-w-5xl">
+<form method="post" novalidate class="form-shell max-w-4xl"
+      data-draft-key="payment-{{ object.pk|default:'new' }}">
   {% csrf_token %}
-  {% include "core/_form_errors.html" with form=form %}
 
-  <div class="card card-pad">
-    <p class="section-heading">Movement</p>
-    <h2 class="card-title mt-2" id="pay-movement">Who is paying whom?</h2>
-    <p class="mt-1 text-sm text-muted-fg">
-      A customer receipt records money in. A vendor payment records money out.
-    </p>
-    <div class="mt-4 grid gap-4 sm:grid-cols-3">
+  {% include "core/_form_errors.html" with form=form %}
+  <div data-notice-slot data-draft-slot class="space-y-2 empty:hidden"></div>
+
+  <section class="form-section" aria-labelledby="s-movement">
+    <div class="form-section-head">
+      <h2 class="form-section-title" id="s-movement">Who is paying whom?</h2>
+      <p class="form-section-hint">A customer receipt records money in. A vendor payment records money out.</p>
+    </div>
+    <div class="form-section-body form-section-body-3">
       {% include "core/_form_field.html" with field=form.direction %}
       {% include "core/_form_field.html" with field=form.payment_date %}
       {% include "core/_form_field.html" with field=form.posting_date %}
     </div>
-    <div class="mt-4 grid gap-4 sm:grid-cols-2">
+    <div class="form-section-body border-t border-line pt-0">
       <div id="customer-field">{% include "core/_form_field.html" with field=form.customer %}</div>
       <div id="vendor-field">{% include "core/_form_field.html" with field=form.vendor %}</div>
     </div>
-  </div>
+  </section>
 
-  <div class="card card-pad mt-4">
-    <h2 class="section-heading" id="pay-amount">Amount</h2>
-    <div class="mt-4 grid gap-4 sm:grid-cols-3">
+  <section class="form-section" aria-labelledby="s-amount">
+    <div class="form-section-head">
+      <h2 class="form-section-title" id="s-amount">Amount</h2>
+      <p class="form-section-hint">
+        The base amount is calculated with the saved exchange rate. This entry stays
+        fully unallocated until you allocate it against invoices.
+      </p>
+    </div>
+    <div class="form-section-body form-section-body-3">
       {% include "core/_form_field.html" with field=form.currency %}
       {% include "core/_form_field.html" with field=form.exchange_rate %}
       {% include "core/_form_field.html" with field=form.amount_txn %}
     </div>
-    <p class="help mt-3">
-      The base amount is calculated with the saved exchange rate. This entry stays
-      fully unallocated until you allocate it against invoices.
-    </p>
-  </div>
+  </section>
 
-  <div class="card card-pad mt-4">
-    <h2 class="section-heading" id="pay-details">Payment details</h2>
-    <div class="mt-4 grid gap-4 sm:grid-cols-3">
+  <section class="form-section" aria-labelledby="s-details">
+    <div class="form-section-head">
+      <h2 class="form-section-title" id="s-details">Payment details</h2>
+      <p class="form-section-hint">Some methods require a reference — a cheque number, a transfer ID.</p>
+    </div>
+    <div class="form-section-body form-section-body-3">
       {% include "core/_form_field.html" with field=form.method %}
       {% include "core/_form_field.html" with field=form.money_account %}
       {% include "core/_form_field.html" with field=form.reference %}
     </div>
-    <div class="mt-4">{% include "core/_form_field.html" with field=form.narration %}</div>
-  </div>
+    <div class="form-section-body form-section-body-1 border-t border-line pt-0">
+      {% include "core/_form_field.html" with field=form.narration %}
+    </div>
+  </section>
 
-  <div class="mt-5 flex items-center gap-2">
-    <button type="submit" class="btn-primary" data-busy-label="Saving payment…">
+  <div class="form-actions">
+    <button type="submit" class="btn-primary"
+            data-busy-label="{% if object %}Saving changes…{% else %}Creating draft…{% endif %}">
       {% if object %}Save changes{% else %}Create draft payment{% endif %}
     </button>
-    <a href="{% if object %}{{ object.get_absolute_url }}{% else %}{% url 'payments:payment_list' %}{% endif %}" class="btn-ghost">Cancel</a>
+    <a href="{% if object %}{{ object.get_absolute_url }}{% else %}{% url 'payments:payment_list' %}{% endif %}"
+       class="btn-ghost">Cancel</a>
+    <p class="form-actions-hint">Saved as a draft. Nothing reaches the ledger until it is posted.</p>
   </div>
 </form>
+{% endblock %}
 
+{% block extra_scripts %}
 <script>
 (() => {
   const direction = document.getElementById("id_direction");
   const customer = document.getElementById("customer-field");
   const vendor = document.getElementById("vendor-field");
-  function updatePartyFields() {
-    if (!direction.value) {
-      customer.hidden = false;
-      vendor.hidden = false;
-      return;
-    }
-    const receipt = direction.value === "RECEIPT";
-    customer.hidden = !receipt;
-    vendor.hidden = receipt;
-    // A hidden <select> still submits its value, so a customer chosen before
-    // the direction was switched would travel with a vendor payment. Clear
-    // whichever side is not in play.
-    clear(receipt ? vendor : customer);
-  }
+  if (!direction || !customer || !vendor) return;
 
   function clear(container) {
     container.querySelectorAll("select, input").forEach(field => { field.value = ""; });
   }
+
+  function updatePartyFields() {
+    if (!direction.value) { customer.hidden = false; vendor.hidden = false; return; }
+    const receipt = direction.value === "RECEIPT";
+    customer.hidden = !receipt;
+    vendor.hidden = receipt;
+    // A hidden <select> still submits its value, so a customer chosen before
+    // the direction was switched would travel with a vendor payment.
+    clear(receipt ? vendor : customer);
+  }
+
   direction.addEventListener("change", updatePartyFields);
   updatePartyFields();
 })();

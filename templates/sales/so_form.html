@@ -63,9 +63,12 @@ the same field widget styling, and a save/cancel footer.
 
   {# ---- Lines formset (SAL-001) ---- #}
   <div class="card mt-4">
-    <div class="border-b border-line px-5 py-4">
-      <p class="eyebrow">Lines</p>
-      <h2 class="card-title mt-1">Order lines with discount &amp; tax (SAL-002)</h2>
+    <div class="flex items-center justify-between gap-3 border-b border-line px-5 py-4">
+      <div>
+        <p class="eyebrow">Lines</p>
+        <h2 class="card-title mt-1">Order lines with discount &amp; tax (SAL-002)</h2>
+      </div>
+      <button type="button" id="add-line" class="btn-ghost btn-sm">Add line</button>
     </div>
 
     {{ line_formset.management_form }}
@@ -98,65 +101,7 @@ the same field widget styling, and a save/cancel footer.
         </thead>
         <tbody>
           {% for lf in line_formset %}
-            <tr class="border-b border-line last:border-0 line-row">
-              {% if lf.non_field_errors %}
-                <td colspan="12" class="px-4 py-2">
-                  {% for e in lf.non_field_errors %}
-                    <p class="error-text">{{ e }}</p>
-                  {% endfor %}
-                </td>
-              {% else %}
-              <td class="px-4 py-2">
-                {{ lf.line_no }}
-                {% if lf.line_no.value %}{{ lf.line_no.value }}{% endif %}
-                {% for e in lf.line_no.errors %}<p class="error-text">{{ e }}</p>{% endfor %}
-              </td>
-              <td class="px-4 py-2">{{ lf.product }}
-                {% for e in lf.product.errors %}<p class="error-text">{{ e }}</p>{% endfor %}
-              </td>
-              <td class="px-4 py-2">{{ lf.description }}
-                {% for e in lf.description.errors %}<p class="error-text">{{ e }}</p>{% endfor %}
-              </td>
-              <td class="px-4 py-2">{{ lf.unit }}
-                {% for e in lf.unit.errors %}<p class="error-text">{{ e }}</p>{% endfor %}
-              </td>
-              <td class="px-4 py-2">{{ lf.quantity }}
-                {% for e in lf.quantity.errors %}<p class="error-text">{{ e }}</p>{% endfor %}
-              </td>
-              <td class="px-4 py-2">{{ lf.unit_price }}
-                {% for e in lf.unit_price.errors %}<p class="error-text">{{ e }}</p>{% endfor %}
-              </td>
-              <td class="px-4 py-2">{{ lf.discount_percent }}
-                {% for e in lf.discount_percent.errors %}<p class="error-text">{{ e }}</p>{% endfor %}
-              </td>
-              <td class="px-4 py-2">{{ lf.tax_code }}
-                {% for e in lf.tax_code.errors %}<p class="error-text">{{ e }}</p>{% endfor %}
-              </td>
-              <td class="px-4 py-2 text-right tabular-nums">
-                {% if lf.instance.pk %}
-                  {{ lf.instance.gross_txn|floatformat:2 }}
-                {% else %}—{% endif %}
-              </td>
-              <td class="px-4 py-2 text-right tabular-nums">
-                {% if lf.instance.pk %}
-                  {{ lf.instance.tax_txn|floatformat:2 }}
-                {% else %}—{% endif %}
-              </td>
-              <td class="px-4 py-2 text-right tabular-nums font-semibold">
-                {% if lf.instance.pk %}
-                  {{ lf.instance.total_txn|floatformat:2 }}
-                {% else %}—{% endif %}
-              </td>
-              <td class="px-4 py-2 text-center">
-                {% if lf.instance.pk %}
-                  <label class="flex items-center justify-center">
-                    {{ lf.DELETE }}
-                  </label>
-                {% endif %}
-              </td>
-              {% endif %}
-            </tr>
-            {% for hidden in lf.hidden_fields %}{{ hidden }}{% endfor %}
+            {% include "sales/_so_line_row.html" with lf=lf %}
           {% endfor %}
         </tbody>
         <tfoot>
@@ -178,6 +123,9 @@ the same field widget styling, and a save/cancel footer.
         </tfoot>
       </table>
     </div>
+    <template id="empty-line-template">
+      {% include "sales/_so_line_row.html" with lf=line_formset.empty_form %}
+    </template>
   </div>
 
   <div class="mt-5 flex items-center gap-2">
@@ -190,6 +138,37 @@ the same field widget styling, and a save/cancel footer.
 
 {% block extra_scripts %}
 <script>
+  const formsetTotal = document.getElementById('id_lines-TOTAL_FORMS');
+  const addLineButton = document.getElementById('add-line');
+  const lineTemplate = document.getElementById('empty-line-template');
+  const lineBody = document.querySelector('#lines-table tbody');
+  const maxLines = 10;
+
+  function updateAddLineState() {
+    addLineButton.disabled = Number(formsetTotal.value) >= maxLines;
+  }
+
+  addLineButton.addEventListener('click', () => {
+    const index = Number(formsetTotal.value);
+    if (index >= maxLines) return;
+    const fragment = lineTemplate.content.cloneNode(true);
+    fragment.querySelectorAll('[name], [id], [for]').forEach(element => {
+      for (const attribute of ['name', 'id', 'for']) {
+        if (element.hasAttribute(attribute)) {
+          element.setAttribute(
+            attribute,
+            element.getAttribute(attribute).replaceAll('__prefix__', index),
+          );
+        }
+      }
+    });
+    lineBody.appendChild(fragment);
+    formsetTotal.value = index + 1;
+    updateAddLineState();
+  });
+
+  updateAddLineState();
+
   // Client-side line total preview (UX only — server recalculates on save per SAL-002)
   document.querySelectorAll('#lines-table tbody').forEach(tbody => {
     tbody.addEventListener('input', e => {
@@ -205,8 +184,8 @@ the same field widget styling, and a save/cancel footer.
       const gross = qty * price;
       const lineDisc = gross * disc / 100;
       const net = gross - lineDisc;
-      const cells = row.querySelectorAll('td');
-      if (cells[8]) cells[8].textContent = gross.toFixed(2);
+      const grossCell = row.querySelector('.line-gross');
+      if (grossCell) grossCell.textContent = gross.toFixed(2);
       // Tax and total need tax code lookup — server handles it
     });
   });

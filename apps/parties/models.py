@@ -148,7 +148,7 @@ class Vendor(PartyBase):
     def get_absolute_url(self):
         from django.urls import reverse
 
-        return reverse("parties:vendor_edit", args=[self.pk])
+        return reverse("parties:vendor_detail", args=[self.pk])
 
 
 # ---------------------------------------------------------------------------

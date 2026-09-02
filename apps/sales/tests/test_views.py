@@ -11,11 +11,12 @@ Run:  python manage.py test apps.sales.tests.test_views
 from django.contrib.auth.models import Group, Permission
 from django.test import TestCase
 from django.urls import reverse
+from django.utils import timezone
 
 from apps.accounts.models import User
 from apps.core.models import DocumentStatus
-from apps.core.permissions import APPROVE_SALES_ORDER, OWNER_ADMIN, SALES
 from apps.sales import services
+from apps.sales.models import SalesOrder
 from apps.sales.tests import factories as f
 
 
@@ -103,6 +104,13 @@ class DetailViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, order.number)
 
+    def test_user_without_view_permission_gets_403(self):
+        user = make_user("detail-no-access")
+        order = f.make_order()
+        self.client.force_login(user)
+        response = self.client.get(reverse("sales:so_detail", args=[order.pk]))
+        self.assertEqual(response.status_code, 403)
+
 
 class ListViewTests(TestCase):
     def test_list_renders_summary_tiles(self):
@@ -115,3 +123,87 @@ class ListViewTests(TestCase):
     def test_anonymous_redirected_to_login(self):
         response = self.client.get(reverse("sales:so_list"))
         self.assertEqual(response.status_code, 302)
+
+    def test_user_without_view_permission_gets_403(self):
+        self.client.force_login(make_user("list-no-access"))
+        response = self.client.get(reverse("sales:so_list"))
+        self.assertEqual(response.status_code, 403)
+
+
+class SalesOrderEntryTests(TestCase):
+    def setUp(self):
+        self.editor = make_user(
+            "order-editor",
+            permissions=["add_salesorder", "change_salesorder", "view_salesorder"],
+        )
+        self.client.force_login(self.editor)
+        self.customer = f.make_customer()
+        self.warehouse = f.make_warehouse()
+        self.product = f.make_product()
+        self.sequence = f.make_sequence()
+
+    def _post_data(self, *, quantity="1"):
+        today = timezone.localdate().isoformat()
+        return {
+            "customer": self.customer.pk,
+            "warehouse": self.warehouse.pk,
+            "document_date": today,
+            "posting_date": today,
+            "due_date": "",
+            "currency": self.customer.currency_id,
+            "exchange_rate": "1",
+            "payment_term": "",
+            "expected_date": "",
+            "customer_reference": "TEST-PO",
+            "billing_address_text": "",
+            "shipping_address_text": "",
+            "salesperson": "",
+            "document_discount_kind": "NONE",
+            "document_discount_value": "0",
+            "notes": "",
+            "internal_notes": "",
+            "lines-TOTAL_FORMS": "1",
+            "lines-INITIAL_FORMS": "0",
+            "lines-MIN_NUM_FORMS": "0",
+            "lines-MAX_NUM_FORMS": "1000",
+            "lines-0-line_no": "",
+            "lines-0-product": self.product.pk,
+            "lines-0-description": "",
+            "lines-0-unit": self.product.unit_id,
+            "lines-0-quantity": quantity,
+            "lines-0-unit_price": "100",
+            "lines-0-discount_percent": "0",
+            "lines-0-tax_code": "",
+            "lines-0-warehouse": "",
+        }
+
+    def test_create_screen_includes_bounded_add_line_control(self):
+        response = self.client.get(reverse("sales:so_create"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'id="add-line"')
+        self.assertContains(response, "__prefix__")
+
+    def test_more_than_ten_submitted_line_forms_is_rejected(self):
+        data = self._post_data()
+        data["lines-TOTAL_FORMS"] = "11"
+
+        response = self.client.post(reverse("sales:so_create"), data)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "at most 10 forms")
+        self.assertFalse(SalesOrder.objects.filter(customer_reference="TEST-PO").exists())
+
+    def test_invalid_lines_do_not_save_header_or_consume_number(self):
+        next_number = self.sequence.next_number
+        response = self.client.post(reverse("sales:so_create"), self._post_data(quantity="-1"))
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.context["line_formset"].errors)
+        self.assertFalse(SalesOrder.objects.filter(customer_reference="TEST-PO").exists())
+        self.sequence.refresh_from_db()
+        self.assertEqual(self.sequence.next_number, next_number)
+
+    def test_non_editable_order_cannot_be_opened_in_update_view(self):
+        order = f.make_order(status=DocumentStatus.APPROVED)
+        response = self.client.get(reverse("sales:so_edit", args=[order.pk]))
+        self.assertEqual(response.status_code, 404)

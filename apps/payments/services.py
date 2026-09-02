@@ -71,6 +71,18 @@ def _apply_derived_values(payment):
     payment.unallocated_txn = payment.amount_txn - payment.allocated_txn
 
 
+def _validate_business_rules(payment):
+    """Run cross-table payment rules without repeating form and DB validation.
+
+    ``Model.full_clean()`` would issue existence and constraint queries for the
+    foreign keys that the bound ``ModelForm`` has already resolved. Against a
+    remote database those redundant round trips are expensive. ``Payment.clean``
+    owns the cross-table rules, while PostgreSQL remains authoritative for the
+    model's CHECK, unique, and foreign-key constraints.
+    """
+    payment.clean()
+
+
 @transaction.atomic
 def create_payment(*, user, **data):
     payment_date = data["payment_date"]
@@ -84,7 +96,7 @@ def create_payment(*, user, **data):
         updated_by=user,
     )
     _apply_derived_values(payment)
-    payment.full_clean()
+    _validate_business_rules(payment)
     payment.save()
     return payment
 
@@ -99,6 +111,6 @@ def update_draft_payment(payment, *, user, **data):
     locked.fiscal_period = resolve_open_period(locked.posting_date)
     locked.updated_by = user
     _apply_derived_values(locked)
-    locked.full_clean()
+    _validate_business_rules(locked)
     locked.save()
     return locked

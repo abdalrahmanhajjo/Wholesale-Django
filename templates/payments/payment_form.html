@@ -63,6 +63,11 @@
   const customer = document.getElementById("customer-field");
   const vendor = document.getElementById("vendor-field");
   function updatePartyFields() {
+    if (!direction.value) {
+      customer.hidden = false;
+      vendor.hidden = false;
+      return;
+    }
     const receipt = direction.value === "RECEIPT";
     customer.hidden = !receipt;
     vendor.hidden = receipt;

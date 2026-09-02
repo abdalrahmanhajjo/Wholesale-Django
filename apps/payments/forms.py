@@ -10,9 +10,18 @@ class PaymentForm(forms.ModelForm):
     class Meta:
         model = Payment
         fields = [
-            "direction", "payment_date", "posting_date", "customer", "vendor",
-            "currency", "exchange_rate", "amount_txn", "method", "money_account",
-            "reference", "narration",
+            "direction",
+            "payment_date",
+            "posting_date",
+            "customer",
+            "vendor",
+            "currency",
+            "exchange_rate",
+            "amount_txn",
+            "method",
+            "money_account",
+            "reference",
+            "narration",
         ]
         widgets = {
             "payment_date": forms.DateInput(attrs={"type": "date"}),
@@ -32,15 +41,17 @@ class PaymentForm(forms.ModelForm):
         self.fields["customer"].queryset = self.fields["customer"].queryset.filter(
             is_active=True
         )
-        self.fields["vendor"].queryset = self.fields["vendor"].queryset.filter(
-            is_active=True
+        self.fields["vendor"].queryset = self.fields["vendor"].queryset.filter(is_active=True)
+        self.fields["method"].queryset = (
+            self.fields["method"]
+            .queryset.filter(is_active=True)
+            .select_related("default_money_account")
         )
-        self.fields["method"].queryset = self.fields["method"].queryset.filter(
-            is_active=True
-        ).select_related("default_money_account")
-        self.fields["money_account"].queryset = self.fields[
-            "money_account"
-        ].queryset.filter(is_active=True).select_related("currency")
+        self.fields["money_account"].queryset = (
+            self.fields["money_account"]
+            .queryset.filter(is_active=True)
+            .select_related("currency")
+        )
         self.fields["currency"].queryset = self.fields["currency"].queryset.filter(
             is_active=True
         )

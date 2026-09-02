@@ -2,10 +2,11 @@
 {% comment %}
 Base template every page inherits from.
 
-Colours, type and the component classes live in `_theme.html`, which the
-sign-in page includes too — change the design there, not here. The approved
-prototypes are React SPAs; the BRD requires server-rendered Django Templates
-(NFR-001, UX-004, SC-07), so the look is reproduced rather than the code reused.
+Colours, type and component classes are compiled from `static/src/app.css` and
+`tailwind.config.js`; `_theme.html` loads the generated stylesheet. The approved
+prototypes are React SPAs, while the BRD requires server-rendered Django
+Templates (NFR-001, UX-004, SC-07), so the look is reproduced rather than the
+prototype runtime being embedded.
 
 Blocks available to child templates:
   title        browser tab title
@@ -44,23 +45,33 @@ Blocks available to child templates:
         <p class="nav-group">Overview</p>
         <a href="{% url 'dashboard' %}" class="nav-link {% if request.resolver_match.url_name == 'dashboard' %}nav-link-active{% endif %}">Dashboard</a>
         <p class="nav-group">Operations</p>
+        {% if perms.sales.view_salesorder %}
         <a href="{% url 'sales:so_list' %}" class="nav-link {% if request.resolver_match.app_name == 'sales' %}nav-link-active{% endif %}">Sales</a>
+        {% endif %}
         <span class="nav-link cursor-not-allowed opacity-50" title="Purchasing workspace is not routed yet">Purchases</span>
+        {% if perms.payments.view_payment %}
         <a href="{% url 'payments:payment_list' %}" class="nav-link {% if request.resolver_match.app_name == 'payments' %}nav-link-active{% endif %}">Payments</a>
+        {% endif %}
         <span class="nav-link cursor-not-allowed opacity-50" title="Inventory workspace is not routed yet">Inventory</span>
 
         <p class="nav-group">Relationships</p>
+        {% if perms.parties.view_customer %}
         <a href="{% url 'parties:customer_list' %}"
            class="nav-link {% if request.resolver_match.url_name|slice:':8' == 'customer' %}nav-link-active{% endif %}">Customers</a>
+        {% endif %}
+        {% if perms.parties.view_vendor %}
         <a href="{% url 'parties:vendor_list' %}"
            class="nav-link {% if request.resolver_match.url_name|slice:':6' == 'vendor' %}nav-link-active{% endif %}">Vendors</a>
+        {% endif %}
 
         <p class="nav-group">Finance</p>
         <span class="nav-link cursor-not-allowed opacity-50" title="Accounting workspace is not routed yet">Accounting</span>
         <span class="nav-link cursor-not-allowed opacity-50" title="Reports workspace is not routed yet">Reports</span>
 
+        {% if user.is_staff %}
         <p class="nav-group">System</p>
         <a href="{% url 'admin:index' %}" class="nav-link">Settings</a>
+        {% endif %}
       </nav>
 
       {% if user.is_authenticated %}
@@ -89,8 +100,7 @@ Blocks available to child templates:
               class="grid h-8 w-8 place-items-center rounded-lg text-muted-fg hover:bg-muted-bg lg:hidden"
               aria-label="Toggle navigation">☰</button>
       <div class="min-w-0"><p class="text-[10px] font-semibold uppercase tracking-[.12em] text-slate-400">Atlas Wholesale</p><h2 class="truncate text-sm font-bold">{% block header_title %}{{ page_title|default:"Dashboard" }}{% endblock %}</h2></div>
-      <div class="relative ml-auto hidden w-full max-w-[340px] lg:block"><input class="field bg-slate-50 pl-9" placeholder="Search anything…" aria-label="Global search"><span class="pointer-events-none absolute left-3 top-2.5 text-slate-400">⌕</span><kbd class="absolute right-3 top-2 rounded border border-line bg-white px-1.5 py-0.5 text-[10px] text-slate-400">⌘ K</kbd></div>
-      <div class="flex items-center gap-2">{% block header_actions %}{% endblock %}</div>
+      <div class="ml-auto flex items-center gap-2">{% block header_actions %}{% endblock %}</div>
     </header>
 
     <main id="main-content" class="mx-auto w-full max-w-[1580px] flex-1 px-4 py-5 sm:px-6 sm:py-6 lg:px-8 lg:py-7">

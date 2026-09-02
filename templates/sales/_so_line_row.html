@@ -1,0 +1,56 @@
+<tr class="border-b border-line last:border-0 line-row">
+  <td class="px-4 py-2 align-top">
+    {% for hidden in lf.hidden_fields %}
+      {{ hidden }}
+      {% for error in hidden.errors %}<p class="error-text">{{ error }}</p>{% endfor %}
+    {% endfor %}
+    <span class="line-number">{{ lf.line_no.value|default:"New" }}</span>
+  </td>
+  <td class="px-4 py-2 align-top">
+    {% if lf.non_field_errors %}
+      {% for error in lf.non_field_errors %}<p class="error-text">{{ error }}</p>{% endfor %}
+    {% endif %}
+    {{ lf.product }}
+    {% for error in lf.product.errors %}<p class="error-text">{{ error }}</p>{% endfor %}
+  </td>
+  <td class="px-4 py-2 align-top">
+    {{ lf.description }}
+    {% for error in lf.description.errors %}<p class="error-text">{{ error }}</p>{% endfor %}
+  </td>
+  <td class="px-4 py-2 align-top">
+    {{ lf.unit }}
+    {% for error in lf.unit.errors %}<p class="error-text">{{ error }}</p>{% endfor %}
+  </td>
+  <td class="px-4 py-2 align-top">
+    {{ lf.quantity }}
+    {% for error in lf.quantity.errors %}<p class="error-text">{{ error }}</p>{% endfor %}
+  </td>
+  <td class="px-4 py-2 align-top">
+    {{ lf.unit_price }}
+    {% for error in lf.unit_price.errors %}<p class="error-text">{{ error }}</p>{% endfor %}
+  </td>
+  <td class="px-4 py-2 align-top">
+    {{ lf.discount_percent }}
+    {% for error in lf.discount_percent.errors %}<p class="error-text">{{ error }}</p>{% endfor %}
+  </td>
+  <td class="px-4 py-2 align-top">
+    {{ lf.tax_code }}
+    {% for error in lf.tax_code.errors %}<p class="error-text">{{ error }}</p>{% endfor %}
+  </td>
+  <td class="px-4 py-2 text-right align-top tabular-nums line-gross">
+    {% if lf.instance.pk %}{{ lf.instance.gross_txn|floatformat:2 }}{% else %}—{% endif %}
+  </td>
+  <td class="px-4 py-2 text-right align-top tabular-nums">
+    {% if lf.instance.pk %}{{ lf.instance.tax_txn|floatformat:2 }}{% else %}—{% endif %}
+  </td>
+  <td class="px-4 py-2 text-right align-top tabular-nums font-semibold">
+    {% if lf.instance.pk %}{{ lf.instance.total_txn|floatformat:2 }}{% else %}—{% endif %}
+  </td>
+  <td class="px-4 py-2 text-center align-top">
+    {% if lf.instance.pk %}
+      <label class="flex items-center justify-center" aria-label="Delete line">
+        {{ lf.DELETE }}
+      </label>
+    {% endif %}
+  </td>
+</tr>

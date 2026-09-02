@@ -42,8 +42,13 @@ class PaymentListView(FilteredListView):
         Column("amount_txn", "Amount", sortable=True, money=True, align="right"),
     ]
     search_fields = [
-        "number", "reference", "customer__code", "customer__name",
-        "vendor__code", "vendor__name", "narration",
+        "number",
+        "reference",
+        "customer__code",
+        "customer__name",
+        "vendor__code",
+        "vendor__name",
+        "narration",
     ]
     filters = [
         ChoiceFilter("direction", "Type", list(PaymentDirection.choices)),
@@ -52,8 +57,10 @@ class PaymentListView(FilteredListView):
     ]
 
     def get_queryset(self):
-        return super().get_queryset().select_related(
-            "customer", "vendor", "currency", "method", "money_account"
+        return (
+            super()
+            .get_queryset()
+            .select_related("customer", "vendor", "currency", "method", "money_account")
         )
 
     def get_summary(self):
@@ -101,12 +108,10 @@ class PaymentUpdateView(ActionPermissionMixin, UpdateView):
     template_name = "payments/payment_form.html"
     required_permission = "payments.change_payment"
 
-    def dispatch(self, request, *args, **kwargs):
-        obj = self.get_object()
-        if obj.status != DocumentStatus.DRAFT:
-            messages.error(request, "Only draft payments can be edited.")
-            return redirect(obj)
-        return super().dispatch(request, *args, **kwargs)
+    def get_queryset(self):
+        # Filtering at queryset level keeps the state check behind the
+        # permission mixin and prevents direct edits of posted records.
+        return super().get_queryset().filter(status=DocumentStatus.DRAFT)
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -135,9 +140,19 @@ class PaymentDetailView(ActionPermissionMixin, DetailView):
     required_permission = "payments.view_payment"
 
     def get_queryset(self):
-        return super().get_queryset().select_related(
-            "customer", "vendor", "currency", "method", "money_account",
-            "fiscal_period", "created_by", "updated_by",
+        return (
+            super()
+            .get_queryset()
+            .select_related(
+                "customer",
+                "vendor",
+                "currency",
+                "method",
+                "money_account",
+                "fiscal_period",
+                "created_by",
+                "updated_by",
+            )
         )
 
     def get_context_data(self, **kwargs):

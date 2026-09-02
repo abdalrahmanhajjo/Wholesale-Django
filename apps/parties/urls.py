@@ -18,5 +18,6 @@ urlpatterns = [
     ),
     path("vendors/", views.VendorListView.as_view(), name="vendor_list"),
     path("vendors/new/", views.VendorCreateView.as_view(), name="vendor_create"),
+    path("vendors/<int:pk>/", views.VendorDetailView.as_view(), name="vendor_detail"),
     path("vendors/<int:pk>/edit/", views.VendorUpdateView.as_view(), name="vendor_edit"),
 ]

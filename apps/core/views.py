@@ -1,12 +1,11 @@
 """
 Core views.
 
-Only the shell for now: a role-aware dashboard placeholder and the sign-in
-redirect target. The real dashboard widgets (UX-001) come once the other
-members' modules have data to show.
+Role-aware dashboard backed entirely by Django ORM aggregates and templates.
 """
 
-from django.contrib.auth.decorators import login_required
+from django.conf import settings
+from django.contrib.auth.decorators import login_required, permission_required
 from django.core.cache import cache
 from django.db.models import Count, Q, Sum
 from django.shortcuts import render
@@ -19,20 +18,19 @@ from apps.sales.models import SalesOrder
 
 
 @login_required
+@permission_required("core.view_company", raise_exception=True)
 def dashboard(request):
     """
     Landing page after sign-in.
 
-    Deliberately shows configuration readiness rather than fake figures: until
-    Members 2, 3 and 4 post real documents there is nothing financial to report,
-    and a dashboard of zeroes reads as a broken system rather than an empty one.
+    The aggregate snapshot and recent activity share one short cache lifetime,
+    which removes repeated round trips to a remote PostgreSQL region while
+    keeping the operational overview acceptably fresh.
     """
     overview = cache.get("dashboard_overview_v1")
     if overview is None:
         company = Company.objects.select_related("base_currency").first()
-        open_periods = list(
-            FiscalPeriod.objects.filter(status="OPEN").order_by("start_date")
-        )
+        open_periods = list(FiscalPeriod.objects.filter(status="OPEN").order_by("start_date"))
         account_totals = Account.objects.filter(is_active=True).aggregate(
             total=Count("id"),
             postable=Count("id", filter=Q(is_postable=True)),
@@ -57,15 +55,15 @@ def dashboard(request):
                 unallocated=Sum("unallocated_txn"),
                 drafts=Count("id", filter=Q(status="DRAFT")),
             ),
+            "recent_payments": list(
+                Payment.objects.select_related("customer", "vendor", "currency", "method")[:5]
+            ),
         }
-        cache.set("dashboard_overview_v1", overview, 30)
+        cache.set("dashboard_overview_v1", overview, settings.DASHBOARD_CACHE_SECONDS)
 
     context = {
         "page_title": f"Good day, {request.user.full_name or request.user.username}.",
         "page_subtitle": "Configuration is in place. Operational modules arrive with the other slices.",
         **overview,
-        "recent_payments": Payment.objects.select_related(
-            "customer", "vendor", "currency", "method"
-        )[:5],
     }
     return render(request, "core/dashboard.html", context)

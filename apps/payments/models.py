@@ -276,6 +276,10 @@ class Payment(TimeStampedModel):
             errors["method"] = "Select an active payment method."
         if self.money_account_id and not self.money_account.is_active:
             errors["money_account"] = "Select an active money account."
+        if self.customer_id and not self.customer.is_active:
+            errors["customer"] = "Select an active customer."
+        if self.vendor_id and not self.vendor.is_active:
+            errors["vendor"] = "Select an active vendor."
         if errors:
             raise ValidationError(errors)
 

@@ -13,9 +13,11 @@ Run:  python manage.py test apps.sales.tests.test_services
 
 from decimal import Decimal
 
+from django.db import connection
 from django.test import TestCase
+from django.test.utils import CaptureQueriesContext
 
-from apps.core.models import DocumentSequence, DocumentStatus
+from apps.core.models import AuditAction, AuditEvent, DocumentSequence, DocumentStatus
 from apps.sales import services
 from apps.sales.models import DiscountKind
 from apps.sales.tests import factories as f
@@ -35,6 +37,7 @@ class NumberingTests(TestCase):
         self.assertEqual(Decimal(seq.next_number), Decimal(3))
 
     def test_allocate_raises_without_active_sequence(self):
+        DocumentSequence.objects.filter(document_type="SO").update(is_active=False)
         with self.assertRaises(ValueError):
             services.allocate_so_number()
 
@@ -49,8 +52,11 @@ class LineArithmeticTests(TestCase):
     def test_exclusive_tax_exact(self):
         # qty 10 x price 20 = gross 200; 10% discount -> discount 20, net 180
         line = f.make_line(
-            self.order, qty=Decimal("10"), price=Decimal("20"),
-            discount=Decimal("10"), tax=self.tax,
+            self.order,
+            qty=Decimal("10"),
+            price=Decimal("20"),
+            discount=Decimal("10"),
+            tax=self.tax,
         )
         services.calculate_line(line)
 
@@ -65,8 +71,7 @@ class LineArithmeticTests(TestCase):
     def test_inclusive_tax_backs_out(self):
         # price includes tax: taxable base = net / (1 + rate/100)
         tax = f.make_tax(code="VAT-INC", rate=Decimal("11.0"), is_inclusive=True)
-        line = f.make_line(self.order, qty=Decimal("1"), price=Decimal("111"),
-                           tax=tax)
+        line = f.make_line(self.order, qty=Decimal("1"), price=Decimal("111"), tax=tax)
         services.calculate_line(line)
 
         self.assertEqual(line.gross_txn, Decimal("111.0000"))
@@ -79,7 +84,9 @@ class LineArithmeticTests(TestCase):
     def test_line_discount_within_gross(self):
         # A 100% discount leaves net zero, never negative.
         line = f.make_line(
-            self.order, qty=Decimal("1"), price=Decimal("100"),
+            self.order,
+            qty=Decimal("1"),
+            price=Decimal("100"),
             discount=Decimal("100"),
         )
         services.calculate_line(line)
@@ -138,6 +145,35 @@ class DocumentDiscountAllocationTests(TestCase):
         line.refresh_from_db()
         self.assertEqual(line.allocated_document_discount_txn, ZERO)
 
+    def test_percentage_discount_is_derived_from_entered_header_value(self):
+        f.make_line(self.order, qty=Decimal("2"), price=Decimal("100"))
+        self.order.document_discount_kind = DiscountKind.PERCENT
+        self.order.document_discount_value = Decimal("10")
+        self.order.save(update_fields=["document_discount_kind", "document_discount_value"])
+
+        services.recalculate_order(self.order)
+
+        self.order.refresh_from_db()
+        line = self.order.lines.get()
+        self.assertEqual(self.order.document_discount_txn, Decimal("20.0000"))
+        self.assertEqual(line.allocated_document_discount_txn, Decimal("20.0000"))
+        self.assertEqual(self.order.total_txn, Decimal("180.0000"))
+
+    def test_recalculation_bulk_updates_all_lines_once(self):
+        for line_no in range(1, 4):
+            product = f.make_product(f"P-BULK-{line_no}")
+            f.make_line(self.order, product=product, line_no=line_no)
+
+        with CaptureQueriesContext(connection) as captured:
+            services.recalculate_order(self.order)
+
+        line_updates = [
+            query["sql"]
+            for query in captured.captured_queries
+            if query["sql"].lstrip().upper().startswith('UPDATE "SALES_ORDER_LINE"')
+        ]
+        self.assertEqual(len(line_updates), 1)
+
 
 class RecalculateTotalsTests(TestCase):
     """BR-022: header totals roll up from lines and reconcile to the header."""
@@ -145,8 +181,7 @@ class RecalculateTotalsTests(TestCase):
     def test_totals_roll_up(self):
         order = f.make_order()
         tax = f.make_tax(rate=Decimal("11.0"))
-        line = f.make_line(order, qty=Decimal("2"), price=Decimal("100"),
-                           tax=tax, line_no=1)
+        line = f.make_line(order, qty=Decimal("2"), price=Decimal("100"), tax=tax, line_no=1)
         services.calculate_line(line)
         line.save()
         services.calculate_totals(order)
@@ -158,12 +193,27 @@ class RecalculateTotalsTests(TestCase):
         self.assertEqual(order.total_base, Decimal("222.0000"))
         self.assertEqual(order.open_txn, Decimal("222.0000"))
 
+    def test_recalculation_snapshots_selected_tax_code(self):
+        order = f.make_order()
+        tax = f.make_tax(code="VAT-SNAPSHOT", rate=Decimal("11.0"))
+        line = f.make_line(order, qty=Decimal("1"), price=Decimal("100"))
+        line.tax_code = tax
+        line.tax_rate_percent = ZERO
+        line.save(update_fields=["tax_code", "tax_rate_percent"])
+
+        services.recalculate_order(order)
+
+        line.refresh_from_db()
+        self.assertEqual(line.tax_rate_percent, Decimal("11.0000"))
+        self.assertEqual(line.tax_txn, Decimal("11.0000"))
+
 
 class ApprovalWorkflowTests(TestCase):
     """SAL-004 lifecycle: submit, approve, reject, and resubmit from rejected."""
 
     def setUp(self):
         from apps.accounts.models import User
+
         self.user = User.objects.create_user(
             username="sales-user", email="s@example.com", password="x-1234567"
         )
@@ -188,6 +238,15 @@ class ApprovalWorkflowTests(TestCase):
         self.assertEqual(order.status, DocumentStatus.APPROVED)
         self.assertEqual(order.approved_by, self.user)
         self.assertEqual(order.approval_reason, "Looks good")
+        event = AuditEvent.objects.get(object_id=order.pk, action=AuditAction.APPROVE)
+        self.assertEqual(event.user, self.user)
+
+    def test_approve_requires_reason(self):
+        order = f.make_order()
+        services.submit_order(order, self.user)
+        with self.assertRaises(ValueError):
+            services.approve_order(order, self.user, reason="")
+        self.assertEqual(order.status, DocumentStatus.SUBMITTED)
 
     def test_reject_requires_reason(self):
         order = f.make_order()

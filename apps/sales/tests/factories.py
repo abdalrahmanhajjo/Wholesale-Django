@@ -19,7 +19,7 @@ from apps.core.models import (
 )
 from apps.inventory.models import Warehouse
 from apps.parties.models import Customer
-from apps.sales.models import SalesOrder, SalesOrderLine, DiscountKind
+from apps.sales.models import DiscountKind, SalesOrder, SalesOrderLine
 
 _order_seq = [0]
 
@@ -116,8 +116,16 @@ def make_order(customer=None, warehouse=None, currency=None, user=None, **kw):
     return order
 
 
-def make_line(order, product=None, qty=Decimal("1"), price=None, line_no=1,
-              tax=None, discount=Decimal("0"), **kw):
+def make_line(
+    order,
+    product=None,
+    qty=Decimal("1"),
+    price=None,
+    line_no=1,
+    tax=None,
+    discount=Decimal("0"),
+    **kw,
+):
     product = product or make_product()
     line = SalesOrderLine(
         line_no=line_no,
@@ -143,7 +151,8 @@ def make_open_period():
         code="FY-TEST", start_date="2026-01-01", end_date="2026-12-31"
     )
     period, _ = FiscalPeriod.objects.get_or_create(
-        fiscal_year=year, period_no=1,
+        fiscal_year=year,
+        period_no=1,
         defaults=dict(
             name="Test period",
             start_date="2026-01-01",

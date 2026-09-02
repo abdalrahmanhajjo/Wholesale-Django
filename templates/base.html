@@ -52,6 +52,10 @@ Blocks available to child templates:
         <a href="#" class="nav-link">Payments</a>
         <a href="{% url 'inventory:gr_list' %}"
            class="nav-link {% if request.resolver_match.app_name == 'inventory' and request.resolver_match.url_name|slice:':3' == 'gr_' %}nav-link-active{% endif %}">Goods receipts</a>
+        <a href="{% url 'inventory:st_list' %}"
+           class="nav-link {% if request.resolver_match.app_name == 'inventory' and request.resolver_match.url_name|slice:':3' == 'st_' %}nav-link-active{% endif %}">Stock transfers</a>
+        <a href="{% url 'inventory:sa_list' %}"
+           class="nav-link {% if request.resolver_match.app_name == 'inventory' and request.resolver_match.url_name|slice:':3' == 'sa_' %}nav-link-active{% endif %}">Stock adjustments</a>
         <a href="{% url 'inventory:stock_ledger' %}"
            class="nav-link {% if request.resolver_match.url_name == 'stock_ledger' %}nav-link-active{% endif %}">Stock ledger</a>
         <a href="{% url 'inventory:stock_valuation' %}"

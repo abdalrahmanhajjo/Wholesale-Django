@@ -1,90 +1,101 @@
-# Inventory core: weighted-average costing engine + stock ledger/valuation (Member 2, Day 5)
+# Warehouse ops: stock transfers and adjustments (Member 2, Day 6)
 
-Goods receipts and purchase bills (previous PR) proved the posting shape end
-to end, but the weighted-average balance math lived inline inside
-`post_goods_receipt` — the next stock-moving document (delivery, transfer,
-adjustment) would have had to copy it. This PR pulls that math out into a
-shared costing engine and adds the two read screens INV-004/INV-005 promised:
-a stock ledger and an inventory valuation view.
+Day 5 built the weighted-average costing engine (`post_stock_movement()`) and
+left it ready for the document types that hadn't landed yet. This PR is
+those document types: moving stock between warehouses, and correcting stock
+on hand with an audited reason — the two remaining ways stock changes
+outside the purchase cycle (INV-008, INV-009), both posting through the same
+engine and the same negative-stock policy as goods receipts.
 
 ## What's new
 
-### The costing engine (`apps/inventory/services.py`)
-`post_stock_movement()` is now the one place that applies a movement to a
-product/warehouse balance:
+### Stock transfers (`/inventory/transfers/`)
+`StockTransfer` / `StockTransferLine` already existed from the foundation
+schema; this PR adds the application layer:
 
-- Takes `SELECT ... FOR UPDATE` on the `StockBalance` row so two concurrent
-  movements of the same item serialise instead of racing each other's
-  read-modify-write of the running average (NFR-003, NFR-008) — the same
-  guarantee `post_goods_receipt` already had, now shared.
-- **Inbound** (`GOODS_RECEIPT`, `SALES_RETURN_IN`, `TRANSFER_IN`,
-  `ADJUSTMENT_IN`, `OPENING`): blends the caller's `unit_cost` into the
-  running weighted average.
-- **Outbound** (`DELIVERY`, `PURCHASE_RETURN_OUT`, `TRANSFER_OUT`,
-  `ADJUSTMENT_OUT`, `WRITE_OFF`): costs the line at the *current* average and
-  ignores any `unit_cost` the caller passes — the balance is the only source
-  of truth for what stock leaving the warehouse is worth (INV-005). Direction
-  is derived from `movement_type` rather than asked for, so it can't drift
-  from the DB's `stock_movement_direction_matches_type` constraint.
-- Zeroes the balance's value exactly when a movement brings quantity to zero,
-  instead of leaving a rounding residue behind.
-- BR-017's negative-stock policy is still enforced by the
-  `wams_stock_negative_check` database trigger, not duplicated here — this
-  only catches the resulting `IntegrityError` and re-raises it as a
-  `ValidationError` a view can display.
+- **List / create-edit / detail** screens, same shape as goods receipts.
+- The form rejects transferring a warehouse into itself before it ever
+  reaches the DB's `stock_transfer_different_warehouses` constraint.
+- **Posting** (`apps/inventory/services.py::post_stock_transfer`): each line
+  becomes a `TRANSFER_OUT` at the source warehouse followed by a
+  `TRANSFER_IN` at the destination, both through `post_stock_movement()` —
+  the `IN` leg is costed at whatever the `OUT` leg actually left at, so a
+  transfer carries the source's weighted average forward instead of
+  inventing a new one. Insufficient stock at the source is refused by the
+  same `wams_stock_negative_check` trigger a goods receipt would hit.
+- **The general ledger only moves when it has to**: if the two warehouses
+  resolve to the same Inventory account (the common case — CFG-007's
+  per-warehouse override is optional and usually unset), a transfer is a
+  pure stock relocation with no journal. When the warehouses do have
+  distinct accounts, both legs clear through the seeded **Stock Transfer
+  Clearing** account (`1330`) rather than debiting one account and
+  crediting the other directly, so that account's activity is a reviewable
+  record of transfers rather than an opaque net-zero pair.
 
-`post_goods_receipt` was refactored to call this instead of computing the
-balance itself; its behaviour (and every existing test for it) is unchanged.
-Deliveries, transfers and adjustments — not yet built — will post through the
-same function rather than reimplementing it.
+### Stock adjustments (`/inventory/adjustments/`)
+Same shape for `StockAdjustment` / `StockAdjustmentLine` / `AdjustmentReason`:
 
-### Stock ledger (`/inventory/stock/ledger/`)
-Every posted `StockMovement`, filterable by warehouse and movement type and
-searchable by SKU/name/document number, with the running balance quantity,
-average cost and value each line left behind (RPT-016, RPT-017) — the
-on-screen equivalent of the existing `fn_stock_card()` function, across every
-product rather than one at a time.
+- **List / create-edit / detail** screens, plus the **approval workflow**
+  (INV-009): draft → submit → approve/reject → post, mirroring the purchase
+  order pattern exactly. A reason with `requires_approval=False` skips
+  straight to approved on submit — none of the five seeded reasons currently
+  do, but the admin can add one.
+- **Direction enforced against the reason**: `AdjustmentReason.increases_stock`
+  says whether a reason only ever raises or only ever lowers stock (e.g.
+  "Damaged goods" only lowers). Nothing in the schema stopped a line from
+  disagreeing with that before this PR — `services.validate_adjustment_directions()`
+  checks it after the form and formset both validate and redisplays with one
+  clear message instead of a confusing posting-time result.
+- **Posting** (`apps/inventory/services.py::post_stock_adjustment`): each
+  line posts as `ADJUSTMENT_IN` or `ADJUSTMENT_OUT` (sign of `quantity_delta`
+  decides which) through the shared engine, then the net value books against
+  the reason's own `gain_loss_account` — **Dr Inventory / Cr the account**
+  for a net increase, the reverse for a decrease. All five seeded reasons
+  already carry the right account (`COUNT-UP` → Inventory Adjustment Gain,
+  `DAMAGE`/`EXPIRY`/`COUNT-DN` → Inventory Adjustment Loss, `OPENING` →
+  Opening Balance Equity), so this just wires up data that already existed.
 
-### Inventory valuation (`/inventory/stock/valuation/`)
-Quantity on hand, reserved, average cost and value per product/warehouse,
-filterable by warehouse, plus a below-reorder-level count in the summary row
-(RPT-018) — the on-screen equivalent of `v_inventory_valuation`, backed
-directly by `StockBalance` so it's always current rather than recomputed.
-
-Both screens are built on the existing `FilteredListView` pattern (search,
-filter, sort, pagination, CSV export, all for free) and are cross-linked: a
-valuation row's "View" link opens the ledger pre-filtered to that item; a
-ledger row's "View" link opens its source document when there is one (e.g.
-the goods receipt that created it).
+### Negative-stock policy
+Both flows post through Day 5's `post_stock_movement()` unchanged, so
+BR-017 applies identically: a transfer or a decrease adjustment that would
+take a warehouse negative is refused by the database trigger and surfaced
+as a `ValidationError`, exactly like a delivery would be. No new logic was
+needed here — the point of building the shared engine last time was so this
+would already be true.
 
 ## Files touched
-Modified: `apps/inventory/{services,views,urls,models}.py`,
-`templates/base.html` (nav links for the two new screens; narrowed the
-"Goods receipts" link's active-state check so it no longer lights up for
-them).
-New: `apps/inventory/tests/test_stock_ledger.py`.
+Modified: `apps/inventory/{services,forms,views,urls,models,admin}.py`,
+`templates/base.html` (nav links for the two new sections).
+New: `templates/inventory/{stock_transfer_form,stock_transfer_detail,_st_line_row}.html`,
+`templates/inventory/{stock_adjustment_form,stock_adjustment_detail,_sa_line_row}.html`,
+`apps/inventory/tests/test_stock_transfers_adjustments.py`.
 
-No new migrations: `StockMovement.get_absolute_url()`/`signed_quantity` and
-`StockBalance.get_absolute_url()` are methods/properties, not fields.
+No new migrations: `StockTransfer.get_absolute_url()` and
+`StockAdjustment.get_absolute_url()` are methods, not fields; every model
+field and constraint used here already existed.
 
 ## Testing
-- `python manage.py test apps.inventory` — **19/19 pass**, run against the
-  real Supabase database. Confirms the goods-receipt suite from the previous
-  PR still passes unchanged after the refactor.
-- New tests in `test_stock_ledger.py`: the engine directly (weighted-average
-  blending across two receipts, outbound costing at the current average
-  regardless of what the caller passes, value zeroed at zero quantity,
-  negative stock blocked by the DB policy and allowed when a warehouse opts
-  in), plus both screens (list rendering, search narrowing to one product,
-  the valuation view reflecting the posted balance, login required).
+- `python manage.py test apps.inventory` — **33/33 pass** (19 from before,
+  14 new), run against the real Supabase database.
+- New tests in `test_stock_transfers_adjustments.py`:
+  - Transfers: numbering and the draft-time cost estimate, the
+    same-warehouse form rejection, posting moves stock and carries cost
+    forward, no journal when warehouses share an Inventory account, a
+    journal through Stock Transfer Clearing when they don't, insufficient
+    stock refused, and that Purchasing (as opposed to Warehouse) cannot post.
+  - Adjustments: numbering, a reason/sign mismatch rejected before saving,
+    the full submit → approve → post workflow booking the correct gain
+    account, a no-approval-required reason skipping straight to approved,
+    rejection requiring a reason, a decrease beyond on-hand refused at
+    posting, and that Purchasing cannot approve.
 - `ruff check` / `ruff format` — clean.
+- `manage.py makemigrations inventory --check` — no changes detected.
 
 ## Follow-ups (out of scope here)
-- Deliveries, transfers and adjustments still need their own document flows
-  (forms, views, approval where relevant) — this PR only makes sure they'll
-  have a correct, shared engine to post through when they land.
-- The `ValidationError` raised when BR-017 blocks a movement currently
-  surfaces Postgres's raw trigger message. That's readable enough today, but
-  worth a friendlier translation once a screen actually lets a
-  non-technical user trigger it (the goods-receipt flow never can, since
-  receiving only increases stock).
+- Deliveries (`DeliveryNote`) are the one remaining document type still
+  unposted — same engine, sales side owns the screen.
+- `OVERRIDE_NEGATIVE_STOCK` still isn't wired to an actual override path,
+  for the same reason `OVERRIDE_DUPLICATE_VENDOR_INVOICE` wasn't in the Day
+  3–4 PR: the underlying DB trigger is a hard block regardless of Django
+  permission, so a permission-gated UI for it would be misleading until
+  that's revisited (e.g. a per-transaction flag the trigger itself reads).

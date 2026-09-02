@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% comment %}
+Create / edit a stock transfer (INV-008).
+
+Cost is never taken from this form — it is derived by
+apps.inventory.services.recalculate_transfer after the formset is saved, and
+fixed for real at posting time from the source warehouse's live average.
+{% endcomment %}
+
+{% block header_title %}{{ page_title }}{% endblock %}
+
+{% block content %}
+<form method="post" novalidate id="st-form" class="max-w-4xl">
+  {% csrf_token %}
+
+  {% if form.non_field_errors %}
+    <div class="card card-pad mb-5 border-l-4 border-l-danger">
+      {% for error in form.non_field_errors %}<p class="text-sm text-danger">{{ error }}</p>{% endfor %}
+    </div>
+  {% endif %}
+  {% if formset.non_form_errors %}
+    <div class="card card-pad mb-5 border-l-4 border-l-danger">
+      {% for error in formset.non_form_errors %}<p class="text-sm text-danger">{{ error }}</p>{% endfor %}
+    </div>
+  {% endif %}
+
+  <div class="card card-pad">
+    <p class="eyebrow">Transfer</p>
+    <div class="mt-4 grid gap-4 sm:grid-cols-3">
+      {% include "core/_form_field.html" with field=form.from_warehouse %}
+      {% include "core/_form_field.html" with field=form.to_warehouse %}
+      {% include "core/_form_field.html" with field=form.document_date %}
+      {% include "core/_form_field.html" with field=form.reason %}
+    </div>
+  </div>
+
+  <div class="card mt-4">
+    <div class="flex items-center justify-between border-b border-line p-4 sm:p-5">
+      <p class="card-title">Lines</p>
+      <button type="button" id="st-add-line" class="btn-ghost btn-sm">Add line</button>
+    </div>
+
+    {{ formset.management_form }}
+
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="border-b border-line bg-muted-bg text-[11px] font-bold uppercase tracking-[0.1em] text-muted-fg">
+            <th class="px-3 py-2 text-left">Product</th>
+            <th class="px-3 py-2 text-left">Quantity</th>
+            <th class="w-px px-3 py-2"></th>
+          </tr>
+        </thead>
+        <tbody id="st-line-rows">
+          {% for line_form in formset %}
+            {% include "inventory/_st_line_row.html" with form=line_form %}
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card card-pad mt-4">
+    <p class="eyebrow">Notes</p>
+    <div class="mt-4">{% include "core/_form_field.html" with field=form.notes %}</div>
+  </div>
+
+  <div class="mt-5 flex items-center gap-2">
+    <button type="submit" class="btn-primary">Save draft</button>
+    <a href="{% if object %}{{ object.get_absolute_url }}{% else %}{% url 'inventory:st_list' %}{% endif %}"
+       class="btn-ghost">Cancel</a>
+  </div>
+</form>
+
+<template id="st-empty-row">
+  {% include "inventory/_st_line_row.html" with form=empty_form %}
+</template>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+(function () {
+  const totalForms = document.querySelector('input[name="lines-TOTAL_FORMS"]');
+  const rowsBody = document.getElementById("st-line-rows");
+  const rowTemplate = document.getElementById("st-empty-row");
+
+  function rowsOf() {
+    return Array.from(rowsBody.querySelectorAll("tr[data-st-row]"));
+  }
+
+  function wireRow(row) {
+    const removeBtn = row.querySelector('[data-role="remove-line"]');
+    if (removeBtn) {
+      removeBtn.addEventListener("click", function () {
+        const deleteBox = row.querySelector('input[type="checkbox"][name$="-DELETE"]');
+        if (deleteBox) {
+          deleteBox.checked = true;
+          row.classList.add("hidden");
+        } else {
+          row.remove();
+        }
+      });
+    }
+  }
+
+  document.getElementById("st-add-line").addEventListener("click", function () {
+    const index = parseInt(totalForms.value, 10);
+    const html = rowTemplate.innerHTML.replaceAll("__prefix__", index);
+    const wrapper = document.createElement("tbody");
+    wrapper.innerHTML = html;
+    const newRow = wrapper.querySelector("tr");
+    rowsBody.appendChild(newRow);
+    totalForms.value = index + 1;
+    wireRow(newRow);
+  });
+
+  rowsOf().forEach(wireRow);
+})();
+</script>
+{% endblock %}

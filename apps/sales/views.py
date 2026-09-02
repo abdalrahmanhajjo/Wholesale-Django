@@ -9,22 +9,24 @@ Follows the parties/views.py worked example exactly:
 
 from django.contrib import messages
 from django.db import transaction
-from django.db.models import Q, Count, Sum
+from django.db.models import Count, Q, Sum
 from django.shortcuts import get_object_or_404, redirect
-from django.urls import reverse, reverse_lazy
+from django.urls import reverse
 from django.views.generic import (
-    CreateView, DetailView, TemplateView, UpdateView, View,
+    CreateView,
+    DetailView,
+    UpdateView,
+    View,
 )
 
 from apps.core import audit
-from apps.core.list_views import Column, ChoiceFilter, DateRangeFilter, FilteredListView
+from apps.core.list_views import ChoiceFilter, Column, DateRangeFilter, FilteredListView
 from apps.core.mixins import ActionPermissionMixin, ConfirmationRequiredMixin
-from apps.core.models import AuditEvent, DocumentStatus, ZERO
+from apps.core.models import EDITABLE_STATES, AuditEvent, DocumentStatus
 from apps.core.permissions import APPROVE_SALES_ORDER, EXPORT_DATA
-
-from apps.sales.forms import SalesOrderForm, SalesOrderLineFormSet
-from apps.sales.models import SalesOrder, SalesOrderLine
 from apps.sales import services
+from apps.sales.forms import SalesOrderForm, SalesOrderLineFormSet
+from apps.sales.models import SalesOrder
 
 
 def _number_lines(formset):
@@ -46,7 +48,7 @@ def _number_lines(formset):
 # ---------------------------------------------------------------------------
 class SalesOrderListView(FilteredListView):
     model = SalesOrder
-    permission_required = "sales.view_salesorder"
+    required_permission = "sales.view_salesorder"
     page_title = "Sales Orders"
     page_subtitle = "Orders awaiting fulfilment, or already completed."
     create_url_name = "sales:so_create"
@@ -66,27 +68,27 @@ class SalesOrderListView(FilteredListView):
     ]
 
     search_fields = [
-        "number", "customer__name", "customer__code", "customer_reference",
+        "number",
+        "customer__name",
+        "customer__code",
+        "customer_reference",
     ]
     trigram_search_fields = ["customer__name"]
 
     filters = [
         ChoiceFilter(
-            "status", "Status",
+            "status",
+            "Status",
             list(DocumentStatus.choices),
         ),
         DateRangeFilter("document_date", "Date range"),
     ]
 
     def get_queryset(self):
-        return (
-            super()
-            .get_queryset()
-            .select_related("customer", "warehouse")
-        )
+        return super().get_queryset().select_related("customer", "warehouse")
 
     def get_summary(self):
-        totals = SalesOrder.objects.aggregate(
+        totals = self.get_queryset().aggregate(
             draft=Count("id", filter=Q(status="DRAFT")),
             submitted=Count("id", filter=Q(status="SUBMITTED")),
             approved=Count("id", filter=Q(status="APPROVED")),
@@ -122,44 +124,36 @@ class SalesOrderCreateView(ActionPermissionMixin, CreateView):
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
-        ctx["line_formset"] = self.get_formset()
+        if "line_formset" not in ctx:
+            ctx["line_formset"] = self.get_formset()
         ctx["page_subtitle"] = "Create a new order for a customer."
         return ctx
 
     def form_valid(self, form):
         formset = self.get_formset()
-        ctx = self.get_context_data(form=form, line_formset=formset)
+        if not formset.is_valid():
+            return self.render_to_response(
+                self.get_context_data(form=form, line_formset=formset)
+            )
 
         with transaction.atomic():
-            # Generate number first so the object is saved
             form.instance.number = services.allocate_so_number()
             form.instance.created_by = self.request.user
             form.instance.updated_by = self.request.user
             form.instance.status = DocumentStatus.DRAFT
             self.object = form.save()
 
-            if formset.is_valid():
-                formset.instance = self.object
-                _number_lines(formset)
-                formset.save()
+            formset.instance = self.object
+            _number_lines(formset)
+            formset.save()
 
-                # Full recalculation (SAL-002)
-                services.recalculate_order(self.object)
+            services.recalculate_order(self.object)
 
-                audit.record_create(self.request, self.object)
-                messages.success(
-                    self.request,
-                    f"Sales order {self.object.number} created.",
-                )
-            else:
-                # If lines are invalid, still save header but warn
-                audit.record_create(self.request, self.object)
-                messages.warning(
-                    self.request,
-                    f"Order {self.object.number} saved. "
-                    "Please fix the line errors below.",
-                )
-                return self.render_to_response(ctx)
+            audit.record_create(self.request, self.object)
+            messages.success(
+                self.request,
+                f"Sales order {self.object.number} created.",
+            )
 
         return redirect(self.get_success_url())
 
@@ -173,6 +167,10 @@ class SalesOrderUpdateView(ActionPermissionMixin, UpdateView):
     template_name = "sales/so_form.html"
     required_permission = "sales.change_salesorder"
 
+    def get_queryset(self):
+        # Posted, completed and cancelled documents are immutable (BR-004).
+        return super().get_queryset().filter(status__in=EDITABLE_STATES)
+
     def get_formset(self):
         return SalesOrderLineFormSet(
             self.request.POST or None,
@@ -182,7 +180,8 @@ class SalesOrderUpdateView(ActionPermissionMixin, UpdateView):
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
-        ctx["line_formset"] = self.get_formset()
+        if "line_formset" not in ctx:
+            ctx["line_formset"] = self.get_formset()
         ctx["page_title"] = f"Edit {self.object.number}"
         return ctx
 
@@ -203,9 +202,7 @@ class SalesOrderUpdateView(ActionPermissionMixin, UpdateView):
             _number_lines(formset)
             formset.save()
 
-            # Only recalculate if status is editable
-            if self.object.status in ["DRAFT", "SUBMITTED", "REJECTED"]:
-                services.recalculate_order(self.object)
+            services.recalculate_order(self.object)
 
             event = audit.record_update(self.request, self.object, before)
             if event:
@@ -232,19 +229,30 @@ class SalesOrderDetailView(ActionPermissionMixin, DetailView):
     required_permission = "sales.view_salesorder"
     context_object_name = "order"
 
+    def get_queryset(self):
+        return (
+            super()
+            .get_queryset()
+            .select_related(
+                "customer",
+                "warehouse",
+                "currency",
+                "payment_term",
+                "salesperson",
+                "approved_by",
+            )
+            .prefetch_related("lines__product", "lines__unit", "lines__tax_code")
+        )
+
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
         ctx["page_title"] = self.object.number
         ctx["page_subtitle"] = f"Order for {self.object.customer}"
-        ctx["audit_events"] = (
-            AuditEvent.objects
-            .filter(
-                content_type__app_label="sales",
-                content_type__model="salesorder",
-                object_id=self.object.pk,
-            )
-            .select_related("user")[:20]
-        )
+        ctx["audit_events"] = AuditEvent.objects.filter(
+            content_type__app_label="sales",
+            content_type__model="salesorder",
+            object_id=self.object.pk,
+        ).select_related("user")[:20]
         return ctx
 
 

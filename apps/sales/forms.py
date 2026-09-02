@@ -7,12 +7,9 @@ identical to CustomerForm.
 """
 
 from django import forms
-from django.core.exceptions import ValidationError
 from django.forms import inlineformset_factory
 
-from apps.core.models import DocumentStatus
-from apps.sales.models import SalesOrder, SalesOrderLine, DiscountKind
-from apps.sales.services import recalculate_order
+from apps.sales.models import DiscountKind, SalesOrder, SalesOrderLine
 
 
 class SalesOrderForm(forms.ModelForm):
@@ -68,14 +65,14 @@ class SalesOrderForm(forms.ModelForm):
                 widget.attrs.setdefault("class", "field")
 
         # Only active, non-archived records
-        self.fields["customer"].queryset = (
-            self.fields["customer"].queryset.filter(is_active=True)
+        self.fields["customer"].queryset = self.fields["customer"].queryset.filter(
+            is_active=True
         )
-        self.fields["warehouse"].queryset = (
-            self.fields["warehouse"].queryset.filter(is_active=True)
+        self.fields["warehouse"].queryset = self.fields["warehouse"].queryset.filter(
+            is_active=True
         )
-        self.fields["payment_term"].queryset = (
-            self.fields["payment_term"].queryset.filter(is_active=True)
+        self.fields["payment_term"].queryset = self.fields["payment_term"].queryset.filter(
+            is_active=True
         )
 
     def clean(self):
@@ -91,7 +88,7 @@ class SalesOrderForm(forms.ModelForm):
 
 
 class SalesOrderLineForm(forms.ModelForm):
-    """One line in the formset. Product is chosen; price/tax auto-populate via JS."""
+    """One server-validated sales-order line in the inline formset."""
 
     class Meta:
         model = SalesOrderLine
@@ -125,21 +122,23 @@ class SalesOrderLineForm(forms.ModelForm):
             else:
                 widget.attrs.setdefault("class", "field")
         # Only active products
-        self.fields["product"].queryset = (
-            self.fields["product"].queryset.filter(is_active=True)
+        self.fields["product"].queryset = self.fields["product"].queryset.filter(
+            is_active=True
         )
-        self.fields["tax_code"].queryset = (
-            self.fields["tax_code"].queryset.filter(is_active=True)
+        self.fields["tax_code"].queryset = self.fields["tax_code"].queryset.filter(
+            is_active=True
         )
 
 
-# 10 lines max for SO (can adjust)
+# Ten lines keeps the first entry screen focused and bounds one request's work.
 SalesOrderLineFormSet = inlineformset_factory(
     SalesOrder,
     SalesOrderLine,
     form=SalesOrderLineForm,
     extra=1,
     can_delete=True,
+    max_num=10,
+    validate_max=True,
     min_num=0,
     validate_min=False,
 )

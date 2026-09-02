@@ -1,22 +1,17 @@
 """
 Core views.
 
-Only the shell for now: a role-aware dashboard placeholder and the sign-in
-redirect target. The real dashboard widgets (UX-001) come once the other
-members' modules have data to show.
+Role-aware dashboard and audited configuration screens backed by Django ORM.
 """
 
-from django.contrib.auth.decorators import login_required
+from django.conf import settings
+from django.contrib.auth.decorators import login_required, permission_required
+from django.core.cache import cache
+from django.db.models import Count, Q, Sum
 from django.shortcuts import render
 from django.urls import reverse_lazy
 from django.views.generic import CreateView, UpdateView
 
-from apps.core.forms import CurrencyForm, TaxCodeForm
-from apps.core.list_views import BooleanFilter, ChoiceFilter, Column, FilteredListView
-from apps.core.mixins import ActionPermissionMixin, AuditedFormMixin
-from apps.core.models import Company, Currency, FiscalPeriod, TaxCode, TaxTreatment, TaxApplicability
-from apps.core.permissions import EXPORT_DATA, MANAGE_CONFIGURATION
-from apps.ledger.models import Account, AccountMapping, MappingKey
 from apps.core.forms import (
     CompanyForm,
     CurrencyForm,
@@ -31,6 +26,7 @@ from apps.core.list_views import (
     DateRangeFilter,
     FilteredListView,
 )
+from apps.core.mixins import ActionPermissionMixin, AuditedFormMixin
 from apps.core.models import (
     Company,
     Currency,
@@ -44,37 +40,61 @@ from apps.core.models import (
     TaxCode,
     TaxTreatment,
 )
+from apps.core.permissions import EXPORT_DATA, MANAGE_CONFIGURATION
+from apps.ledger.models import Account, AccountMapping, MappingKey
+from apps.parties.models import Customer, Vendor
+from apps.payments.models import Payment, PaymentDirection
+from apps.sales.models import SalesOrder
 
 
 @login_required
+@permission_required("core.view_company", raise_exception=True)
 def dashboard(request):
     """
     Landing page after sign-in.
 
-    Deliberately shows configuration readiness rather than fake figures: until
-    Members 2, 3 and 4 post real documents there is nothing financial to report,
-    and a dashboard of zeroes reads as a broken system rather than an empty one.
+    The aggregate snapshot and recent activity share one short cache lifetime,
+    which removes repeated round trips to a remote PostgreSQL region while
+    keeping the operational overview acceptably fresh.
     """
-    company = Company.objects.select_related("base_currency").first()
-    open_periods = FiscalPeriod.objects.filter(status="OPEN").order_by("start_date")
-    missing_mappings = sorted(
-        set(dict(MappingKey.choices))
-        - set(AccountMapping.objects.values_list("key", flat=True))
-    )
+    overview = cache.get("dashboard_overview_v1")
+    if overview is None:
+        company = Company.objects.select_related("base_currency").first()
+        open_periods = list(FiscalPeriod.objects.filter(status="OPEN").order_by("start_date"))
+        account_totals = Account.objects.filter(is_active=True).aggregate(
+            total=Count("id"),
+            postable=Count("id", filter=Q(is_postable=True)),
+        )
+        overview = {
+            "company": company,
+            "base_currency": company.base_currency_id if company else None,
+            "current_period": open_periods[0] if open_periods else None,
+            "open_period_count": len(open_periods),
+            "account_count": account_totals["total"],
+            "postable_account_count": account_totals["postable"],
+            "missing_mappings": sorted(
+                set(dict(MappingKey.choices))
+                - set(AccountMapping.objects.values_list("key", flat=True))
+            ),
+            "customer_count": Customer.objects.filter(is_active=True).count(),
+            "vendor_count": Vendor.objects.filter(is_active=True).count(),
+            "sales_order_count": SalesOrder.objects.count(),
+            "payment_totals": Payment.objects.aggregate(
+                receipts=Sum("amount_base", filter=Q(direction=PaymentDirection.RECEIPT)),
+                payments=Sum("amount_base", filter=Q(direction=PaymentDirection.PAYMENT)),
+                unallocated=Sum("unallocated_txn"),
+                drafts=Count("id", filter=Q(status="DRAFT")),
+            ),
+            "recent_payments": list(
+                Payment.objects.select_related("customer", "vendor", "currency", "method")[:5]
+            ),
+        }
+        cache.set("dashboard_overview_v1", overview, settings.DASHBOARD_CACHE_SECONDS)
 
     context = {
         "page_title": f"Good day, {request.user.full_name or request.user.username}.",
         "page_subtitle": "Configuration is in place. Operational modules arrive with the other slices.",
-        "company": company,
-        "base_currency": company.base_currency_id if company else None,
-        "current_period": open_periods.first(),
-        "open_period_count": open_periods.count(),
-        "account_count": Account.objects.filter(is_active=True).count(),
-        "postable_account_count": Account.objects.filter(
-            is_active=True, is_postable=True
-        ).count(),
-        "missing_mappings": missing_mappings,
-        "role": request.user.groups.first(),
+        **overview,
     }
     return render(request, "core/dashboard.html", context)
 
@@ -83,6 +103,7 @@ class CurrencyListView(FilteredListView):
     """CFG-003: the currencies the business trades in."""
 
     model = Currency
+    required_permission = "core.view_currency"
     page_title = "Currencies"
     page_subtitle = "Currencies available on documents. One is the base currency (BR-002)."
     default_ordering = "code"
@@ -108,10 +129,15 @@ class CurrencyListView(FilteredListView):
     export_filename = "currencies"
 
     def get_summary(self):
+        queryset = self.get_queryset()
+        totals = queryset.aggregate(
+            total=Count("pk"),
+            active=Count("pk", filter=Q(is_active=True)),
+        )
         return [
-            ("Currencies", Currency.objects.count()),
-            ("Active", Currency.objects.filter(is_active=True).count()),
-            ("Base", Currency.objects.filter(is_base=True).first() or "—"),
+            ("Currencies", totals["total"]),
+            ("Active", totals["active"]),
+            ("Base", queryset.filter(is_base=True).first() or "—"),
         ]
 
 
@@ -141,6 +167,7 @@ class TaxCodeListView(FilteredListView):
     """CFG-004: the tax codes available on documents."""
 
     model = TaxCode
+    required_permission = "core.view_taxcode"
     page_title = "Tax codes"
     page_subtitle = "Rates and treatments applied to sales and purchase lines."
     default_ordering = "code"
@@ -170,10 +197,15 @@ class TaxCodeListView(FilteredListView):
     export_filename = "tax-codes"
 
     def get_summary(self):
+        totals = self.get_queryset().aggregate(
+            total=Count("pk"),
+            active=Count("pk", filter=Q(is_active=True)),
+            standard=Count("pk", filter=Q(treatment=TaxTreatment.STANDARD)),
+        )
         return [
-            ("Tax codes", TaxCode.objects.count()),
-            ("Active", TaxCode.objects.filter(is_active=True).count()),
-            ("Standard rated", TaxCode.objects.filter(treatment=TaxTreatment.STANDARD).count()),
+            ("Tax codes", totals["total"]),
+            ("Active", totals["active"]),
+            ("Standard rated", totals["standard"]),
         ]
 
 
@@ -198,11 +230,13 @@ class TaxCodeUpdateView(AuditedFormMixin, ActionPermissionMixin, UpdateView):
         ctx["page_title"] = f"Edit {self.object.code}"
         return ctx
 
+
 # ---------------------------------------------------------------------------
 # Payment terms (CFG-005)
 # ---------------------------------------------------------------------------
 class PaymentTermListView(FilteredListView):
     model = PaymentTerm
+    required_permission = "core.view_paymentterm"
     page_title = "Payment terms"
     page_subtitle = "When an invoice falls due, and any early-settlement discount."
     default_ordering = "code"
@@ -226,10 +260,11 @@ class PaymentTermListView(FilteredListView):
     export_filename = "payment-terms"
 
     def get_summary(self):
-        return [
-            ("Payment terms", PaymentTerm.objects.count()),
-            ("Active", PaymentTerm.objects.filter(is_active=True).count()),
-        ]
+        totals = self.get_queryset().aggregate(
+            total=Count("pk"),
+            active=Count("pk", filter=Q(is_active=True)),
+        )
+        return [("Payment terms", totals["total"]), ("Active", totals["active"])]
 
 
 class PaymentTermCreateView(AuditedFormMixin, ActionPermissionMixin, CreateView):
@@ -287,6 +322,7 @@ class CompanySettingsView(AuditedFormMixin, ActionPermissionMixin, UpdateView):
 # ---------------------------------------------------------------------------
 class DocumentSequenceListView(FilteredListView):
     model = DocumentSequence
+    required_permission = "core.view_documentsequence"
     page_title = "Number series"
     page_subtitle = "How each document type is numbered. Used by numbering.next_number()."
     default_ordering = "document_type"
@@ -294,8 +330,13 @@ class DocumentSequenceListView(FilteredListView):
     create_label = "New series"
 
     columns = [
-        Column("get_document_type_display", "Document", sortable=True, link=True,
-               order_by="document_type"),
+        Column(
+            "get_document_type_display",
+            "Document",
+            sortable=True,
+            link=True,
+            order_by="document_type",
+        ),
         Column("series", "Series", css="font-mono text-xs"),
         Column("prefix", "Prefix", css="font-mono text-xs"),
         Column("padding", "Padding", align="right"),
@@ -314,10 +355,11 @@ class DocumentSequenceListView(FilteredListView):
     export_filename = "number-series"
 
     def get_summary(self):
-        return [
-            ("Series", DocumentSequence.objects.count()),
-            ("Active", DocumentSequence.objects.filter(is_active=True).count()),
-        ]
+        totals = self.get_queryset().aggregate(
+            total=Count("pk"),
+            active=Count("pk", filter=Q(is_active=True)),
+        )
+        return [("Series", totals["total"]), ("Active", totals["active"])]
 
 
 class DocumentSequenceCreateView(AuditedFormMixin, ActionPermissionMixin, CreateView):
@@ -326,7 +368,10 @@ class DocumentSequenceCreateView(AuditedFormMixin, ActionPermissionMixin, Create
     template_name = "core/settings_form.html"
     required_permission = MANAGE_CONFIGURATION
     success_url = reverse_lazy("core:sequence_list")
-    extra_context = {"page_title": "New number series", "cancel_url": "/settings/number-series/"}
+    extra_context = {
+        "page_title": "New number series",
+        "cancel_url": "/settings/number-series/",
+    }
 
 
 class DocumentSequenceUpdateView(AuditedFormMixin, ActionPermissionMixin, UpdateView):
@@ -348,6 +393,7 @@ class DocumentSequenceUpdateView(AuditedFormMixin, ActionPermissionMixin, Update
 # ---------------------------------------------------------------------------
 class FiscalPeriodListView(FilteredListView):
     model = FiscalPeriod
+    required_permission = "core.view_fiscalperiod"
     page_title = "Fiscal periods"
     page_subtitle = (
         "Posting windows. Closing and reopening happen through the accounting "
@@ -377,8 +423,13 @@ class FiscalPeriodListView(FilteredListView):
         return super().get_queryset().select_related("fiscal_year", "closed_by")
 
     def get_summary(self):
+        totals = self.get_queryset().aggregate(
+            total=Count("pk"),
+            open=Count("pk", filter=Q(status=PeriodStatus.OPEN)),
+            closed=Count("pk", filter=~Q(status=PeriodStatus.OPEN)),
+        )
         return [
-            ("Periods", FiscalPeriod.objects.count()),
-            ("Open", FiscalPeriod.objects.filter(status=PeriodStatus.OPEN).count()),
-            ("Closed", FiscalPeriod.objects.exclude(status=PeriodStatus.OPEN).count()),
+            ("Periods", totals["total"]),
+            ("Open", totals["open"]),
+            ("Closed", totals["closed"]),
         ]

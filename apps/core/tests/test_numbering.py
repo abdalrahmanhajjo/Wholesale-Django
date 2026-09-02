@@ -30,9 +30,7 @@ class NumberingTests(TestCase):
         return DocumentSequence.objects.create(**values)
 
     def allocate(self, on_date=date(2026, 5, 1)):
-        return numbering.next_number(
-            DocumentType.SALES_INVOICE, on_date, series="TEST"
-        )
+        return numbering.next_number(DocumentType.SALES_INVOICE, on_date, series="TEST")
 
     # -- allocation ---------------------------------------------------------
 
@@ -83,9 +81,7 @@ class NumberingTests(TestCase):
         self.assertEqual(self.allocate(date(2026, 12, 31)), "T-0042")
 
     def test_never_policy_ignores_the_year(self):
-        self.make_sequence(
-            next_number=42, period_key="", reset_policy=SequenceReset.NEVER
-        )
+        self.make_sequence(next_number=42, period_key="", reset_policy=SequenceReset.NEVER)
 
         self.assertEqual(self.allocate(date(2026, 5, 1)), "T-0042")
         self.assertEqual(self.allocate(date(2027, 5, 1)), "T-0043")

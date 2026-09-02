@@ -2,8 +2,6 @@
 
 from django import forms
 
-from apps.core.models import Currency, TaxCode, TaxTreatment
-from apps.ledger.models import Account
 from apps.core.models import (
     Company,
     Currency,
@@ -12,6 +10,7 @@ from apps.core.models import (
     TaxCode,
     TaxTreatment,
 )
+from apps.ledger.models import Account
 
 
 class StyledModelForm(forms.ModelForm):
@@ -79,7 +78,6 @@ class CurrencyForm(StyledModelForm):
                 self.add_error("is_active", "The base currency must stay active.")
 
         return cleaned
-
 
 
 class TaxCodeForm(StyledModelForm):
@@ -209,9 +207,9 @@ class CompanyForm(StyledModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["base_currency"].queryset = Currency.objects.filter(is_active=True)
-        self.fields["base_currency"].help_text = (
-            "OD-02: cannot be changed once a transaction has been posted."
-        )
+        self.fields[
+            "base_currency"
+        ].help_text = "OD-02: cannot be changed once a transaction has been posted."
 
     def clean_fiscal_year_start_month(self):
         month = self.cleaned_data["fiscal_year_start_month"]

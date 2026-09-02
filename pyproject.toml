@@ -9,7 +9,7 @@
 
 [tool.ruff]
 line-length = 95
-target-version = "py311"
+target-version = "py312"
 extend-exclude = ["*/migrations/*"]
 
 [tool.ruff.lint]
@@ -20,6 +20,7 @@ select = [
     "UP",   # pyupgrade
     "B",    # bugbear (likely bugs)
     "DJ",   # Django-specific checks
+    "S",    # common security mistakes
 ]
 ignore = [
     "E501",    # line length is handled by the formatter
@@ -30,6 +31,7 @@ ignore = [
 # Migrations are generated; verify_schema.py deliberately imports after
 # django.setup(), which the import-order rule cannot know about.
 "*/migrations/*" = ["E", "F", "I", "UP", "B", "DJ"]
+"*/tests/*" = ["S106"]
 "verify_schema.py" = ["E402", "F401", "I001"]
 
 [tool.ruff.lint.isort]

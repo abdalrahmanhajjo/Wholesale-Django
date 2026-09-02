@@ -28,13 +28,14 @@ For a plain function view, use `@require_action(POST_SALES_INVOICE)`.
 
 from functools import wraps
 
+from django.contrib import messages
 from django.contrib.auth.mixins import AccessMixin, LoginRequiredMixin
 from django.core.exceptions import PermissionDenied
-from django.contrib import messages
 from django.db import transaction
 from django.shortcuts import redirect
 
 from apps.core import audit
+
 #: HTTP methods that do not change state. Everything else is a write.
 SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS", "TRACE"})
 

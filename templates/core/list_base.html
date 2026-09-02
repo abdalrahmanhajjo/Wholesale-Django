@@ -16,7 +16,7 @@ module-specific empty message.
     <a href="?{{ querystring }}{% if querystring %}&{% endif %}export=csv" class="btn-ghost">Export CSV</a>
   {% endif %}
   {% block list_actions %}{% endblock %}
-  {% if create_url_name %}
+  {% if create_url_name and can_create %}
     <a href="{% url create_url_name %}" class="btn-primary">{{ create_label }}</a>
   {% endif %}
 {% endblock %}
@@ -59,9 +59,11 @@ module-specific empty message.
         <div>
           <label class="label">{{ f.label }}</label>
           <div class="flex items-center gap-2">
-            <input type="date" name="{{ f.name }}_from" value="{{ f.value_from }}" class="field">
+            <input type="date" name="{{ f.name }}_from" value="{{ f.value_from }}"
+                   class="field" aria-label="{{ f.label }} from">
             <span class="text-sm text-muted-fg">to</span>
-            <input type="date" name="{{ f.name }}_to" value="{{ f.value_to }}" class="field">
+            <input type="date" name="{{ f.name }}_to" value="{{ f.value_to }}"
+                   class="field" aria-label="{{ f.label }} to">
           </div>
         </div>
       {% endif %}
@@ -162,28 +164,3 @@ module-specific empty message.
   {% endif %}
 </div>
 {% endblock %}
-
-{% block extra_scripts %}
-<script>
-  // Live search (UX-002): re-query as you type, keeping the current filters
-  // and sort, instead of requiring Apply. The filters still submit too.
-  (function () {
-    const form = document.querySelector('form[method="get"]');
-    const q = document.getElementById('q');
-    if (!form || !q) return;
-
-    let timer = null;
-    q.addEventListener('input', function () {
-      clearTimeout(timer);
-      timer = setTimeout(function () {
-        const current = new URLSearchParams(window.location.search);
-        const term = q.value.trim();
-        if (term) current.set('q', term);
-        else current.delete('q');
-        current.delete('page');
-        window.location.search = current.toString();
-      }, 400);
-    });
-  })();
-</script>
-{% endblock extra_scripts %}

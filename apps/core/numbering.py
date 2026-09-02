@@ -52,11 +52,11 @@ def next_number(document_type, on_date=None, series="DEFAULT"):
         sequence = DocumentSequence.objects.select_for_update().get(
             document_type=document_type, series=series, is_active=True
         )
-    except DocumentSequence.DoesNotExist:
+    except DocumentSequence.DoesNotExist as exc:
         raise SequenceNotConfigured(
             f"No active number series for {document_type} / {series}. "
             f"Add one in Settings before creating this document."
-        )
+        ) from exc
 
     period_key = _period_key(sequence, on_date)
     if sequence.period_key and period_key != sequence.period_key:

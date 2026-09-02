@@ -16,8 +16,8 @@ from django.contrib.postgres.fields import DateRangeField, RangeBoundary, RangeO
 from django.core.validators import MinValueValidator
 from django.db import models
 from django.db.models import F, Func, Q
-from django.utils import timezone
 from django.urls import reverse
+from django.utils import timezone
 
 from apps.core.permissions import ACTION_PERMISSIONS
 

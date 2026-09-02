@@ -415,6 +415,7 @@ class DeliveryNote(StockDocumentBase):
 
     def get_absolute_url(self):
         from django.urls import reverse
+
         return reverse("sales:delivery_detail", args=[self.pk])
 
     class Meta:

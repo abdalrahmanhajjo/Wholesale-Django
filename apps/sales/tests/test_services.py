@@ -40,9 +40,7 @@ class NumberingTests(TestCase):
         # Be resilient to a stale SO/DEFAULT row left in the persisted
         # --keepdb test database by other suites; this test asserts the
         # raise, so it owns a clean slate (SAL-001 numbering).
-        DocumentSequence.objects.filter(
-            document_type="SO", series="DEFAULT"
-        ).delete()
+        DocumentSequence.objects.filter(document_type="SO", series="DEFAULT").delete()
         with self.assertRaises(ValueError):
             services.allocate_so_number()
 

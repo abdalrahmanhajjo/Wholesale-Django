@@ -19,9 +19,44 @@ from apps.core.models import (
     DocumentSequence,
     DocumentStatus,
 )
-from apps.core import audit
 from apps.inventory.models import DeliveryNote, DeliveryNoteLine
-from apps.sales.models import SalesOrder, SalesOrderLine
+from apps.sales.models import DiscountKind, SalesOrder, SalesOrderLine
+
+LINE_TOTAL_FIELDS = [
+    "tax_rate_percent",
+    "tax_is_inclusive",
+    "tax_is_recoverable",
+    "gross_txn",
+    "line_discount_txn",
+    "allocated_document_discount_txn",
+    "net_txn",
+    "taxable_base_txn",
+    "tax_txn",
+    "total_txn",
+    "net_base",
+    "taxable_base_base",
+    "tax_base",
+    "total_base",
+]
+
+ORDER_TOTAL_FIELDS = [
+    "subtotal_txn",
+    "line_discount_txn",
+    "document_discount_txn",
+    "taxable_base_txn",
+    "tax_txn",
+    "rounding_txn",
+    "total_txn",
+    "subtotal_base",
+    "line_discount_base",
+    "document_discount_base",
+    "taxable_base_base",
+    "tax_base",
+    "rounding_base",
+    "total_base",
+    "open_txn",
+    "open_base",
+]
 
 # ---------------------------------------------------------------------------
 # Number generation (CFG-008, NFR-008)
@@ -431,6 +466,7 @@ def reject_order(order, user, reason=""):
         reason=reason,
         user=user,
     )
+    _sync_order(order, locked)
     return order
 
 
@@ -445,6 +481,7 @@ def reject_order(order, user, reason=""):
 # else — eligibility, partial delivery, counters, status transitions — is
 # complete and testable without it.
 # ---------------------------------------------------------------------------
+
 
 def allocate_dn_number(series="DEFAULT"):
     """
@@ -504,9 +541,7 @@ def create_delivery_from_order(*, order, user, quantities, **kwargs):
 
     Returns the created, posted DeliveryNote.
     """
-    note = draft_delivery_from_order(
-        order=order, user=user, quantities=quantities, **kwargs
-    )
+    note = draft_delivery_from_order(order=order, user=user, quantities=quantities, **kwargs)
     return post_delivery(note, user)
 
 
@@ -551,9 +586,7 @@ def draft_delivery_from_order(*, order, user, quantities, **kwargs):
         status=DocumentStatus.DRAFT,
         reference=kwargs.pop("reference", ""),
         notes=kwargs.pop("notes", ""),
-        shipping_address_text=kwargs.pop(
-            "shipping_address_text", order.shipping_address_text
-        ),
+        shipping_address_text=kwargs.pop("shipping_address_text", order.shipping_address_text),
         carrier=kwargs.pop("carrier", ""),
         tracking_reference=kwargs.pop("tracking_reference", ""),
     )
@@ -574,8 +607,9 @@ def draft_delivery_from_order(*, order, user, quantities, **kwargs):
         )
         line_no += 1
 
-    audit.record(audit.AuditAction.CREATE, note, user=user,
-                 changes={"created": audit.snapshot(note)})
+    audit.record(
+        audit.AuditAction.CREATE, note, user=user, changes={"created": audit.snapshot(note)}
+    )
     return note
 
 
@@ -601,7 +635,9 @@ def post_delivery(note, user):
     with transaction.atomic():
         _validate_postable(note)
         summary = {}
-        for dn_line in note.lines.select_related("sales_order_line", "product").order_by("line_no"):
+        for dn_line in note.lines.select_related("sales_order_line", "product").order_by(
+            "line_no"
+        ):
             so_line = dn_line.sales_order_line
             qty = dn_line.quantity or ZERO
             remaining = remaining_to_deliver(so_line)
@@ -623,9 +659,14 @@ def post_delivery(note, user):
         note.status = DocumentStatus.POSTED
         note.posted_at = timezone.now()
         note.posted_by = user
-        note.save(update_fields=[
-            "status", "posted_at", "posted_by", "updated_at",
-        ])
+        note.save(
+            update_fields=[
+                "status",
+                "posted_at",
+                "posted_by",
+                "updated_at",
+            ]
+        )
 
         audit.record(audit.AuditAction.POST, note, user=user)
         _sync_order_fulfilment(note.sales_order)
@@ -678,8 +719,11 @@ def _sync_order_fulfilment(order):
 
     if open_lines == 0:
         new_status = DocumentStatus.COMPLETED
-    elif order.status in (DocumentStatus.APPROVED, DocumentStatus.COMPLETED,
-                          DocumentStatus.PARTIAL):
+    elif order.status in (
+        DocumentStatus.APPROVED,
+        DocumentStatus.COMPLETED,
+        DocumentStatus.PARTIAL,
+    ):
         new_status = DocumentStatus.PARTIAL
     else:
         return
@@ -688,6 +732,8 @@ def _sync_order_fulfilment(order):
         order.status = new_status
         order.save(update_fields=["status", "updated_at"])
         audit.record_action(
-            None, audit.AuditAction.UPDATE, order,
+            None,
+            audit.AuditAction.UPDATE,
+            order,
             reason=f"Fulfilment changed to {new_status}",
         )

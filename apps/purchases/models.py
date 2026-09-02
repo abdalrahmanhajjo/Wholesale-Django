@@ -209,6 +209,11 @@ class PurchaseBill(FinancialDocumentBase):
             ),
         ]
 
+    def get_absolute_url(self):
+        from django.urls import reverse
+
+        return reverse("purchases:bill_detail", args=[self.pk])
+
 
 class PurchaseBillLine(DocumentLineBase):
     bill = models.ForeignKey(PurchaseBill, on_delete=models.CASCADE, related_name="lines")

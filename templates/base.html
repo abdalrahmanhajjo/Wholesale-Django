@@ -46,9 +46,12 @@ Blocks available to child templates:
         <p class="nav-group">Operations</p>
         <a href="#" class="nav-link">Sales</a>
         <a href="{% url 'purchases:po_list' %}"
-           class="nav-link {% if request.resolver_match.app_name == 'purchases' %}nav-link-active{% endif %}">Purchases</a>
+           class="nav-link {% if request.resolver_match.app_name == 'purchases' and request.resolver_match.url_name|slice:':3' == 'po_' %}nav-link-active{% endif %}">Purchase orders</a>
+        <a href="{% url 'purchases:bill_list' %}"
+           class="nav-link {% if request.resolver_match.app_name == 'purchases' and request.resolver_match.url_name|slice:':5' == 'bill_' %}nav-link-active{% endif %}">Purchase bills</a>
         <a href="#" class="nav-link">Payments</a>
-        <a href="#" class="nav-link">Inventory</a>
+        <a href="{% url 'inventory:gr_list' %}"
+           class="nav-link {% if request.resolver_match.app_name == 'inventory' %}nav-link-active{% endif %}">Goods receipts</a>
 
         <p class="nav-group">Relationships</p>
         <a href="{% url 'parties:customer_list' %}"

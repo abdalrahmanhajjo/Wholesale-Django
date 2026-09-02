@@ -1,16 +1,18 @@
 """
-Purchase order business logic: document numbering, line/header totals, and the
-PUR-002 approval workflow.
+Purchase cycle business logic: document numbering, line/header totals, the
+PUR-002 approval workflow, and the PUR-008/PUR-010 AP + tax posting.
 
 Kept out of views.py and forms.py on purpose (CONTRIBUTING.md §4): a view
 should read as "check permission, validate the form, call a service, render".
 
-BRD coverage: PUR-001, PUR-002, BR-003, BR-005, BR-010, BR-011, BR-012,
-CFG-008, CFG-010, NFR-008.
+BRD coverage: PUR-001, PUR-002, PUR-005..PUR-010, BR-003, BR-005, BR-010,
+BR-011, BR-012, CFG-007, CFG-008, CFG-010, GL-001, GL-002, GL-010, GL-011,
+NFR-008.
 """
 
 from decimal import ROUND_HALF_UP, Decimal
 
+from django.contrib.contenttypes.models import ContentType
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.utils import timezone
@@ -22,7 +24,9 @@ from apps.core.models import (
     DocumentSequence,
     DocumentStatus,
     DocumentType,
+    FiscalPeriod,
 )
+from apps.ledger.models import AccountMapping, JournalEntry, JournalLine, JournalType
 
 ZERO = Decimal("0")
 HUNDRED = Decimal("100")
@@ -46,19 +50,19 @@ def _period_key(reset_policy, on_date):
 # ---------------------------------------------------------------------------
 # Numbering (CFG-008, BR-003, NFR-008)
 # ---------------------------------------------------------------------------
-def allocate_po_number(document_date):
+def _allocate_number(document_type, on_date):
     """
-    Reserve the next purchase-order number.
+    Reserve the next number for a document type.
 
-    Takes SELECT ... FOR UPDATE on the sequence row so two purchasing clerks
-    saving at the same moment cannot be handed the same number (NFR-008).
-    Must be called from inside the caller's `transaction.atomic()` so the
-    reservation and the order it is stamped onto commit or roll back together.
+    Takes SELECT ... FOR UPDATE on the sequence row so two clerks saving at the
+    same moment cannot be handed the same number (NFR-008). Must be called
+    from inside the caller's `transaction.atomic()` so the reservation and the
+    document it is stamped onto commit or roll back together.
     """
     sequence = DocumentSequence.objects.select_for_update().get(
-        document_type=DocumentType.PURCHASE_ORDER, series="DEFAULT"
+        document_type=document_type, series="DEFAULT"
     )
-    key = _period_key(sequence.reset_policy, document_date)
+    key = _period_key(sequence.reset_policy, on_date)
     if sequence.reset_policy != "NEVER" and sequence.period_key != key:
         sequence.next_number = 1
         sequence.period_key = key
@@ -68,8 +72,25 @@ def allocate_po_number(document_date):
     return f"{sequence.prefix}{allocated:0{sequence.padding}d}{sequence.suffix}"
 
 
+def allocate_po_number(document_date):
+    return _allocate_number(DocumentType.PURCHASE_ORDER, document_date)
+
+
+def allocate_pb_number(document_date):
+    return _allocate_number(DocumentType.PURCHASE_BILL, document_date)
+
+
+def _allocate_journal_number(on_date):
+    """Automatic postings share the same JV- sequence as a manual journal."""
+    return _allocate_number(DocumentType.JOURNAL_ENTRY, on_date)
+
+
 # ---------------------------------------------------------------------------
 # Totals (BR-010, BR-011, BR-012 arithmetic contract)
+#
+# Shared by the purchase order and the purchase bill: both are a
+# FinancialDocumentBase header over DocumentLineBase lines, and BR-010/BR-011
+# apply identically to each, so the arithmetic is written once here.
 # ---------------------------------------------------------------------------
 def _recalculate_line(line):
     """Derive one line's amounts from quantity, price, discount and tax code."""
@@ -98,15 +119,17 @@ def _recalculate_line(line):
     return line
 
 
-def recalculate_order(order):
+def _recalculate_document(document, lines):
     """
     Recompute every line, allocate the header discount across them (BR-011),
     and roll the results up into the header totals.
 
     Call this once, after the line formset has been saved, inside the same
-    `transaction.atomic()` as the rest of the save (BR-005).
+    `transaction.atomic()` as the rest of the save (BR-005). `document` is a
+    PurchaseOrder or a PurchaseBill; both carry the same discount and total
+    fields (FinancialDocumentBase).
     """
-    lines = list(order.lines.all())
+    lines = list(lines)
 
     # First pass at gross-less-line-discount, to weight the header discount.
     pre_discount_net = []
@@ -116,16 +139,19 @@ def recalculate_order(order):
         pre_discount_net.append(gross - line_discount)
     subtotal_before_header_discount = sum(pre_discount_net, ZERO)
 
-    if order.document_discount_kind == "PERCENT":
+    if document.document_discount_kind == "PERCENT":
         header_discount = _money(
-            subtotal_before_header_discount * (order.document_discount_value or ZERO) / HUNDRED
+            subtotal_before_header_discount
+            * (document.document_discount_value or ZERO)
+            / HUNDRED
         )
-    elif order.document_discount_kind == "AMOUNT":
-        header_discount = _money(order.document_discount_value or ZERO)
+    elif document.document_discount_kind == "AMOUNT":
+        header_discount = _money(document.document_discount_value or ZERO)
     else:
         header_discount = ZERO
     header_discount = min(header_discount, subtotal_before_header_discount)
 
+    rate = document.exchange_rate or Decimal("1")
     allocated_so_far = ZERO
     subtotal_txn = line_discount_txn = taxable_base_txn = tax_txn = ZERO
     last_index = len(lines) - 1
@@ -143,6 +169,12 @@ def recalculate_order(order):
         line.allocated_document_discount_txn = share
 
         _recalculate_line(line)
+        # FTD-003: the ledger posts in base currency, so every line needs its
+        # own converted figures, not just the header's.
+        line.net_base = _money(line.net_txn * rate)
+        line.taxable_base_base = _money(line.taxable_base_txn * rate)
+        line.tax_base = _money(line.tax_txn * rate)
+        line.total_base = _money(line.total_txn * rate)
         line.save()
 
         subtotal_txn += line.gross_txn
@@ -150,22 +182,38 @@ def recalculate_order(order):
         taxable_base_txn += line.taxable_base_txn
         tax_txn += line.tax_txn
 
-    order.subtotal_txn = subtotal_txn
-    order.line_discount_txn = line_discount_txn
-    order.document_discount_txn = header_discount
-    order.taxable_base_txn = taxable_base_txn
-    order.tax_txn = tax_txn
-    order.total_txn = taxable_base_txn + tax_txn
+    document.subtotal_txn = subtotal_txn
+    document.line_discount_txn = line_discount_txn
+    document.document_discount_txn = header_discount
+    document.taxable_base_txn = taxable_base_txn
+    document.tax_txn = tax_txn
+    document.total_txn = taxable_base_txn + tax_txn
 
-    rate = order.exchange_rate or Decimal("1")
-    order.subtotal_base = _money(order.subtotal_txn * rate)
-    order.line_discount_base = _money(order.line_discount_txn * rate)
-    order.document_discount_base = _money(order.document_discount_txn * rate)
-    order.taxable_base_base = _money(order.taxable_base_txn * rate)
-    order.tax_base = _money(order.tax_txn * rate)
-    order.total_base = _money(order.total_txn * rate)
-    order.save()
-    return order
+    document.subtotal_base = _money(document.subtotal_txn * rate)
+    document.line_discount_base = _money(document.line_discount_txn * rate)
+    document.document_discount_base = _money(document.document_discount_txn * rate)
+    document.taxable_base_base = _money(document.taxable_base_txn * rate)
+    document.tax_base = _money(document.tax_txn * rate)
+    document.total_base = _money(document.total_txn * rate)
+
+    # BR-007: open balance is derived from the total, not asked for — kept in
+    # sync here so a still-DRAFT bill (nothing allocated or credited yet)
+    # satisfies PurchaseBill's pb_open_is_derived constraint on every save,
+    # not just when it's posted. Only the txn side is a DB-enforced identity
+    # (FinancialDocumentBase has no allocated_base/credited_base to derive
+    # open_base from); open_base tracks total_base for the same reason.
+    document.open_txn = document.total_txn - document.allocated_txn - document.credited_txn
+    document.open_base = document.total_base
+    document.save()
+    return document
+
+
+def recalculate_order(order):
+    return _recalculate_document(order, order.lines.all())
+
+
+def recalculate_bill(bill):
+    return _recalculate_document(bill, bill.lines.all())
 
 
 # ---------------------------------------------------------------------------
@@ -241,3 +289,157 @@ def reject_purchase_order(order, user, reason, request):
         order.save(update_fields=_HEADER_FIELDS)
         audit.record_action(request, AuditAction.REJECT, order, reason=reason)
     return order
+
+
+# ---------------------------------------------------------------------------
+# Posting (PUR-008, PUR-010, GL-001, GL-002, GL-010, GL-011)
+# ---------------------------------------------------------------------------
+def _fiscal_period_for(on_date):
+    period = FiscalPeriod.objects.filter(
+        start_date__lte=on_date, end_date__gte=on_date, status="OPEN"
+    ).first()
+    if period is None:
+        raise ValidationError(
+            f"No open fiscal period covers {on_date}. Ask an accountant to open one (CFG-009)."
+        )
+    return period
+
+
+def _mapped_account(key):
+    """CFG-007: posting stops with a clear message rather than a bad guess."""
+    mapping = AccountMapping.objects.filter(key=key).select_related("account").first()
+    if mapping is None:
+        raise ValidationError(
+            f"No account is mapped for {key} yet. Ask an administrator to configure it (CFG-007)."
+        )
+    return mapping.account
+
+
+def post_purchase_bill(bill, user, request):
+    """
+    Posts the bill's AP and tax effect (PUR-008): a stock line clears the
+    goods-received-not-invoiced accrual if it came from a receipt, or debits
+    Inventory directly for a bill entered without one; a non-stock line debits
+    its expense account; recoverable tax debits Input Tax; everything is
+    credited to Accounts Payable (BR-006 balanced, GL-010/GL-011 control
+    accounts only touched through this service).
+    """
+    if bill.status != DocumentStatus.DRAFT:
+        raise ValidationError("Only a draft bill can be posted.")
+    lines = list(bill.lines.select_related("purchase_order_line", "receipt_line"))
+    if not lines:
+        raise ValidationError("Add at least one line before posting.")
+
+    with transaction.atomic():
+        fiscal_period = _fiscal_period_for(bill.posting_date)
+        ap_account = _mapped_account("ACCOUNTS_PAYABLE")
+        inventory_account = _mapped_account("INVENTORY")
+        grni_account = _mapped_account("GOODS_IN_TRANSIT")
+        purchase_expense_account = _mapped_account("PURCHASE_EXPENSE")
+        input_tax_account = _mapped_account("INPUT_TAX")
+        non_recoverable_account = _mapped_account("TAX_NON_RECOVERABLE")
+
+        journal_entry = JournalEntry.objects.create(
+            number=_allocate_journal_number(bill.posting_date),
+            entry_date=bill.posting_date,
+            fiscal_period=fiscal_period,
+            journal_type=JournalType.PURCHASE,
+            narration=f"Purchase bill {bill.number} — {bill.vendor}",
+            currency=bill.currency,
+            exchange_rate=bill.exchange_rate,
+            total_debit_base=bill.total_base,
+            total_credit_base=bill.total_base,
+            source_content_type=ContentType.objects.get_for_model(bill),
+            source_object_id=bill.pk,
+            source_doc_type=DocumentType.PURCHASE_BILL,
+            source_doc_number=bill.number,
+            idempotency_key=f"PB:{bill.pk}",
+            posted_at=timezone.now(),
+            posted_by=user,
+        )
+
+        line_no = 0
+
+        def _write_line(account, debit_txn, debit_base, **dims):
+            nonlocal line_no
+            line_no += 1
+            JournalLine.objects.create(
+                entry=journal_entry,
+                line_no=line_no,
+                account=account,
+                debit_txn=debit_txn,
+                debit_base=debit_base,
+                credit_txn=ZERO,
+                credit_base=ZERO,
+                currency=bill.currency,
+                exchange_rate=bill.exchange_rate,
+                **dims,
+            )
+
+        for line in lines:
+            # The tax-exclusive base is what lands on inventory/expense; tax is
+            # posted separately below so an inclusive rate is never counted twice.
+            if line.is_stock_line:
+                account = grni_account if line.receipt_line_id else inventory_account
+                _write_line(
+                    account,
+                    line.taxable_base_txn,
+                    line.taxable_base_base,
+                    description=line.description or (line.product and str(line.product)) or "",
+                    product=line.product,
+                    warehouse=line.warehouse,
+                )
+            else:
+                _write_line(
+                    line.expense_account or purchase_expense_account,
+                    line.taxable_base_txn,
+                    line.taxable_base_base,
+                    description=line.description,
+                )
+            if line.tax_txn:
+                tax_account = (
+                    input_tax_account if line.tax_is_recoverable else non_recoverable_account
+                )
+                _write_line(
+                    tax_account,
+                    line.tax_txn,
+                    line.tax_base,
+                    description=f"Tax on {bill.number} line {line.line_no}",
+                    tax_code=line.tax_code,
+                )
+            if line.receipt_line_id:
+                line.receipt_line.quantity_billed = (
+                    line.receipt_line.quantity_billed + line.quantity
+                )
+                line.receipt_line.save(update_fields=["quantity_billed"])
+            if line.purchase_order_line_id:
+                line.purchase_order_line.quantity_billed = (
+                    line.purchase_order_line.quantity_billed + line.quantity
+                )
+                line.purchase_order_line.save(update_fields=["quantity_billed"])
+
+        line_no += 1
+        JournalLine.objects.create(
+            entry=journal_entry,
+            line_no=line_no,
+            account=ap_account,
+            debit_txn=ZERO,
+            debit_base=ZERO,
+            credit_txn=bill.total_txn,
+            credit_base=bill.total_base,
+            currency=bill.currency,
+            exchange_rate=bill.exchange_rate,
+            vendor=bill.vendor,
+            description=f"{bill.number} — {bill.vendor}",
+        )
+
+        bill.journal_entry = journal_entry
+        bill.status = DocumentStatus.POSTED
+        bill.posted_at = timezone.now()
+        bill.posted_by = user
+        bill.open_txn = bill.total_txn
+        bill.open_base = bill.total_base
+        bill.updated_by = user
+        bill.save()
+        audit.record_action(request, AuditAction.POST, bill)
+    return bill

@@ -1,4 +1,4 @@
-"""Purchase order routes (PUR-001, PUR-002). Purchase bills and returns follow."""
+"""Purchase order and purchase bill routes (PUR-001, PUR-002, PUR-005..PUR-008). Purchase returns follow."""
 
 from django.urls import path
 
@@ -16,4 +16,9 @@ urlpatterns = [
         "orders/<int:pk>/approve/", views.PurchaseOrderApproveView.as_view(), name="po_approve"
     ),
     path("orders/<int:pk>/reject/", views.PurchaseOrderRejectView.as_view(), name="po_reject"),
+    path("bills/", views.PurchaseBillListView.as_view(), name="bill_list"),
+    path("bills/new/", views.PurchaseBillCreateView.as_view(), name="bill_create"),
+    path("bills/<int:pk>/", views.PurchaseBillDetailView.as_view(), name="bill_detail"),
+    path("bills/<int:pk>/edit/", views.PurchaseBillEditView.as_view(), name="bill_edit"),
+    path("bills/<int:pk>/post/", views.PurchaseBillPostView.as_view(), name="bill_post"),
 ]

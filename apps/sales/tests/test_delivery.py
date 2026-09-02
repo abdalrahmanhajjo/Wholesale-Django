@@ -11,9 +11,7 @@ from django.test import TestCase
 
 from apps.core.audit import AuditEvent
 from apps.core.models import DocumentStatus
-from apps.inventory.models import DeliveryNote, DeliveryNoteLine
 from apps.sales import services
-from apps.sales.models import SalesOrder
 from apps.sales.tests.factories import (
     make_customer,
     make_line,
@@ -38,11 +36,13 @@ class DeliveryServicesTest(TestCase):
         cls.user = make_user("delivery-user")
 
     def _make_approved_order(self, **kw):
-        order = make_order(
-            customer=self.customer, warehouse=self.warehouse, **kw
+        order = make_order(customer=self.customer, warehouse=self.warehouse, **kw)
+        make_line(
+            order, product=self.product_a, qty=Decimal("10"), price=Decimal("100"), line_no=1
         )
-        make_line(order, product=self.product_a, qty=Decimal("10"), price=Decimal("100"), line_no=1)
-        make_line(order, product=self.product_b, qty=Decimal("4"), price=Decimal("250"), line_no=2)
+        make_line(
+            order, product=self.product_b, qty=Decimal("4"), price=Decimal("250"), line_no=2
+        )
         order.status = DocumentStatus.SUBMITTED
         order.save(update_fields=["status"])
         order.status = DocumentStatus.APPROVED
@@ -97,7 +97,6 @@ class DeliveryServicesTest(TestCase):
         ln.save(update_fields=["quantity_delivered"])
 
         lines = services.build_delivery_lines(order)
-        match = [(ln, rem) for ln, rem in lines if ln.pk == ln.pk]
         # ln2 should be in the result with remaining=3
         ln2_rem = [rem for ln, rem in lines if ln.line_no == 2][0]
         self.assertEqual(ln2_rem, Decimal("3"))
@@ -175,9 +174,7 @@ class DeliveryServicesTest(TestCase):
     def test_draft_rejects_empty_quantities(self):
         order = self._make_approved_order()
         with self.assertRaises(ValueError) as ctx:
-            services.draft_delivery_from_order(
-                order=order, user=self.user, quantities={}
-            )
+            services.draft_delivery_from_order(order=order, user=self.user, quantities={})
         self.assertIn("No quantities", str(ctx.exception))
 
     def test_draft_records_audit_create(self):
@@ -253,12 +250,14 @@ class DeliveryServicesTest(TestCase):
         ln2 = order.lines.get(line_no=2)
         # Draft a note for the full remaining of ln1 BEFORE it is consumed.
         note2 = services.draft_delivery_from_order(
-            order=order, user=self.user,
+            order=order,
+            user=self.user,
             quantities={ln1.pk: Decimal("10")},
         )
         # Meanwhile another delivery ships ln1 entirely (order -> PARTIAL).
         note1 = services.draft_delivery_from_order(
-            order=order, user=self.user,
+            order=order,
+            user=self.user,
             quantities={ln1.pk: Decimal("10"), ln2.pk: Decimal("4")},
         )
         services.post_delivery(note1, self.user)
@@ -315,7 +314,8 @@ class DeliveryServicesTest(TestCase):
 
         # First partial
         n1 = services.draft_delivery_from_order(
-            order=order, user=self.user,
+            order=order,
+            user=self.user,
             quantities={ln1.pk: Decimal("6")},
         )
         services.post_delivery(n1, self.user)
@@ -324,7 +324,8 @@ class DeliveryServicesTest(TestCase):
 
         # Second partial
         n2 = services.draft_delivery_from_order(
-            order=order, user=self.user,
+            order=order,
+            user=self.user,
             quantities={ln1.pk: Decimal("4"), ln2.pk: Decimal("4")},
         )
         services.post_delivery(n2, self.user)

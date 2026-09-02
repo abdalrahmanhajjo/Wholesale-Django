@@ -13,6 +13,12 @@ class PostingErrorCode(StrEnum):
     UNAUTHENTICATED_ACTOR = "unauthenticated_actor"
     INVALID_BUILDER_RESULT = "invalid_builder_result"
     INVALID_SERVICE_RESULT = "invalid_service_result"
+    MISSING_ACCOUNT_MAPPING = "missing_account_mapping"
+    INVALID_ACCOUNT_MAPPING = "invalid_account_mapping"
+    UNBALANCED_JOURNAL = "unbalanced_journal"
+    CLOSED_FISCAL_PERIOD = "closed_fiscal_period"
+    IDEMPOTENCY_CONFLICT = "idempotency_conflict"
+    JOURNAL_SEQUENCE_UNAVAILABLE = "journal_sequence_unavailable"
     ENGINE_UNAVAILABLE = "engine_unavailable"
 
 

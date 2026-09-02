@@ -1,0 +1,92 @@
+{% load ui %}{% comment %}
+One order line.
+
+Every control here takes its visible label from a column header and has no
+<label> of its own, so a screen reader announced eight unnamed comboboxes and
+spin buttons per row with no way to tell line 3's quantity from line 4's. Each
+input now carries an aria-label naming the column and the line.
+
+`line` is supplied by the caller: the loop counter for existing rows, and the
+literal __LINE__ for the empty-form template, which the add-line script swaps
+for the real number when it clones the row. The tag composes the name, so the
+value may be an int or a string.
+{% endcomment %}
+<tr class="border-b border-line last:border-0 line-row">
+  <td class="line-cell line-cell-number px-4 py-2 align-top" data-label="Line">
+    {% for hidden in lf.hidden_fields %}
+      {{ hidden }}
+      {% for error in hidden.errors %}<p class="error-text">{{ error }}</p>{% endfor %}
+    {% endfor %}
+    <span class="line-number">{{ lf.line_no.value|default:"New" }}</span>
+  </td>
+
+  <td class="line-cell px-4 py-2 align-top" data-label="Product">
+    {% if lf.non_field_errors %}
+      {% for error in lf.non_field_errors %}<p class="error-text">{{ error }}</p>{% endfor %}
+    {% endif %}
+    {% a11y_field lf.product label="Product" line=line %}
+    {% if lf.product.errors %}<p class="error-text" id="{% error_id lf.product %}">{{ lf.product.errors|join:" " }}</p>{% endif %}
+  </td>
+
+  <td class="line-cell px-4 py-2 align-top" data-label="Description">
+    {% a11y_field lf.description label="Description" line=line %}
+    {% if lf.description.errors %}<p class="error-text" id="{% error_id lf.description %}">{{ lf.description.errors|join:" " }}</p>{% endif %}
+  </td>
+
+  <td class="line-cell px-4 py-2 align-top" data-label="Unit">
+    {% a11y_field lf.unit label="Unit" line=line %}
+    {% if lf.unit.errors %}<p class="error-text" id="{% error_id lf.unit %}">{{ lf.unit.errors|join:" " }}</p>{% endif %}
+  </td>
+
+  <td class="line-cell px-4 py-2 align-top" data-label="Quantity">
+    {% a11y_field lf.quantity label="Quantity" line=line %}
+    {% if lf.quantity.errors %}<p class="error-text" id="{% error_id lf.quantity %}">{{ lf.quantity.errors|join:" " }}</p>{% endif %}
+  </td>
+
+  <td class="line-cell px-4 py-2 align-top" data-label="Unit price">
+    {% a11y_field lf.unit_price label="Unit price" line=line %}
+    {% if lf.unit_price.errors %}<p class="error-text" id="{% error_id lf.unit_price %}">{{ lf.unit_price.errors|join:" " }}</p>{% endif %}
+  </td>
+
+  <td class="line-cell px-4 py-2 align-top" data-label="Discount %">
+    {% a11y_field lf.discount_percent label="Discount percent" line=line %}
+    {% if lf.discount_percent.errors %}<p class="error-text" id="{% error_id lf.discount_percent %}">{{ lf.discount_percent.errors|join:" " }}</p>{% endif %}
+  </td>
+
+  <td class="line-cell px-4 py-2 align-top" data-label="Tax code">
+    {% a11y_field lf.tax_code label="Tax code" line=line %}
+    {% if lf.tax_code.errors %}<p class="error-text" id="{% error_id lf.tax_code %}">{{ lf.tax_code.errors|join:" " }}</p>{% endif %}
+  </td>
+
+  <td class="line-cell line-cell-computed px-4 py-2 text-right align-top tabular-nums line-gross" data-label="Gross">
+    {% if lf.instance.pk %}{{ lf.instance.gross_txn|floatformat:2 }}{% else %}—{% endif %}
+  </td>
+  <td class="line-cell line-cell-computed px-4 py-2 text-right align-top tabular-nums" data-label="Tax">
+    {% if lf.instance.pk %}{{ lf.instance.tax_txn|floatformat:2 }}{% else %}—{% endif %}
+  </td>
+  <td class="line-cell line-cell-computed px-4 py-2 text-right align-top tabular-nums font-semibold" data-label="Total">
+    {% if lf.instance.pk %}{{ lf.instance.total_txn|floatformat:2 }}{% else %}—{% endif %}
+  </td>
+
+  <td class="line-cell line-cell-action px-4 py-2 text-center align-top" data-label="">
+    {% if lf.instance.pk %}
+      {% comment %}
+      The old markup put aria-label on the <label> wrapping the checkbox. A
+      wrapping label names its control from its own text content, and the only
+      content was the input itself, so the checkbox had no accessible name at
+      all. The name goes on the control.
+      {% endcomment %}
+      <span class="flex items-center justify-center">
+        {% a11y_field lf.DELETE label="Remove" line=line %}
+      </span>
+    {% else %}
+      {% comment %}
+      A row added by mistake could not be taken back: DELETE only renders
+      for saved lines, so the only way out was to reload and lose the form.
+      {% endcomment %}
+      <button type="button" class="remove-new-line btn-ghost btn-sm" data-line="{{ line }}">
+        Remove<span class="sr-only"> line {{ line }}</span>
+      </button>
+    {% endif %}
+  </td>
+</tr>

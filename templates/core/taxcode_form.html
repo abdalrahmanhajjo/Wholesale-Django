@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% comment %}Create / edit a tax code (CFG-004, FTD-006, FTD-007).{% endcomment %}
+
+{% block header_title %}{{ page_title }}{% endblock %}
+
+{% block content %}
+<form method="post" novalidate class="form-shell max-w-3xl">
+  {% csrf_token %}
+
+  {% include "core/_form_errors.html" with form=form %}
+  <div data-notice-slot class="space-y-2 empty:hidden"></div>
+
+  <section class="form-section" aria-labelledby="s-tax-identity">
+    <div class="form-section-head">
+      <h2 class="form-section-title" id="s-tax-identity">Identity</h2>
+    </div>
+    <div class="form-section-body">
+      {% include "core/_form_field.html" with field=form.code %}
+      {% include "core/_form_field.html" with field=form.name %}
+    </div>
+  </section>
+
+  <section class="form-section" aria-labelledby="s-tax-rate">
+    <div class="form-section-head">
+      <h2 class="form-section-title" id="s-tax-rate">Rate and treatment</h2>
+      <p class="form-section-hint">How much is charged, on what, and whether the price already includes it.</p>
+    </div>
+    <div class="form-section-body form-section-body-3">
+      {% include "core/_form_field.html" with field=form.rate_percent %}
+      {% include "core/_form_field.html" with field=form.treatment %}
+      {% include "core/_form_field.html" with field=form.applies_to %}
+      {% include "core/_form_field.html" with field=form.is_inclusive %}
+      {% include "core/_form_field.html" with field=form.is_recoverable %}
+    </div>
+  </section>
+
+  <section class="form-section" aria-labelledby="s-tax-accounts">
+    <div class="form-section-head">
+      <h2 class="form-section-title" id="s-tax-accounts">Posting accounts</h2>
+      <p class="form-section-hint">Where the tax lands in the ledger on a sale and on a purchase.</p>
+    </div>
+    <div class="form-section-body">
+      {% include "core/_form_field.html" with field=form.output_tax_account %}
+      {% include "core/_form_field.html" with field=form.input_tax_account %}
+      {% include "core/_form_field.html" with field=form.is_active %}
+    </div>
+  </section>
+
+  <div class="form-actions">
+    <button type="submit" class="btn-primary"
+            data-busy-label="{% if object %}Saving changes…{% else %}Creating…{% endif %}">
+      {% if object %}Save changes{% else %}Create tax code{% endif %}
+    </button>
+    <a href="{% url 'core:taxcode_list' %}" class="btn-ghost">Cancel</a>
+  </div>
+</form>
+{% endblock %}

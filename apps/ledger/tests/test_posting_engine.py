@@ -46,17 +46,17 @@ class PostingEngineTests(TransactionTestCase):
         )
         fiscal_year = FiscalYear.objects.create(
             id=900_001,
-            code="T-FY-2026",
-            start_date=date(2026, 1, 1),
-            end_date=date(2026, 12, 31),
+            code="T-FY-2099",
+            start_date=date(2099, 1, 1),
+            end_date=date(2099, 12, 31),
         )
         FiscalPeriod.objects.create(
             id=900_001,
             fiscal_year=fiscal_year,
             period_no=8,
-            name="Test August 2026",
-            start_date=date(2026, 8, 1),
-            end_date=date(2026, 8, 31),
+            name="Test August 2099",
+            start_date=date(2099, 8, 1),
+            end_date=date(2099, 8, 31),
         )
         DocumentSequence.objects.create(
             id=900_001,
@@ -103,7 +103,7 @@ class PostingEngineTests(TransactionTestCase):
 
     def build_journal(self, source, *, user):
         return JournalDraft(
-            entry_date=date(2026, 8, 31),
+            entry_date=date(2099, 8, 31),
             journal_type="GENERAL",
             narration=f"Production posting for {source.series} by {user.username}",
             currency=self.currency,

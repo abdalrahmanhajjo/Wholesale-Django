@@ -15,6 +15,13 @@ button that says what it will do.
 
 {% block header_title %}{{ page_title }}{% endblock %}
 
+{% block breadcrumb %}
+  <a href="{% if step == 'create' %}{% url 'sales:so_detail' order.pk %}{% else %}{% url 'sales:delivery_list' %}{% endif %}"
+     class="mb-4 inline-flex items-center gap-1.5 text-sm font-medium text-muted-fg transition-colors hover:text-brand">
+    <span aria-hidden="true">&larr;</span> Back to {% if step == 'create' %}{{ order.number }}{% else %}deliveries{% endif %}
+  </a>
+{% endblock %}
+
 {% block content %}
 {% if step == "pick" %}
   <div class="card card-pad max-w-xl">
@@ -113,24 +120,21 @@ button that says what it will do.
                     <p class="error-text">{{ form.sales_order_line.errors|join:" " }}</p>
                   {% endif %}
                 </td>
-                <td class="line-cell line-cell-computed px-4 py-2 text-right tabular-nums"
-                    data-label="Ordered">{{ form.so_line.quantity|quantity }}</td>
-                <td class="line-cell line-cell-computed px-4 py-2 text-right tabular-nums"
-                    data-label="Delivered so far">{{ form.so_line.quantity_delivered|quantity }}</td>
-                <td class="line-cell px-4 py-2 text-right" data-label="Delivering now">
-                  <div class="inline-flex items-center gap-2">
-                    {% comment %}
-                    The only control in the row, and its label lives in a column
-                    header it is not associated with, so it names itself.
-                    {% endcomment %}
-                    {% a11y_field form.quantity label="Quantity to deliver" line=forloop.counter data_max=form.remaining %}
-                    <span class="whitespace-nowrap text-xs text-muted-fg">
-                      of {{ form.remaining|quantity }}
-                    </span>
+                <td class="px-4 py-2 text-right tabular-nums">{{ form.so_line.quantity }}</td>
+                <td class="px-4 py-2 text-right tabular-nums">{{ form.so_line.quantity_delivered }}</td>
+                <td class="px-4 py-2 text-right">
+                  <div class="inline-flex items-center justify-end gap-2">
+                    <input type="number" name="{{ form.quantity.html_name }}"
+                           id="{{ form.quantity.id_for_label }}"
+                           value="{{ form.quantity.value|default:'' }}"
+                           min="0" step="0.0001"
+                           class="field w-32 text-right tabular-nums dn-qty"
+                           data-ordered="{{ form.so_line.quantity }}"
+                           data-delivered="{{ form.so_line.quantity_delivered }}">
+                    <span class="dn-hint text-xs text-muted-fg"></span>
                   </div>
-                  {% if form.quantity.errors %}
-                    <p class="error-text" id="{% error_id form.quantity %}">{{ form.quantity.errors|join:" " }}</p>
-                  {% endif %}
+                  <span class="dn-err hidden text-xs font-medium text-danger" aria-live="polite"></span>
+                  {% for e in form.quantity.errors %}<p class="error-text">{{ e }}</p>{% endfor %}
                 </td>
               </tr>
             {% empty %}
@@ -163,4 +167,35 @@ button that says what it will do.
   </form>
 
 {% endif %}
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+  // Real-time over-delivery guard — mirrors the server's remaining_to_deliver()
+  // (quantity minus quantity_delivered). UX only; the server still enforces it.
+  document.querySelectorAll('.dn-qty').forEach(inp => {
+    const td = inp.closest('td');
+    const err = td ? td.querySelector('.dn-err') : null;
+    const hint = td ? td.querySelector('.dn-hint') : null;
+    if (!err) return;
+
+    const update = () => {
+      const ordered = parseFloat(inp.dataset.ordered) || 0;
+      const delivered = parseFloat(inp.dataset.delivered) || 0;
+      const remaining = Math.max(0, ordered - delivered);
+      const val = parseFloat(inp.value) || 0;
+      if (hint) hint.textContent = `max ${remaining}`;
+      if (val > remaining) {
+        err.textContent = `Over-delivery: only ${remaining} remains to deliver.`;
+        err.classList.remove('hidden');
+        inp.style.borderColor = '#dc2626';
+      } else {
+        err.classList.add('hidden');
+        inp.style.borderColor = '';
+      }
+    };
+    inp.addEventListener('input', update);
+    update();
+  });
+</script>
 {% endblock %}

@@ -9,6 +9,13 @@ post action, and audit history.
 
 {% block header_title %}{{ note.number }}{% endblock %}
 
+{% block breadcrumb %}
+  <a href="{% url 'sales:so_detail' note.sales_order_id %}"
+     class="mb-4 inline-flex items-center gap-1.5 text-sm font-medium text-muted-fg transition-colors hover:text-brand">
+    <span aria-hidden="true">&larr;</span> Back to {{ note.sales_order.number }}
+  </a>
+{% endblock %}
+
 {% block actions %}
   {% if note.status == "DRAFT" %}
     {% if perms.core.post_delivery %}
@@ -121,9 +128,9 @@ post action, and audit history.
 
     {# ---- Audit history (ACC-005) ---- #}
     <div class="card card-pad">
-      <h2 class="section-heading">Audit history</h2>
-      <p class="card-title mt-2">What happened, and who did it</p>
-      <ul class="mt-4 space-y-4">
+      <p class="eyebrow">Audit history</p>
+      <h2 class="card-title mt-2">What happened, and who did it</h2>
+      <ul class="mt-4 max-h-64 space-y-4 overflow-y-auto pr-1">
         {% for event in audit_events %}
           <li class="border-l-2 border-line pl-3">
             <p class="text-xs font-bold uppercase tracking-wide text-brand-deep">

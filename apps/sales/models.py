@@ -223,6 +223,10 @@ class SalesInvoice(FinancialDocumentBase):
             models.Index(fields=["currency", "status"], name="ix_si_currency_status"),
         ]
 
+    def get_absolute_url(self):
+        from django.urls import reverse
+        return reverse("sales:invoice_detail", args=[self.pk])
+
 
 class SalesInvoiceLine(DocumentLineBase):
     invoice = models.ForeignKey(SalesInvoice, on_delete=models.CASCADE, related_name="lines")

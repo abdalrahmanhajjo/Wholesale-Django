@@ -8,6 +8,8 @@ test client as users with and without the right permissions.
 Run:  python manage.py test apps.sales.tests.test_views
 """
 
+from decimal import Decimal
+
 from django.contrib.auth.models import Group, Permission
 from django.test import TestCase
 from django.urls import reverse
@@ -68,6 +70,86 @@ class ApproveRejectPermissionTests(TestCase):
         self.assertEqual(response.status_code, 403)
         self.order.refresh_from_db()
         self.assertNotEqual(self.order.status, DocumentStatus.APPROVED)
+
+
+class SalesOrderEditTests(TestCase):
+    """Editing an order adds new lines without hitting so_line_unique_no."""
+
+    def setUp(self):
+        self.editor = make_user(
+            "editor",
+            permissions=["change_salesorder", "view_salesorder"],
+        )
+        self.customer = f.make_customer()
+        self.warehouse = f.make_warehouse()
+        self.product_a = f.make_product(sku="P-EDIT-1", price=Decimal("100"))
+        self.product_b = f.make_product(sku="P-EDIT-2", price=Decimal("250"))
+        self.order = f.make_order(
+            customer=self.customer, warehouse=self.warehouse
+        )
+        f.make_line(self.order, product=self.product_a, qty=Decimal("10"),
+                    price=Decimal("100"), line_no=1)
+
+    def _post_data(self):
+        from apps.sales.models import DiscountKind
+
+        first = self.order.lines.get(line_no=1)
+        return {
+            # header
+            "customer": self.customer.pk,
+            "warehouse": self.warehouse.pk,
+            "currency": self.customer.currency.pk,
+            "exchange_rate": "1.0000",
+            "document_date": self.order.document_date.isoformat(),
+            "posting_date": self.order.posting_date.isoformat(),
+            "document_discount_kind": DiscountKind.NONE,
+            "document_discount_value": "0.00",
+            # lines management
+            "lines-TOTAL_FORMS": "2",
+            "lines-INITIAL_FORMS": "1",
+            "lines-MIN_NUM_FORMS": "0",
+            "lines-MAX_NUM_FORMS": "1000",
+            # existing line
+            "lines-0-id": first.pk,
+            "lines-0-line_no": "1",
+            "lines-0-product": first.product_id,
+            "lines-0-unit": first.unit_id,
+            "lines-0-quantity": str(first.quantity),
+            "lines-0-unit_price": str(first.unit_price),
+            "lines-0-discount_percent": "0.0000",
+            "lines-0-warehouse": "",
+            "lines-0-DELETE": "",
+            # new line
+            "lines-1-line_no": "",
+            "lines-1-product": self.product_b.pk,
+            "lines-1-unit": self.product_b.unit_id,
+            "lines-1-quantity": "4",
+            "lines-1-unit_price": "250.00",
+            "lines-1-discount_percent": "0.0000",
+            "lines-1-warehouse": "",
+            "lines-1-DELETE": "",
+        }
+
+    def test_add_line_on_edit_keeps_line_numbers_distinct(self):
+        self.client.force_login(self.editor)
+        url = reverse("sales:so_edit", args=[self.order.pk])
+        response = self.client.post(url, self._post_data())
+        self.assertEqual(response.status_code, 302)
+
+        self.order.refresh_from_db()
+        self.assertEqual(self.order.lines.count(), 2)
+        new_line = self.order.lines.get(product=self.product_b)
+        self.assertEqual(new_line.line_no, 2)
+        existing = self.order.lines.get(product=self.product_a)
+        self.assertEqual(existing.line_no, 1)
+
+    def test_edit_message_counts_line_change(self):
+        self.client.force_login(self.editor)
+        url = reverse("sales:so_edit", args=[self.order.pk])
+        response = self.client.post(url, self._post_data(), follow=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, f"{self.order.number} updated")
+        self.assertContains(response, "1 line")
 
 
 class SubmitViewTests(TestCase):

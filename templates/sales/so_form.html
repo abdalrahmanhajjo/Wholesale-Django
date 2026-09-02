@@ -1,35 +1,35 @@
 {% extends "base.html" %}
 {% comment %}
 Create / edit a sales order with header fields and a line formset (SAL-001..SAL-004).
-The layout follows customer_form.html: card sections with section headings, the
-same field widget styling, and a save/cancel footer.
+The layout follows customer_form.html: card sections with eyebrow labels,
+the same field widget styling, and a save/cancel footer.
 {% endcomment %}
 
 {% block header_title %}{{ page_title }}{% endblock %}
 
+{% block breadcrumb %}
+  <a href="{% if object %}{% url 'sales:so_detail' object.pk %}{% else %}{% url 'sales:so_list' %}{% endif %}"
+     class="mb-4 inline-flex items-center gap-1.5 text-sm font-medium text-muted-fg transition-colors hover:text-brand">
+    <span aria-hidden="true">&larr;</span> Back to {% if object %}{{ object.number }}{% else %}sales orders{% endif %}
+  </a>
+{% endblock %}
+
 {% block content %}
-{% comment %}
-Eleven header fields, an address block, a discount, notes and a twelve-column
-line grid is too much to meet at once, so it is presented in three steps. They
-are sections of one form shown and hidden, never separate requests: nothing is
-saved until the whole order is complete, and with JavaScript off all three are
-simply visible.
-{% endcomment %}
-<form method="post" novalidate class="form-shell max-w-5xl" data-steps
-      data-draft-key="sales-order-{{ object.pk|default:'new' }}">
+<form method="post" novalidate class="max-w-5xl">
   {% csrf_token %}
 
-  {% include "core/_form_errors.html" with form=form formset=line_formset %}
-  <div data-notice-slot data-draft-slot class="space-y-2 empty:hidden"></div>
-
-  {# ---- Step 1 ---- #}
-  <div data-step="Order">
-  <section class="form-section" aria-labelledby="sec-order">
-    <div class="form-section-head">
-      <h2 class="form-section-title" id="sec-order">Order details</h2>
-      <p class="form-section-hint">Choosing the customer fills in their currency, payment term, warehouse and tax code. Change any of it if this order differs.</p>
+  {% if form.non_field_errors %}
+    <div class="card card-pad mb-5 border-l-4 border-l-danger">
+      {% for error in form.non_field_errors %}
+        <p class="text-sm text-danger">{{ error }}</p>
+      {% endfor %}
     </div>
-    <div class="form-section-body form-section-body-3">
+  {% endif %}
+
+  {# ---- Header fields ---- #}
+  <div class="card card-pad">
+    <p class="eyebrow">Order details</p>
+    <div class="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {% include "core/_form_field.html" with field=form.customer %}
       {% include "core/_form_field.html" with field=form.warehouse %}
       {% include "core/_form_field.html" with field=form.currency %}
@@ -42,72 +42,149 @@ simply visible.
       {% include "core/_form_field.html" with field=form.customer_reference %}
       {% include "core/_form_field.html" with field=form.salesperson %}
     </div>
-  </section>
   </div>
 
-  {# ---- Step 2 ---- #}
-  <div data-step="Lines">
-  <section class="form-section" aria-labelledby="sec-lines">
-    <div class="form-section-head">
-      <div>
-        <h2 class="form-section-title" id="sec-lines">Order lines</h2>
-        <p class="form-section-hint">Choosing a product fills in its description, unit, price and tax code.</p>
-      </div>
-      <button type="button" id="add-line" class="btn-ghost">
-        <svg class="icon" aria-hidden="true"><use href="#i-plus"></use></svg>
-        <span>Add line</span>
-      </button>
+  <div class="card card-pad mt-4">
+    <p class="eyebrow">Addresses</p>
+    <div class="mt-4 grid gap-4 sm:grid-cols-2">
+      {% include "core/_form_field.html" with field=form.billing_address_text %}
+      {% include "core/_form_field.html" with field=form.shipping_address_text %}
+    </div>
+  </div>
+
+  <div class="card card-pad mt-4">
+    <p class="eyebrow">Document discount (SAL-003)</p>
+    <div class="mt-4 grid gap-4 sm:grid-cols-2">
+      {% include "core/_form_field.html" with field=form.document_discount_kind %}
+      {% include "core/_form_field.html" with field=form.document_discount_value %}
+    </div>
+  </div>
+
+  <div class="card card-pad mt-4">
+    <p class="eyebrow">Notes</p>
+    <div class="mt-4 grid gap-4 sm:grid-cols-2">
+      {% include "core/_form_field.html" with field=form.notes %}
+      {% include "core/_form_field.html" with field=form.internal_notes %}
+    </div>
+  </div>
+
+  {# ---- Lines formset (SAL-001) ---- #}
+  <div class="card mt-4">
+    <div class="border-b border-line px-5 py-4">
+      <p class="eyebrow">Lines</p>
+      <h2 class="card-title mt-1">Order lines with discount &amp; tax (SAL-002)</h2>
     </div>
 
     {{ line_formset.management_form }}
 
-    <p class="border-b border-line px-5 py-2 text-sm text-muted-fg" id="line-limit" role="status">
-      Up to 10 lines per order.
-    </p>
+    {% if line_formset.non_form_errors %}
+      <div class="mx-5 mt-4 rounded-xl2 border-l-4 border-l-danger bg-red-50 px-4 py-3">
+        {% for error in line_formset.non_form_errors %}
+          <p class="text-sm text-danger">{{ error }}</p>
+        {% endfor %}
+      </div>
+    {% endif %}
 
-    {% comment %}
-    One table, two layouts. At md and up it is a grid, in a region that takes
-    focus so the horizontal scroll is reachable from the keyboard (WCAG 2.1.1).
-    Below md the same rows stack into labelled cards — see .lines-stack — so
-    nobody has to scroll a column header off screen to reach the input it names.
-    {% endcomment %}
-    <div class="lines-stack-wrap scroll-region px-4 pt-2 md:px-0 md:pt-0"
-         tabindex="0" role="region" aria-label="Order lines">
-      <table class="lines-stack w-full text-sm" id="lines-table">
-        <caption class="sr-only">Order lines. Each row is one product with its quantity, price, discount and tax code.</caption>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm" id="lines-table">
         <thead>
           <tr class="border-b border-line bg-muted-bg text-[11px] font-bold uppercase tracking-[0.1em] text-muted-fg">
-            <th scope="col" class="w-10 px-4 py-3">#</th>
-            <th scope="col" class="px-4 py-3 text-left">Product</th>
-            <th scope="col" class="px-4 py-3 text-left">Description</th>
-            <th scope="col" class="px-4 py-3 text-left">Unit</th>
-            <th scope="col" class="px-4 py-3 text-right">Qty</th>
-            <th scope="col" class="px-4 py-3 text-right">Unit price</th>
-            <th scope="col" class="px-4 py-3 text-right">Disc %</th>
-            <th scope="col" class="px-4 py-3 text-left">Tax code</th>
-            <th scope="col" class="px-4 py-3 text-right">Gross</th>
-            <th scope="col" class="px-4 py-3 text-right">Tax</th>
-            <th scope="col" class="px-4 py-3 text-right">Total</th>
-            <th scope="col" class="w-24 px-4 py-3">Remove</th>
+            <th class="w-10 px-4 py-3">#</th>
+            <th class="px-4 py-3 text-left">Product</th>
+            <th class="px-4 py-3 text-left">Description</th>
+            <th class="px-4 py-3 text-left">Unit</th>
+            <th class="px-4 py-3 text-right">Qty</th>
+            <th class="px-4 py-3 text-right">Unit price</th>
+            <th class="px-4 py-3 text-right">Disc %</th>
+            <th class="px-4 py-3 text-left">Tax code</th>
+            <th class="px-4 py-3 text-right">Gross</th>
+            <th class="px-4 py-3 text-right">Tax</th>
+            <th class="px-4 py-3 text-right">Total</th>
+            <th class="w-16 px-4 py-3">Del</th>
           </tr>
         </thead>
         <tbody>
           {% for lf in line_formset %}
-            {% include "sales/_so_line_row.html" with lf=lf line=forloop.counter %}
+            <tr class="border-b border-line last:border-0 line-row">
+              {% if lf.non_field_errors %}
+                <td colspan="12" class="px-4 py-2">
+                  {% for e in lf.non_field_errors %}
+                    <p class="error-text">{{ e }}</p>
+                  {% endfor %}
+                </td>
+              {% else %}
+              <td class="px-4 py-2">
+                {{ lf.line_no }}
+                {% if lf.line_no.value %}{{ lf.line_no.value }}{% endif %}
+                {% for e in lf.line_no.errors %}<p class="error-text">{{ e }}</p>{% endfor %}
+              </td>
+              <td class="px-4 py-2">{{ lf.product }}
+                {% for e in lf.product.errors %}<p class="error-text">{{ e }}</p>{% endfor %}
+              </td>
+              <td class="px-4 py-2">{{ lf.description }}
+                {% for e in lf.description.errors %}<p class="error-text">{{ e }}</p>{% endfor %}
+              </td>
+              <td class="px-4 py-2">{{ lf.unit }}
+                {% for e in lf.unit.errors %}<p class="error-text">{{ e }}</p>{% endfor %}
+              </td>
+              <td class="px-4 py-2">{{ lf.quantity }}
+                {% for e in lf.quantity.errors %}<p class="error-text">{{ e }}</p>{% endfor %}
+              </td>
+              <td class="px-4 py-2">{{ lf.unit_price }}
+                {% for e in lf.unit_price.errors %}<p class="error-text">{{ e }}</p>{% endfor %}
+              </td>
+              <td class="px-4 py-2">{{ lf.discount_percent }}
+                {% for e in lf.discount_percent.errors %}<p class="error-text">{{ e }}</p>{% endfor %}
+              </td>
+              <td class="px-4 py-2">{{ lf.tax_code }}
+                {% for e in lf.tax_code.errors %}<p class="error-text">{{ e }}</p>{% endfor %}
+              </td>
+              <td class="px-4 py-2 text-right tabular-nums">
+                {% if lf.instance.pk %}
+                  {{ lf.instance.gross_txn|floatformat:2 }}
+                {% else %}—{% endif %}
+              </td>
+              <td class="px-4 py-2 text-right tabular-nums">
+                {% if lf.instance.pk %}
+                  {{ lf.instance.tax_txn|floatformat:2 }}
+                {% else %}—{% endif %}
+              </td>
+              <td class="px-4 py-2 text-right tabular-nums font-semibold">
+                {% if lf.instance.pk %}
+                  {{ lf.instance.total_txn|floatformat:2 }}
+                {% else %}—{% endif %}
+              </td>
+              <td class="px-4 py-2 text-center">
+                {% if lf.instance.pk %}
+                  <label class="flex items-center justify-center">
+                    {{ lf.DELETE }}
+                  </label>
+                {% endif %}
+              </td>
+              {% endif %}
+            </tr>
+            {% for hidden in lf.hidden_fields %}{{ hidden }}{% endfor %}
           {% endfor %}
         </tbody>
         <tfoot>
+          <tr class="border-t border-line bg-muted-bg/50 font-medium">
+            <td colspan="9" class="px-4 py-2 text-right text-xs uppercase tracking-wide text-muted-fg">
+              Document discount
+            </td>
+            <td colspan="2" class="px-4 py-2 text-right tabular-nums text-muted-fg" id="sum-discount">0.00</td>
+            <td></td>
+          </tr>
           <tr class="border-t-2 border-line bg-muted-bg font-semibold">
-            <th colspan="8" scope="row" class="px-4 py-3 text-right text-xs font-bold uppercase tracking-wide text-muted-fg">
-              Totals, recalculated on save
-            </th>
-            <td data-label="Gross" class="px-4 py-3 text-right tabular-nums" id="sum-gross">
+            <td colspan="8" class="px-4 py-3 text-right text-xs uppercase tracking-wide text-muted-fg">
+              Totals
+            </td>
+            <td class="px-4 py-3 text-right tabular-nums" id="sum-gross">
               {{ object.subtotal_txn|default:0|floatformat:2 }}
             </td>
-            <td data-label="Tax" class="px-4 py-3 text-right tabular-nums" id="sum-tax">
+            <td class="px-4 py-3 text-right tabular-nums" id="sum-tax">
               {{ object.tax_txn|default:0|floatformat:2 }}
             </td>
-            <td data-label="Total" class="px-4 py-3 text-right tabular-nums text-brand-deep" id="sum-total">
+            <td class="px-4 py-3 text-right tabular-nums text-brand-deep" id="sum-total">
               {{ object.total_txn|default:0|floatformat:2 }}
             </td>
             <td></td>
@@ -115,164 +192,150 @@ simply visible.
         </tfoot>
       </table>
     </div>
-    <template id="empty-line-template">
-      {% include "sales/_so_line_row.html" with lf=line_formset.empty_form line="__LINE__" %}
-    </template>
-  </section>
   </div>
 
-  {# ---- Step 3 ---- #}
-  <div data-step="Delivery and terms">
-  <section class="form-section" aria-labelledby="sec-addresses">
-    <div class="form-section-head">
-      <h2 class="form-section-title" id="sec-addresses">Addresses</h2>
-      <p class="form-section-hint">Leave the shipping address blank to deliver to the billing address.</p>
-    </div>
-    <div class="form-section-body">
-      {% include "core/_form_field.html" with field=form.billing_address_text %}
-      {% include "core/_form_field.html" with field=form.shipping_address_text %}
-    </div>
-  </section>
-
-  <section class="form-section" aria-labelledby="sec-discount">
-    <div class="form-section-head">
-      <h2 class="form-section-title" id="sec-discount">Document discount</h2>
-      <p class="form-section-hint">Applied to the order as a whole, after any per-line discounts.</p>
-    </div>
-    <div class="form-section-body">
-      {% include "core/_form_field.html" with field=form.document_discount_kind %}
-      {% include "core/_form_field.html" with field=form.document_discount_value %}
-    </div>
-  </section>
-
-  <section class="form-section" aria-labelledby="sec-notes">
-    <div class="form-section-head">
-      <h2 class="form-section-title" id="sec-notes">Notes</h2>
-      <p class="form-section-hint">Notes print on the order. Internal notes never leave the system.</p>
-    </div>
-    <div class="form-section-body">
-      {% include "core/_form_field.html" with field=form.notes %}
-      {% include "core/_form_field.html" with field=form.internal_notes %}
-    </div>
-  </section>
-  </div>
-
-  <div class="form-actions">
-    <button type="submit" class="btn-primary" data-busy-label="Saving order…">
-      {% if object %}Save changes{% else %}Create sales order{% endif %}
-    </button>
+  <div class="mt-5 flex items-center gap-2">
+    <button type="submit" class="btn-primary">Save</button>
     <a href="{% if object %}{% url 'sales:so_detail' object.pk %}{% else %}{% url 'sales:so_list' %}{% endif %}"
        class="btn-ghost">Cancel</a>
-    <p class="form-actions-hint">
-      Saved as a draft. Nothing reaches the ledger until the order is posted.
-    </p>
   </div>
 </form>
 {% endblock %}
 
 {% block extra_scripts %}
+{{ tax_rates|json_script:"tax-rates" }}
+{{ product_map|json_script:"product-map" }}
 <script>
-(() => {
-  const formsetTotal = document.getElementById('id_lines-TOTAL_FORMS');
-  const addLineButton = document.getElementById('add-line');
-  const lineTemplate = document.getElementById('empty-line-template');
-  const lineBody = document.querySelector('#lines-table tbody');
-  const limitNote = document.getElementById('line-limit');
-  if (!formsetTotal || !addLineButton || !lineTemplate || !lineBody) return;
-  const maxLines = 10;
+  // Live line totals preview (UX only — server recalculates on save per SAL-002).
+  // Mirrors services.calculate_line: doc discount (SAL-003) is allocated
+  // proportionally by gross, with the last line absorbing rounding drift.
+  (function () {
+    const table = document.getElementById('lines-table');
+    if (!table) return;
+    const taxScript = document.getElementById('tax-rates');
+    const TAX_RATES = taxScript ? JSON.parse(taxScript.textContent) : {};
+    const prodScript = document.getElementById('product-map');
+    const PRODUCTS = prodScript ? JSON.parse(prodScript.textContent) : {};
+    const round4 = n => Math.round((n + Number.EPSILON) * 10000) / 10000;
+    const round2 = n => Math.round((n + Number.EPSILON) * 100) / 100;
 
-  // A control that silently stops working is an unexplained dead end, so the
-  // note next to it says why. role="status" announces the change.
-  function updateAddLineState() {
-    const atLimit = Number(formsetTotal.value) >= maxLines;
-    addLineButton.disabled = atLimit;
-    if (limitNote) {
-      limitNote.textContent = atLimit
-        ? 'Line limit reached — an order can hold 10 lines. Remove a line to add another.'
-        : 'Up to ' + maxLines + ' lines per order.';
-    }
-  }
+    // Auto-fill price/tax/unit/description when a product is picked (UX; the
+    // server stores what the user submits — the product's price is the source).
+    // A product change always overwrites these derived fields so switching
+    // products never leaves the previous product's price behind.
+    const findInRow = (row, field) =>
+      row.querySelector(`[name$="-${field}"]`);
 
-  addLineButton.addEventListener('click', () => {
-    const index = Number(formsetTotal.value);
-    if (index >= maxLines) return;
-    const fragment = lineTemplate.content.cloneNode(true);
-    fragment.querySelectorAll('[name], [id], [for]').forEach(element => {
-      for (const attribute of ['name', 'id', 'for']) {
-        if (element.hasAttribute(attribute)) {
-          element.setAttribute(
-            attribute,
-            element.getAttribute(attribute).replaceAll('__prefix__', index),
-          );
-        }
+    const setField = (row, field, value) => {
+      const el = findInRow(row, field);
+      if (el && value !== undefined && value !== null) {
+        el.value = value;
+        el.dispatchEvent(new Event('input', { bubbles: true }));
       }
-    });
-    // The row's accessible names carry the human line number, not the
-    // zero-based formset index.
-    const lineNumber = String(index + 1);
-    fragment.querySelectorAll('[aria-label], [data-line]').forEach(element => {
-      if (element.hasAttribute('aria-label')) {
-        element.setAttribute('aria-label', element.getAttribute('aria-label').replaceAll('__LINE__', lineNumber));
-      }
-      if (element.hasAttribute('data-line')) element.setAttribute('data-line', lineNumber);
-    });
-    fragment.querySelectorAll('.sr-only').forEach(element => {
-      element.textContent = element.textContent.replaceAll('__LINE__', lineNumber);
-    });
-    const row = fragment.querySelector('.line-row');
-    lineBody.appendChild(fragment);
-    formsetTotal.value = index + 1;
-    updateAddLineState();
-    // Give the new row the same live validation and searchable selects as the
-    // rows that came with the page.
-    if (row) {
-      document.dispatchEvent(new CustomEvent('ledgerwise:rows-added', { detail: { root: row } }));
-    }
-    // Land in the row that was just created rather than making the user tab to it.
-    const firstInput = row && row.querySelector('input:not([type=hidden]), select, textarea');
-    if (firstInput) firstInput.focus();
-  });
-
-  // Taking back a row that has never been saved. Removing a row from the middle
-  // would leave the formset indexes non-contiguous, which Django rejects, so
-  // only a trailing row is deleted outright; anything else is emptied, and an
-  // empty extra form is ignored on save.
-  lineBody.addEventListener('click', event => {
-    const button = event.target.closest('.remove-new-line');
-    if (!button) return;
-    const row = button.closest('.line-row');
-    if (!row) return;
-    const isLast = row === lineBody.lastElementChild;
-    if (isLast && Number(formsetTotal.value) > 0) {
-      row.remove();
-      formsetTotal.value = Number(formsetTotal.value) - 1;
-    } else {
-      row.querySelectorAll('input:not([type=hidden]), select, textarea').forEach(field => {
-        if (field.type === 'checkbox' || field.type === 'radio') field.checked = false;
-        else field.value = '';
-      });
-      row.hidden = true;
-    }
-    updateAddLineState();
-    addLineButton.focus();
-  });
-
-  updateAddLineState();
-
-  // Line total preview. The server recalculates on save, so this only saves the
-  // user a round trip to see roughly where a line lands.
-  lineBody.addEventListener('input', event => {
-    const row = event.target.closest('.line-row');
-    if (!row) return;
-    const get = name => {
-      const el = row.querySelector(`[name$="-${name}"]`);
-      return el ? parseFloat(el.value) || 0 : 0;
     };
-    const gross = get('quantity') * get('unit_price');
-    const net = gross - (gross * get('discount_percent') / 100);
-    const grossCell = row.querySelector('.line-gross');
-    if (grossCell) grossCell.textContent = net.toFixed(2);
-  });
-})();
+
+    const onProductChange = e => {
+      const row = e.target.closest('.line-row');
+      if (!row) return;
+      const p = PRODUCTS[e.target.value];
+      if (!p || !p.price) return;
+      setField(row, 'unit_price', p.price);
+      setField(row, 'tax_code', p.tax_code);
+      setField(row, 'unit', p.unit);
+      const desc = findInRow(row, 'description');
+      if (desc) {
+        desc.value = p.name;
+        desc.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+      recalc();
+    };
+
+    const recalc = () => {
+      const rows = Array.from(table.querySelectorAll('tbody tr.line-row'));
+      if (!rows.length) return;
+
+      const data = rows.map(row => {
+        const del = row.querySelector('[name$="-DELETE"]');
+        const get = name => {
+          const el = row.querySelector(`[name$="-${name}"]`);
+          const v = el ? parseFloat(el.value) : NaN;
+          return isFinite(v) && v > 0 ? v : 0;
+        };
+        const taxSel = row.querySelector('[name$="-tax_code"]');
+        const tc = taxSel ? TAX_RATES[taxSel.value] : null;
+        const gross = round4(get('quantity') * get('unit_price'));
+        const lineDisc = Math.min(gross, round4(gross * get('discount_percent') / 100));
+        return {
+          row,
+          gross,
+          lineDisc,
+          net: gross - lineDisc,
+          rate: tc ? Number(tc.rate) : 0,
+          inclusive: tc ? tc.inclusive : false,
+          skip: del && del.checked,
+        };
+      });
+
+      const active = data.filter(d => !d.skip);
+      const totalGross = active.reduce((s, d) => s + d.gross, 0);
+
+      const kindEl = document.getElementById('id_document_discount_kind');
+      const valueEl = document.getElementById('id_document_discount_value');
+      let docDisc = 0;
+      if (kindEl && valueEl && totalGross > 0 && kindEl.value !== 'NONE') {
+        const val = parseFloat(valueEl.value) || 0;
+        if (kindEl.value === 'AMOUNT') docDisc = Math.min(totalGross, val);
+        else if (kindEl.value === 'PERCENT') docDisc = totalGross * val / 100;
+      }
+      docDisc = round4(docDisc);
+
+      let remaining = docDisc;
+      let sumGross = 0, sumTax = 0, sumTotal = 0;
+      active.forEach((d, i) => {
+        let alloc;
+        if (i === active.length - 1) alloc = remaining;
+        else if (totalGross > 0) alloc = round4(docDisc * d.gross / totalGross);
+        else alloc = 0;
+        remaining -= alloc;
+        if (remaining < 0.00005) remaining = 0;
+
+        const net = Math.max(0, d.net - alloc);
+        let taxable = net;
+        if (d.inclusive && d.rate > 0) taxable = round4(net / (1 + d.rate / 100));
+        const tax = round4(taxable * d.rate / 100);
+        const total = taxable + tax;
+
+        const cells = d.row.querySelectorAll('td');
+        if (cells[8]) cells[8].textContent = d.gross.toFixed(2);
+        if (cells[9]) cells[9].textContent = tax.toFixed(2);
+        if (cells[10]) cells[10].textContent = total.toFixed(2);
+
+        sumGross += d.gross;
+        sumTax += tax;
+        sumTotal += total;
+      });
+
+      const set = (id, v) => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = v;
+      };
+      set('sum-discount', docDisc.toFixed(2));
+      set('sum-gross', sumGross.toFixed(2));
+      set('sum-tax', sumTax.toFixed(2));
+      set('sum-total', round2(sumTotal).toFixed(2));
+    };
+
+    recalc();
+    table.querySelectorAll('tbody').forEach(tbody => {
+      ['input', 'change'].forEach(evt => tbody.addEventListener(evt, recalc));
+    });
+    table.querySelectorAll('[name$="-product"]').forEach(sel => {
+      sel.addEventListener('change', onProductChange);
+    });
+    ['id_document_discount_kind', 'id_document_discount_value'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.addEventListener('input', recalc);
+    });
+  })();
 </script>
 {% endblock %}

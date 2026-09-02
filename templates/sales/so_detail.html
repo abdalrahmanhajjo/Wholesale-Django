@@ -8,6 +8,13 @@ status actions and audit history.
 
 {% block header_title %}{{ order.number }}{% endblock %}
 
+{% block breadcrumb %}
+  <a href="{% url 'sales:so_list' %}"
+     class="mb-4 inline-flex items-center gap-1.5 text-sm font-medium text-muted-fg transition-colors hover:text-brand">
+    <span aria-hidden="true">&larr;</span> Back to sales orders
+  </a>
+{% endblock %}
+
 {% block actions %}
   {% if order.status == "DRAFT" or order.status == "SUBMITTED" or order.status == "REJECTED" %}
     {% if perms.sales.change_salesorder %}
@@ -247,7 +254,7 @@ status actions and audit history.
     <div class="card card-pad">
       <p class="eyebrow">Audit history</p>
       <h2 class="card-title mt-2">What changed, and who changed it</h2>
-      <ul class="mt-4 space-y-4">
+      <ul class="mt-4 max-h-64 space-y-4 overflow-y-auto pr-1">
         {% for event in audit_events %}
           <li class="border-l-2 border-line pl-3">
             <p class="text-xs font-bold uppercase tracking-wide text-brand-deep">

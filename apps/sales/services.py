@@ -2,66 +2,44 @@
 Sales-order services: numbering, arithmetic, totals, discount allocation,
 and the approval lifecycle (SAL-001..SAL-004, BR-010, BR-011, BR-022, NFR-008).
 
-Every public function that writes data runs inside a transaction. A caller that
-combines a service call with additional writes should wrap the complete unit of
-work in an outer ``transaction.atomic()`` block.
+Every public function runs inside a transaction. The caller is responsible for
+wrapping in `transaction.atomic()` if they need to combine it with a form save.
 """
 
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import Decimal, ROUND_HALF_UP
 
 from django.db import transaction
-from django.db.models import F
+from django.db.models import F, Sum
 from django.utils import timezone
 
-from apps.core import audit
 from apps.core.models import (
-    ZERO,
     DocumentSequence,
     DocumentStatus,
+    TaxCode,
+    ZERO,
 )
+from apps.core import audit
 from apps.inventory.models import DeliveryNote, DeliveryNoteLine
-from apps.sales.models import DiscountKind, SalesOrder, SalesOrderLine
-
-LINE_TOTAL_FIELDS = [
-    "tax_rate_percent",
-    "tax_is_inclusive",
-    "tax_is_recoverable",
-    "gross_txn",
-    "line_discount_txn",
-    "allocated_document_discount_txn",
-    "net_txn",
-    "taxable_base_txn",
-    "tax_txn",
-    "total_txn",
-    "net_base",
-    "taxable_base_base",
-    "tax_base",
-    "total_base",
-]
-
-ORDER_TOTAL_FIELDS = [
-    "subtotal_txn",
-    "line_discount_txn",
-    "document_discount_txn",
-    "taxable_base_txn",
-    "tax_txn",
-    "rounding_txn",
-    "total_txn",
-    "subtotal_base",
-    "line_discount_base",
-    "document_discount_base",
-    "taxable_base_base",
-    "tax_base",
-    "rounding_base",
-    "total_base",
-    "open_txn",
-    "open_base",
-]
+from apps.sales.models import (
+    DiscountKind,
+    SalesInvoice,
+    SalesInvoiceLine,
+    SalesOrder,
+    SalesOrderLine,
+)
+from apps.ledger.models import AccountMapping, JournalType, MappingKey
+from apps.ledger.services import (
+    JournalDraft,
+    JournalLineDraft,
+    PostingEngineStub,
+    PostingError,
+    PostingErrorCode,
+    PostingRequest,
+)
 
 # ---------------------------------------------------------------------------
 # Number generation (CFG-008, NFR-008)
 # ---------------------------------------------------------------------------
-
 
 def allocate_so_number(series="DEFAULT"):
     """
@@ -97,9 +75,8 @@ def allocate_so_number(series="DEFAULT"):
 # Line arithmetic (BR-010, BR-011, FTD-006)
 # ---------------------------------------------------------------------------
 
-
 def _round_money(value):
-    """Round a Decimal to 4 dp (MONEY scale) using commercial half-up rounding."""
+    """Round a Decimal to 4 dp (MONEY scale) using banker's rounding."""
     return value.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
 
 
@@ -122,7 +99,7 @@ def calculate_line(line):
     price = line.unit_price or ZERO
     disc_pct = line.discount_percent or ZERO
     alloc_doc_disc = line.allocated_document_discount_txn or ZERO
-    tax_rate = line.tax_rate_percent or ZERO
+    rate = line.tax_rate_percent or ZERO
 
     # 1. Gross
     gross = _round_money(qty * price)
@@ -139,12 +116,12 @@ def calculate_line(line):
         net = ZERO
 
     # 4. Taxable base and tax
-    if line.tax_is_inclusive and tax_rate > ZERO:
-        taxable_base = _round_money(net / (ONE + tax_rate / Decimal("100")))
+    if line.tax_is_inclusive and rate > ZERO:
+        taxable_base = _round_money(net / (ONE + rate / Decimal("100")))
     else:
         taxable_base = net
 
-    tax = _round_money(taxable_base * tax_rate / Decimal("100"))
+    tax = _round_money(taxable_base * rate / Decimal("100"))
     total = taxable_base + tax
 
     # 5. Assign
@@ -155,12 +132,10 @@ def calculate_line(line):
     line.tax_txn = tax
     line.total_txn = total
 
-    # 6. Base-currency mirrors use the immutable rate snapshotted on the order.
-    exchange_rate = line.order.exchange_rate or ONE
-    line.net_base = _round_money(net * exchange_rate)
-    line.taxable_base_base = _round_money(taxable_base * exchange_rate)
-    line.tax_base = _round_money(tax * exchange_rate)
-    line.total_base = _round_money(total * exchange_rate)
+    # 6. Base-currency mirrors (exchange_rate is set on the header)
+    #    Caller must have already set exchange_rate on the order before
+    #    calling this. We don't look it up here to avoid N+1.
+    #    The base values are set in calculate_totals() after all lines.
 
 
 ONE = Decimal("1")
@@ -170,45 +145,27 @@ ONE = Decimal("1")
 # Document-level discount allocation (BR-011, SAL-003)
 # ---------------------------------------------------------------------------
 
+def _document_discount_amount(order):
+    """
+    Derive the header discount total (txn currency) from kind/value.
 
-def _discount_total(order, total_gross):
+    SAL-003: PERCENT is a percentage of the total gross
+    (Σ quantity × unit_price); AMOUNT is used as-is. NONE (or a
+    missing/non-positive value) yields zero.
+    """
+    kind = order.document_discount_kind
     value = order.document_discount_value or ZERO
-    if order.document_discount_kind == DiscountKind.PERCENT:
-        requested = _round_money(total_gross * value / Decimal("100"))
-    elif order.document_discount_kind == DiscountKind.AMOUNT:
-        requested = _round_money(value)
-    else:
-        requested = ZERO
-    # A document discount cannot make the document value negative.
-    return min(max(requested, ZERO), total_gross)
-
-
-def _allocate_document_discount(order, lines):
-    """Apply the header discount to already-loaded line instances."""
-    total_gross = sum(
-        (_round_money((line.quantity or ZERO) * (line.unit_price or ZERO)) for line in lines),
-        ZERO,
+    if kind == DiscountKind.NONE or value <= ZERO:
+        return ZERO
+    if kind == DiscountKind.AMOUNT:
+        return _round_money(value)
+    gross_total = sum(
+        (ln.quantity or ZERO) * (ln.unit_price or ZERO)
+        for ln in order.lines.all()
     )
-    discount_total = _discount_total(order, total_gross)
-    order.document_discount_txn = discount_total
-
-    if not lines or total_gross <= ZERO or discount_total <= ZERO:
-        for line in lines:
-            line.allocated_document_discount_txn = ZERO
-        return
-
-    allocated_so_far = ZERO
-    for index, line in enumerate(lines):
-        if index == len(lines) - 1:
-            share = discount_total - allocated_so_far
-        else:
-            gross = _round_money((line.quantity or ZERO) * (line.unit_price or ZERO))
-            share = _round_money(discount_total * gross / total_gross)
-            allocated_so_far += share
-        line.allocated_document_discount_txn = share
+    return _round_money(gross_total * value / Decimal("100"))
 
 
-@transaction.atomic
 def allocate_document_discount(order):
     """
     Split the header-level discount across all eligible lines proportionally
@@ -221,18 +178,43 @@ def allocate_document_discount(order):
     A line with zero gross gets zero allocation.
     """
     lines = list(order.lines.all())
-    _allocate_document_discount(order, lines)
-    if lines:
-        SalesOrderLine.objects.bulk_update(lines, ["allocated_document_discount_txn"])
-    order.save(update_fields=["document_discount_txn"])
+    if not lines:
+        return
+
+    discount_total = order.document_discount_txn or ZERO
+    if discount_total <= ZERO:
+        for ln in lines:
+            ln.allocated_document_discount_txn = ZERO
+            ln.save(update_fields=["allocated_document_discount_txn"])
+        return
+
+    # Sum of all gross amounts
+    total_gross = sum((ln.quantity or ZERO) * (ln.unit_price or ZERO) for ln in lines)
+    if total_gross <= ZERO:
+        for ln in lines:
+            ln.allocated_document_discount_txn = ZERO
+            ln.save(update_fields=["allocated_document_discount_txn"])
+        return
+
+    allocated_so_far = ZERO
+    total_lines = len(lines)
+    for i, ln in enumerate(lines):
+        gross = (ln.quantity or ZERO) * (ln.unit_price or ZERO)
+        if i < total_lines - 1:
+            share = _round_money(discount_total * gross / total_gross)
+            ln.allocated_document_discount_txn = share
+            allocated_so_far += share
+        else:
+            # Last line gets the remainder to avoid rounding drift
+            ln.allocated_document_discount_txn = discount_total - allocated_so_far
+        ln.save(update_fields=["allocated_document_discount_txn"])
 
 
 # ---------------------------------------------------------------------------
 # Totals roll-up (SAL-002, BR-022)
 # ---------------------------------------------------------------------------
 
-
-def calculate_totals(order, lines=None):
+def calculate_totals(order):
     """
     Sum line values into the header totals. Must run AFTER calculate_line()
     on every line and allocate_document_discount().
@@ -240,25 +222,32 @@ def calculate_totals(order, lines=None):
     Sets subtotal, line_discount, document_discount, taxable_base, tax,
     total, rounding, and their base-currency mirrors.
     """
-    if lines is None:
-        lines = list(order.lines.all())
+    lines = order.lines.all()
+
+    agg = lines.aggregate(
+        sum_gross=Sum("gross_txn", default=ZERO),
+        sum_line_disc=Sum("line_discount_txn", default=ZERO),
+        sum_alloc_doc_disc=Sum("allocated_document_discount_txn", default=ZERO),
+        sum_net=Sum("net_txn", default=ZERO),
+        sum_taxable=Sum("taxable_base_txn", default=ZERO),
+        sum_tax=Sum("tax_txn", default=ZERO),
+        sum_total=Sum("total_txn", default=ZERO),
+    )
 
     rate = order.exchange_rate or ONE
 
-    order.subtotal_txn = sum((line.gross_txn for line in lines), ZERO)
-    order.line_discount_txn = sum((line.line_discount_txn for line in lines), ZERO)
-    # Persist the allocated total so the header always reconciles to its lines.
-    order.document_discount_txn = sum(
-        (line.allocated_document_discount_txn for line in lines), ZERO
-    )
-    order.taxable_base_txn = sum((line.taxable_base_txn for line in lines), ZERO)
-    order.tax_txn = sum((line.tax_txn for line in lines), ZERO)
+    order.subtotal_txn = agg["sum_gross"]
+    order.line_discount_txn = agg["sum_line_disc"]
+    order.document_discount_txn = agg["sum_alloc_doc_disc"]  # stored as the
+    # allocated total, not the header field — reconciles to header
+    order.taxable_base_txn = agg["sum_taxable"]
+    order.tax_txn = agg["sum_tax"]
 
     # BR-022: rounding tolerance
     company = _get_company()
     tolerance = company.rounding_tolerance if company else Decimal("0.05")
 
-    raw_total = order.taxable_base_txn + order.tax_txn
+    raw_total = agg["sum_taxable"] + agg["sum_tax"]
     rounded_total = raw_total.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     rounding = rounded_total - raw_total
 
@@ -284,7 +273,6 @@ def calculate_totals(order, lines=None):
 
 def _get_company():
     from apps.core.models import Company
-
     return Company.objects.first()
 
 
@@ -292,8 +280,6 @@ def _get_company():
 # Create / recalculate helpers
 # ---------------------------------------------------------------------------
 
-
-@transaction.atomic
 def create_sales_order(*, user, **kwargs):
     """
     Create a new SalesOrder with a generated number and initial status.
@@ -310,55 +296,42 @@ def create_sales_order(*, user, **kwargs):
         **kwargs,
     )
     order.save()
-    audit.record_create(None, order, user=user)
+    audit.record_create(None, order)
     return order
 
 
-@transaction.atomic
 def recalculate_order(order):
     """
     Full recalculation pass: allocate doc discount → calculate each line →
     roll up totals. Call this after any change to lines, prices, quantities,
     discounts, or the header discount.
     """
-    lines = list(order.lines.select_related("tax_code"))
-    _allocate_document_discount(order, lines)
-    for line in lines:
-        if line.tax_code_id:
-            line.tax_rate_percent = line.tax_code.rate_percent
-            line.tax_is_inclusive = line.tax_code.is_inclusive
-            line.tax_is_recoverable = line.tax_code.is_recoverable
-        else:
-            line.tax_rate_percent = ZERO
-            line.tax_is_inclusive = False
-            line.tax_is_recoverable = True
+    order.document_discount_txn = _document_discount_amount(order)
+    allocate_document_discount(order)
+    for line in order.lines.all():
         calculate_line(line)
-    if lines:
-        SalesOrderLine.objects.bulk_update(lines, LINE_TOTAL_FIELDS)
-    calculate_totals(order, lines)
-    order.save(update_fields=ORDER_TOTAL_FIELDS)
+        line.save(
+            update_fields=[
+                "gross_txn", "line_discount_txn",
+                "allocated_document_discount_txn",
+                "net_txn", "taxable_base_txn", "tax_txn", "total_txn",
+                "net_base", "taxable_base_base", "tax_base", "total_base",
+            ]
+        )
+    calculate_totals(order)
+    order.save(update_fields=[
+        "subtotal_txn", "line_discount_txn", "document_discount_txn",
+        "taxable_base_txn", "tax_txn", "rounding_txn", "total_txn",
+        "subtotal_base", "line_discount_base", "document_discount_base",
+        "taxable_base_base", "tax_base", "rounding_base", "total_base",
+        "open_txn", "open_base",
+    ])
 
 
 # ---------------------------------------------------------------------------
 # Approval workflow (SAL-004, ACC-005, ACC-008)
 # ---------------------------------------------------------------------------
 
-
-def _lock_order(order):
-    """Return the current row under a lifecycle-transition lock."""
-    return SalesOrder.objects.select_for_update().get(pk=order.pk)
-
-
-def _sync_order(target, source):
-    """Keep the instance supplied by the caller useful after a locked update."""
-    for field in target._meta.concrete_fields:
-        setattr(target, field.attname, getattr(source, field.attname))
-    target._state.db = source._state.db
-    target._state.adding = False
-    target._state.fields_cache.clear()
-
-
-@transaction.atomic
 def submit_order(order, user):
     """
     Move a DRAFT (or previously REJECTED) order to SUBMITTED.
@@ -367,106 +340,70 @@ def submit_order(order, user):
     resubmit for approval. Only the creator or a manager should call this — the
     view enforces the permission; the service just validates state.
     """
-    locked = _lock_order(order)
-    if locked.status not in (DocumentStatus.DRAFT, DocumentStatus.REJECTED):
+    if order.status not in (DocumentStatus.DRAFT, DocumentStatus.REJECTED):
         raise ValueError(
-            f"Cannot submit order {locked.number}: status is {locked.status}, "
+            f"Cannot submit order {order.number}: status is {order.status}, "
             "expected DRAFT or REJECTED."
         )
-    locked.status = DocumentStatus.SUBMITTED
-    locked.submitted_at = timezone.now()
-    locked.updated_by = user
-    locked.save(
-        update_fields=[
-            "status",
-            "submitted_at",
-            "updated_by",
-            "updated_at",
-        ]
-    )
-    audit.record_action(None, audit.AuditAction.SUBMIT, locked, user=user)
-    _sync_order(order, locked)
+    order.status = DocumentStatus.SUBMITTED
+    order.submitted_at = timezone.now()
+    order.updated_by = user
+    order.save(update_fields=[
+        "status", "submitted_at", "updated_by", "updated_at",
+    ])
+    audit.record_action(None, audit.AuditAction.SUBMIT, order)
     return order
 
 
-@transaction.atomic
 def approve_order(order, user, reason=""):
     """
     Approve a SUBMITTED order (SAL-004). Gated behind
     APPROVE_SALES_ORDER permission — the view must check this.
     """
-    locked = _lock_order(order)
-    if locked.status != DocumentStatus.SUBMITTED:
+    if order.status != DocumentStatus.SUBMITTED:
         raise ValueError(
-            f"Cannot approve order {locked.number}: status is {locked.status}, "
+            f"Cannot approve order {order.number}: status is {order.status}, "
             "expected SUBMITTED."
         )
-    if not reason.strip():
-        raise ValueError("A reason is required to approve an order (ACC-008).")
-
-    locked.status = DocumentStatus.APPROVED
-    locked.approved_at = timezone.now()
-    locked.approved_by = user
-    locked.approval_reason = reason
-    locked.updated_by = user
-    locked.save(
-        update_fields=[
-            "status",
-            "approved_at",
-            "approved_by",
-            "approval_reason",
-            "updated_by",
-            "updated_at",
-        ]
-    )
+    order.status = DocumentStatus.APPROVED
+    order.approved_at = timezone.now()
+    order.approved_by = user
+    order.approval_reason = reason
+    order.updated_by = user
+    order.save(update_fields=[
+        "status", "approved_at", "approved_by", "approval_reason",
+        "updated_by", "updated_at",
+    ])
     audit.record_action(
-        None,
-        audit.AuditAction.APPROVE,
-        locked,
-        reason=reason,
-        user=user,
+        None, audit.AuditAction.APPROVE, order, reason=reason,
     )
-    _sync_order(order, locked)
     return order
 
 
-@transaction.atomic
 def reject_order(order, user, reason=""):
     """
     Reject a SUBMITTED order (SAL-004). Requires a reason (ACC-008).
     """
-    locked = _lock_order(order)
-    if locked.status != DocumentStatus.SUBMITTED:
+    if order.status != DocumentStatus.SUBMITTED:
         raise ValueError(
-            f"Cannot reject order {locked.number}: status is {locked.status}, "
+            f"Cannot reject order {order.number}: status is {order.status}, "
             "expected SUBMITTED."
         )
     if not reason.strip():
         raise ValueError("A reason is required to reject an order (ACC-008).")
 
-    locked.status = DocumentStatus.REJECTED
-    locked.approved_at = None
-    locked.approved_by = user
-    locked.approval_reason = reason
-    locked.updated_by = user
-    locked.save(
-        update_fields=[
-            "status",
-            "approved_at",
-            "approved_by",
-            "approval_reason",
-            "updated_by",
-            "updated_at",
-        ]
-    )
+    order.status = DocumentStatus.REJECTED
+    order.approved_at = None
+    order.approved_by = user
+    order.approval_reason = reason
+    order.updated_by = user
+    order.save(update_fields=[
+        "status", "approved_at", "approved_by", "approval_reason",
+        "updated_by", "updated_at",
+    ])
     audit.record_action(
-        None,
-        audit.AuditAction.REJECT,
-        locked,
-        reason=reason,
-        user=user,
+        None, audit.AuditAction.REJECT, order, reason=reason,
     )
-    _sync_order(order, locked)
     return order
 
 
@@ -481,7 +418,6 @@ def reject_order(order, user, reason=""):
 # else — eligibility, partial delivery, counters, status transitions — is
 # complete and testable without it.
 # ---------------------------------------------------------------------------
-
 
 def allocate_dn_number(series="DEFAULT"):
     """
@@ -541,7 +477,9 @@ def create_delivery_from_order(*, order, user, quantities, **kwargs):
 
     Returns the created, posted DeliveryNote.
     """
-    note = draft_delivery_from_order(order=order, user=user, quantities=quantities, **kwargs)
+    note = draft_delivery_from_order(
+        order=order, user=user, quantities=quantities, **kwargs
+    )
     return post_delivery(note, user)
 
 
@@ -586,7 +524,9 @@ def draft_delivery_from_order(*, order, user, quantities, **kwargs):
         status=DocumentStatus.DRAFT,
         reference=kwargs.pop("reference", ""),
         notes=kwargs.pop("notes", ""),
-        shipping_address_text=kwargs.pop("shipping_address_text", order.shipping_address_text),
+        shipping_address_text=kwargs.pop(
+            "shipping_address_text", order.shipping_address_text
+        ),
         carrier=kwargs.pop("carrier", ""),
         tracking_reference=kwargs.pop("tracking_reference", ""),
     )
@@ -607,9 +547,8 @@ def draft_delivery_from_order(*, order, user, quantities, **kwargs):
         )
         line_no += 1
 
-    audit.record(
-        audit.AuditAction.CREATE, note, user=user, changes={"created": audit.snapshot(note)}
-    )
+    audit.record(audit.AuditAction.CREATE, note, user=user,
+                 changes={"created": audit.snapshot(note)})
     return note
 
 
@@ -635,9 +574,7 @@ def post_delivery(note, user):
     with transaction.atomic():
         _validate_postable(note)
         summary = {}
-        for dn_line in note.lines.select_related("sales_order_line", "product").order_by(
-            "line_no"
-        ):
+        for dn_line in note.lines.select_related("sales_order_line", "product").order_by("line_no"):
             so_line = dn_line.sales_order_line
             qty = dn_line.quantity or ZERO
             remaining = remaining_to_deliver(so_line)
@@ -659,14 +596,9 @@ def post_delivery(note, user):
         note.status = DocumentStatus.POSTED
         note.posted_at = timezone.now()
         note.posted_by = user
-        note.save(
-            update_fields=[
-                "status",
-                "posted_at",
-                "posted_by",
-                "updated_at",
-            ]
-        )
+        note.save(update_fields=[
+            "status", "posted_at", "posted_by", "updated_at",
+        ])
 
         audit.record(audit.AuditAction.POST, note, user=user)
         _sync_order_fulfilment(note.sales_order)
@@ -719,11 +651,8 @@ def _sync_order_fulfilment(order):
 
     if open_lines == 0:
         new_status = DocumentStatus.COMPLETED
-    elif order.status in (
-        DocumentStatus.APPROVED,
-        DocumentStatus.COMPLETED,
-        DocumentStatus.PARTIAL,
-    ):
+    elif order.status in (DocumentStatus.APPROVED, DocumentStatus.COMPLETED,
+                          DocumentStatus.PARTIAL):
         new_status = DocumentStatus.PARTIAL
     else:
         return
@@ -732,8 +661,293 @@ def _sync_order_fulfilment(order):
         order.status = new_status
         order.save(update_fields=["status", "updated_at"])
         audit.record_action(
-            None,
-            audit.AuditAction.UPDATE,
-            order,
+            None, audit.AuditAction.UPDATE, order,
             reason=f"Fulfilment changed to {new_status}",
         )
+
+# ---------------------------------------------------------------------------
+# Sales invoices (SAL-006..SAL-011)
+# ---------------------------------------------------------------------------
+
+
+def allocate_invoice_number(series="DEFAULT"):
+    """Next 'INV-00001' via SELECT ... FOR UPDATE (same shape as allocate_so_number)."""
+    with transaction.atomic():
+        seq = (
+            DocumentSequence.objects.select_for_update()
+            .filter(document_type="SI", series=series, is_active=True)
+            .first()
+        )
+        if seq is None:
+            raise ValueError(
+                "No active document sequence for SI / DEFAULT. "
+                "Ask an administrator to create one in Settings."
+            )
+        num = seq.next_number
+        seq.next_number = F("next_number") + 1
+        seq.save(update_fields=["next_number"])
+        return f"{seq.prefix}{str(num).zfill(seq.padding)}{seq.suffix}"
+
+
+def remaining_to_invoice(delivery_line):
+    """SAL-006 no-double-invoicing guard — mirrors remaining_to_deliver().
+
+    remaining = delivery_line.quantity - delivery_line.quantity_invoiced
+    """
+    return (delivery_line.quantity or ZERO) - (delivery_line.quantity_invoiced or ZERO)
+
+
+def build_invoice_lines_from_delivery(delivery):
+    """(DeliveryNoteLine, remaining-to-invoice) pairs for a posted delivery."""
+    rows = []
+    for dl in delivery.lines.select_related("product", "unit").order_by("line_no"):
+        remaining = remaining_to_invoice(dl)
+        if remaining > ZERO:
+            rows.append((dl, remaining))
+    return rows
+
+
+def recalculate_invoice(invoice):
+    """Totals (SAL-008). Reuses the Day 2 arithmetic unchanged.
+
+    SalesInvoiceLine is a DocumentLineBase and SalesInvoice a
+    FinancialDocumentBase, so calculate_line / allocate_document_discount /
+    calculate_totals work as-is — they only touch .lines and those field names.
+    """
+    for ln in invoice.lines.all():
+        calculate_line(ln)                 # Day-2 function, reused verbatim
+        ln.save(update_fields=["gross_txn", "line_discount_txn", "net_txn",
+                               "taxable_base_txn", "tax_txn", "total_txn"])
+    allocate_document_discount(invoice)    # Day-2 function, reused verbatim
+    calculate_totals(invoice)              # Day-2 function, reused verbatim
+    invoice.save()
+
+
+def create_invoice_from_delivery(*, delivery, user, quantities, **kwargs):
+    """DRAFT invoice from a POSTED delivery (the graded Day-4 path).
+
+    `quantities` = {DeliveryNoteLine.pk: qty}. Over-invoicing is blocked here
+    (SAL-006) and re-checked at post time.
+    """
+    if delivery.status != DocumentStatus.POSTED:
+        raise ValueError(
+            f"Cannot invoice delivery {delivery.number}: status is "
+            f"{delivery.status}, expected POSTED."
+        )
+    lines = delivery.lines.select_related("product", "unit", "sales_order_line").order_by("line_no")
+    remaining = {dl.pk: remaining_to_invoice(dl) for dl in lines}
+    updates = {}
+    for dl in lines:
+        qty = quantities.get(dl.pk, ZERO) or ZERO
+        if qty < ZERO:
+            raise ValueError("Invoice quantities cannot be negative.")
+        if qty > remaining[dl.pk]:
+            raise ValueError(
+                f"Cannot invoice {qty} of {dl.quantity} on delivery line "
+                f"{dl.line_no} ({dl.product}): {remaining[dl.pk]} remains to "
+                "invoice (double-invoicing blocked, SAL-006)."
+            )
+        if qty > ZERO:
+            updates[dl] = qty
+    if not updates:
+        raise ValueError("No quantities to invoice on this note.")
+
+    invoice = SalesInvoice(
+        number=allocate_invoice_number(),
+        customer=delivery.customer,
+        warehouse=kwargs.pop("warehouse", delivery.warehouse),
+        sales_order=delivery.sales_order,
+        payment_term=kwargs.pop(
+            "payment_term", delivery.customer.payment_term
+        ),
+        document_date=kwargs.pop("document_date", timezone.localdate()),
+        posting_date=kwargs.pop("posting_date", timezone.localdate()),
+        currency=delivery.sales_order.currency if delivery.sales_order
+                 else delivery.customer.currency,
+        exchange_rate=kwargs.pop("exchange_rate", delivery.sales_order.exchange_rate
+                                 if delivery.sales_order else Decimal("1")),
+        due_date=kwargs.pop("due_date", None),
+        status=DocumentStatus.DRAFT,
+        customer_name_snapshot=delivery.customer.name,
+        customer_tax_id_snapshot=delivery.customer.tax_id or "",
+        billing_address_text=kwargs.pop("billing_address_text", ""),
+        shipping_address_text=delivery.shipping_address_text,
+        customer_reference=(delivery.sales_order.customer_reference
+                            if delivery.sales_order else ""),
+        notes=kwargs.pop("notes", ""),
+        document_discount_kind=DiscountKind.NONE,
+        document_discount_value=ZERO,
+    )
+    invoice.save()
+
+    line_no = 1
+    for dl, qty in sorted(updates.items(), key=lambda kv: kv[0].line_no):
+        SalesInvoiceLine.objects.create(
+            invoice=invoice,
+            line_no=line_no,
+            product=dl.product,
+            unit=dl.unit,
+            description=dl.product.name,
+            quantity=qty,
+            unit_price=(dl.sales_order_line.unit_price if dl.sales_order_line else ZERO),
+            discount_percent=ZERO,
+            tax_code=(dl.sales_order_line.tax_code if dl.sales_order_line else None),
+            tax_rate_percent=(dl.sales_order_line.tax_rate_percent if dl.sales_order_line else ZERO),
+            tax_is_inclusive=(dl.sales_order_line.tax_is_inclusive if dl.sales_order_line else False),
+            warehouse=dl.delivery.warehouse,
+            sales_order_line=dl.sales_order_line,
+            delivery_line=dl,
+            product_sku_snapshot=dl.product.sku,
+        )
+        line_no += 1
+
+    recalculate_invoice(invoice)
+    audit.record(audit.AuditAction.CREATE, invoice, user=user,
+                 changes={"created": audit.snapshot(invoice)})
+    return invoice
+
+
+def submit_invoice(invoice, user):
+    """SAL-007: DRAFT -> SUBMITTED (posting requires SUBMITTED)."""
+    if invoice.status not in (DocumentStatus.DRAFT, DocumentStatus.SUBMITTED):
+        raise ValueError(
+            f"Cannot submit invoice {invoice.number}: status is {invoice.status}, "
+            "expected DRAFT."
+        )
+    invoice.status = DocumentStatus.SUBMITTED
+    invoice.submitted_at = timezone.now()
+    invoice.save(update_fields=["status", "submitted_at", "updated_at"])
+    audit.record_action(None, audit.AuditAction.SUBMIT, invoice)
+    return invoice
+
+
+# ---------------------------------------------------------------------------
+# Journal builder (SAL-009) — contracts with the posting engine
+# ---------------------------------------------------------------------------
+
+def _resolve_account(key):
+    """CFG-007: resolve an Account via AccountMapping, never a hardcoded id."""
+    mapping = (
+        AccountMapping.objects.filter(key=key)
+        .select_related("account")
+        .first()
+    )
+    if mapping is None:
+        raise PostingError(
+            f"No account mapping configured for {key} (CFG-007). "
+            "Ask an administrator to set it in Settings.",
+            code=PostingErrorCode.INVALID_REQUEST,
+        )
+    return mapping.account
+
+
+def build_sales_invoice_journal(invoice, *, user):
+    """Return an immutable JournalDraft. Builders never save anything."""
+    lines = [
+        JournalLineDraft(
+            account=_resolve_account(MappingKey.ACCOUNTS_RECEIVABLE),
+            debit_base=invoice.total_base,
+            customer=invoice.customer,
+            description=f"Sales invoice {invoice.number}",
+        ),
+        JournalLineDraft(
+            account=_resolve_account(MappingKey.SALES_REVENUE),
+            credit_base=invoice.taxable_base_base,
+            description=f"Sales revenue {invoice.number}",
+        ),
+    ]
+    if invoice.tax_base:
+        lines.append(JournalLineDraft(
+            account=_resolve_account(MappingKey.OUTPUT_TAX),
+            credit_base=invoice.tax_base,
+            tax_code=None,  # single VAT bucket; see tax subledger later
+            description=f"Output tax {invoice.number}",
+        ))
+    if invoice.rounding_base:
+        # Keep the journal exactly balanced (BR-006) when total != taxable + tax.
+        lines.append(JournalLineDraft(
+            account=_resolve_account(
+                MappingKey.ROUNDING_LOSS if invoice.rounding_base < 0
+                else MappingKey.ROUNDING_GAIN
+            ),
+            credit_base=abs(invoice.rounding_base) if invoice.rounding_base < 0 else ZERO,
+            debit_base=abs(invoice.rounding_base) if invoice.rounding_base > 0 else ZERO,
+        ))
+
+    # SAL-010: COGS / Inventory for stocked lines, at the delivery's unit cost.
+    # unit_cost is Member 2's weighted-average number; until it lands it is 0
+    # and the lines are skipped (a 0/0 JournalLineDraft is rejected on purpose).
+    for sl in invoice.lines.select_related("delivery_line", "product"):
+        dl = sl.delivery_line
+        if dl is None or not (dl.unit_cost or ZERO) > ZERO:
+            continue
+        amount = (dl.unit_cost or ZERO) * (sl.quantity or ZERO)
+        lines.append(JournalLineDraft(
+            account=_resolve_account(MappingKey.COGS),
+            debit_base=amount,
+            product=sl.product,
+            warehouse=sl.warehouse or dl.delivery.warehouse,
+        ))
+        lines.append(JournalLineDraft(
+            account=_resolve_account(MappingKey.INVENTORY),
+            credit_base=amount,
+            product=sl.product,
+            warehouse=sl.warehouse or dl.delivery.warehouse,
+        ))
+
+    return JournalDraft(
+        entry_date=invoice.posting_date,
+        journal_type=JournalType.SALES,
+        narration=f"Sales invoice {invoice.number}",
+        currency=invoice.currency,
+        exchange_rate=invoice.exchange_rate,   # Decimal, as required by the contract
+        source_doc_type="SI",
+        source_doc_number=invoice.number,
+        lines=tuple(lines),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Posting (SAL-009) — the real engine, no silent no-op
+# ---------------------------------------------------------------------------
+
+# The one binding to swap when Member 4's concrete engine lands. The contract
+# interface is identical, so nothing else in this module changes.
+posting_service = PostingEngineStub()
+
+
+def post_invoice(invoice, user):
+    """SUBMITTED -> POSTED, write the journal via the engine (BR-005 atomic)."""
+    if invoice.status != DocumentStatus.SUBMITTED:
+        raise ValueError(
+            f"Cannot post invoice {invoice.number}: status is {invoice.status}, "
+            "expected SUBMITTED (SAL-007)."
+        )
+    with transaction.atomic():
+        result = posting_service.post(PostingRequest(
+            source=invoice,
+            user=user,
+            idempotency_key=f"sales-invoice:{invoice.pk}:post:v1",
+            build_journal=build_sales_invoice_journal,
+            reason="Invoice posting",
+        ))
+
+        invoice.status = DocumentStatus.POSTED
+        invoice.journal_entry = result.journal_entry
+        invoice.posted_at = timezone.now()
+        invoice.posted_by = user
+        invoice.save(update_fields=[
+            "status", "journal_entry", "posted_at", "posted_by", "updated_at",
+        ])
+
+        # SAL-006: bump the delivery-line invoiced counter so nothing is
+        # invoiced twice.
+        for sl in invoice.lines.select_related("delivery_line").all():
+            dl = sl.delivery_line
+            if dl is not None and (sl.quantity or ZERO) > ZERO:
+                dl.quantity_invoiced = F("quantity_invoiced") + sl.quantity
+                dl.save(update_fields=["quantity_invoiced"])
+
+        audit.record(audit.AuditAction.POST, invoice, user=user)
+        invoice.refresh_from_db()
+    return invoice

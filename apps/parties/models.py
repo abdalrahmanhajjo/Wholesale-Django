@@ -37,7 +37,10 @@ class PartyBase(TimeStampedModel):
         "core.Currency",
         on_delete=models.PROTECT,
         related_name="+",
-        help_text="Default transaction currency for this party (FTD-004).",
+        help_text=(
+            "Used on new documents for this party. Individual documents can "
+            "still be raised in another currency."
+        ),
     )
     payment_term = models.ForeignKey(
         "core.PaymentTerm", null=True, blank=True, on_delete=models.PROTECT, related_name="+"

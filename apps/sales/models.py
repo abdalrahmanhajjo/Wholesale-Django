@@ -46,7 +46,9 @@ class SalesOrder(FinancialDocumentBase):
     )
     expected_date = models.DateField(null=True, blank=True)
     customer_reference = models.CharField(
-        max_length=64, blank=True, help_text="Customer PO number (SAL-014)."
+        max_length=64,
+        blank=True,
+        help_text="The customer’s own purchase order number, printed on their invoice.",
     )
     billing_address_text = models.TextField(blank=True)
     shipping_address_text = models.TextField(blank=True)

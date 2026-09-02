@@ -206,35 +206,18 @@ class DeliveryNoteForm(UIFormMixin, forms.ModelForm):
             "document_date": forms.DateInput(attrs={"type": "date"}),
             "shipping_address_text": forms.Textarea(attrs={"rows": 2}),
             "notes": forms.Textarea(attrs={"rows": 2}),
-            "carrier": forms.TextInput(attrs={"placeholder": "Carrier (optional)"}),
-            "tracking_reference": forms.TextInput(
-                attrs={"placeholder": "Tracking (optional)"}
-            ),
         }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        for fld in self.fields.values():
-            widget = fld.widget
-            if isinstance(widget, forms.CheckboxInput):
-                widget.attrs.setdefault(
-                    "class",
-                    "h-4 w-4 rounded border-line text-brand focus:ring-brand/30",
-                )
-            elif isinstance(widget, forms.Textarea):
-                widget.attrs.setdefault(
-                    "class",
-                    "block w-full rounded-xl2 border border-line bg-white px-3 py-2 text-sm "
-                    "focus:border-brand focus:ring-2 focus:ring-brand/30 focus:outline-none",
-                )
-            else:
-                widget.attrs.setdefault("class", "field")
+        # Presentation comes from UIFormMixin; this class only narrows the
+        # queryset. A retired warehouse cannot receive a new delivery.
         self.fields["warehouse"].queryset = self.fields["warehouse"].queryset.filter(
             is_active=True
         )
 
 
-class DeliveryLineForm(forms.Form):
+class DeliveryLineForm(UIFormMixin, forms.Form):
     """One editable row in the create-from-order flow.
 
     Only the quantity is entered here; product and order-line are carried

@@ -207,6 +207,70 @@
     .table-stack tfoot td, .table-stack tfoot th { @apply block text-right; }
   }
 
+
+  /* ============================================== order lines on mobile == */
+  /*
+   * A twelve-column editable grid cannot be filled in on a phone by scrolling
+   * sideways: the column header leaves the screen before the input does, so
+   * you are typing into an unlabelled box. Below the md breakpoint each row
+   * becomes a card, each control gets its column name as a visible label above
+   * it, and the three computed figures group into one strip at the bottom.
+   *
+   * The markup does not change — the same <table> serves both — so sorting,
+   * the formset indexes and the server contract are untouched.
+   */
+  @media (max-width: 767px) {
+    .lines-stack, .lines-stack tbody, .lines-stack tfoot { @apply block; }
+    .lines-stack thead { @apply sr-only; }
+
+    .lines-stack tbody tr {
+      @apply mb-3 block rounded-xl2 border border-line bg-white p-4 shadow-[0_1px_2px_rgba(7,26,47,.04)];
+    }
+    .lines-stack tbody tr[hidden] { @apply hidden; }
+
+    .lines-stack .line-cell {
+      @apply block w-full border-0 px-0 py-1.5 text-left;
+    }
+    .lines-stack .line-cell::before {
+      content: attr(data-label);
+      @apply mb-1 block text-[11px] font-bold uppercase tracking-[0.08em] text-muted-fg;
+    }
+    .lines-stack .line-cell[data-label=""]::before { @apply hidden; }
+
+    /* The line number heads the card rather than sitting in a column. */
+    .lines-stack .line-cell-number {
+      @apply mb-2 border-b border-line pb-2;
+    }
+    .lines-stack .line-cell-number::before { @apply inline-block mb-0 mr-2; }
+    .lines-stack .line-cell-number .line-number {
+      @apply text-sm font-bold text-ink;
+    }
+
+    /* Gross, tax and total read as a summary, not as three more form rows. */
+    .lines-stack .line-cell-computed {
+      @apply flex items-baseline justify-between gap-4 py-1 text-right;
+    }
+    .lines-stack .line-cell-computed::before { @apply mb-0 self-center; }
+
+    .lines-stack .line-cell-action {
+      @apply mt-2 border-t border-line pt-3 text-left;
+    }
+    .lines-stack .line-cell-action .btn { @apply w-full; }
+
+    .lines-stack tfoot tr { @apply block rounded-xl2 border border-line bg-muted-bg p-4; }
+    .lines-stack tfoot th, .lines-stack tfoot td {
+      @apply flex items-baseline justify-between gap-4 border-0 px-0 py-1 text-right;
+    }
+    .lines-stack tfoot td:empty { @apply hidden; }
+    .lines-stack tfoot td[data-label]::before {
+      content: attr(data-label);
+      @apply text-[11px] font-bold uppercase tracking-[0.08em] text-muted-fg;
+    }
+
+    /* The wrapper no longer needs to scroll, so it must not trap focus either. */
+    .lines-stack-wrap { @apply overflow-visible; }
+  }
+
   /* Ink is invisible against the navy sidebar and the navy panels. */
   .on-dark { --focus-ring: #ffffff; --focus-ring-offset: #071a2f; }
 

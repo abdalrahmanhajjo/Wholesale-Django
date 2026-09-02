@@ -13,6 +13,8 @@ from django.urls import reverse_lazy
 from django.views.generic import CreateView, UpdateView
 
 from apps.core.forms import (
+    AccountForm,
+    AccountMappingForm,
     CompanyForm,
     CurrencyForm,
     DocumentSequenceForm,
@@ -40,8 +42,20 @@ from apps.core.models import (
     TaxCode,
     TaxTreatment,
 )
-from apps.core.permissions import EXPORT_DATA, MANAGE_CONFIGURATION
-from apps.ledger.models import Account, AccountMapping, MappingKey
+from apps.core.permissions import(
+    EXPORT_DATA,
+    MANAGE_CHART_OF_ACCOUNTS,
+    MANAGE_CONFIGURATION,
+)
+
+from apps.ledger.models import(
+    Account,
+    AccountMapping,
+    AccountSubtype,
+    AccountType,
+    MappingKey,
+)
+
 from apps.parties.models import Customer, Vendor
 from apps.payments.models import Payment, PaymentDirection
 from apps.sales.models import SalesOrder
@@ -433,3 +447,141 @@ class FiscalPeriodListView(FilteredListView):
             ("Open", totals["open"]),
             ("Closed", totals["closed"]),
         ]
+
+
+# ---------------------------------------------------------------------------
+# Chart of accounts (CFG-006, GL-010)
+# ---------------------------------------------------------------------------
+class AccountListView(FilteredListView):
+    model = Account
+    page_title = "Chart of accounts"
+    page_subtitle = "Every account in the general ledger. Postings go to leaf accounts only."
+    default_ordering = "code"
+    paginate_by = 50
+    create_url_name = "core:account_create"
+    create_label = "New account"
+
+    columns = [
+        Column("code", "Code", sortable=True, link=True, css="font-mono text-xs"),
+        Column("name", "Name", sortable=True),
+        Column("get_account_type_display", "Type", sortable=True, order_by="account_type"),
+        Column("get_subtype_display", "Subtype"),
+        Column("get_normal_balance_display", "Normal"),
+        Column("parent", "Parent", css="font-mono text-xs"),
+        Column("is_postable", "Postable", align="center"),
+        Column("is_control", "Control", align="center"),
+        Column("is_active", "Active", badge=True, align="center"),
+    ]
+    search_fields = ["code", "name", "description"]
+    filters = [
+        ChoiceFilter("account_type", "Type", AccountType.choices),
+        ChoiceFilter("subtype", "Subtype", AccountSubtype.choices),
+        BooleanFilter("is_postable", "Postable", true_label="Postable", false_label="Heading"),
+        BooleanFilter("is_control", "Control", true_label="Control", false_label="Ordinary"),
+        BooleanFilter("is_active", "Status", true_label="Active", false_label="Inactive"),
+    ]
+    export_permission = EXPORT_DATA
+    export_filename = "chart-of-accounts"
+
+    def get_queryset(self):
+        return super().get_queryset().select_related("parent")
+
+    def get_summary(self):
+        totals = Account.objects.aggregate(
+            total=Count("id"),
+            postable=Count("id", filter=Q(is_postable=True, is_active=True)),
+            control=Count("id", filter=Q(is_control=True)),
+        )
+        return [
+            ("Accounts", totals["total"]),
+            ("Postable", totals["postable"]),
+            ("Control accounts", totals["control"]),
+        ]
+
+
+class AccountCreateView(AuditedFormMixin, ActionPermissionMixin, CreateView):
+    model = Account
+    form_class = AccountForm
+    template_name = "core/settings_form.html"
+    required_permission = MANAGE_CHART_OF_ACCOUNTS
+    success_url = reverse_lazy("core:account_list")
+    extra_context = {
+        "page_title": "New account",
+        "cancel_url": "/settings/chart-of-accounts/",
+    }
+
+
+class AccountUpdateView(AuditedFormMixin, ActionPermissionMixin, UpdateView):
+    model = Account
+    form_class = AccountForm
+    template_name = "core/settings_form.html"
+    required_permission = MANAGE_CHART_OF_ACCOUNTS
+    success_url = reverse_lazy("core:account_list")
+    extra_context = {"cancel_url": "/settings/chart-of-accounts/"}
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        ctx["page_title"] = f"Edit {self.object.code}"
+        return ctx
+
+
+# ---------------------------------------------------------------------------
+# Account mappings (CFG-007)
+# ---------------------------------------------------------------------------
+class AccountMappingListView(FilteredListView):
+    model = AccountMapping
+    page_title = "Account mappings"
+    page_subtitle = (
+        "Where each automatic posting sends its debits and credits. Posting stops "
+        "with a clear message when a key is missing (CFG-007)."
+    )
+    default_ordering = "key"
+    paginate_by = 50
+    create_url_name = "core:mapping_create"
+    create_label = "New mapping"
+
+    columns = [
+        Column("get_key_display", "Key", sortable=True, link=True, order_by="key"),
+        Column("account", "Account"),
+        Column("notes", "Notes"),
+    ]
+    search_fields = ["key", "account__code", "account__name", "notes"]
+    export_permission = EXPORT_DATA
+    export_filename = "account-mappings"
+
+    def get_queryset(self):
+        return super().get_queryset().select_related("account")
+
+    def get_summary(self):
+        mapped = set(AccountMapping.objects.values_list("key", flat=True))
+        return [
+            ("Keys", len(MappingKey.choices)),
+            ("Mapped", len(mapped)),
+            ("Missing", len(MappingKey.choices) - len(mapped)),
+        ]
+
+
+class AccountMappingCreateView(AuditedFormMixin, ActionPermissionMixin, CreateView):
+    model = AccountMapping
+    form_class = AccountMappingForm
+    template_name = "core/settings_form.html"
+    required_permission = MANAGE_CHART_OF_ACCOUNTS
+    success_url = reverse_lazy("core:mapping_list")
+    extra_context = {
+        "page_title": "New account mapping",
+        "cancel_url": "/settings/account-mappings/",
+    }
+
+
+class AccountMappingUpdateView(AuditedFormMixin, ActionPermissionMixin, UpdateView):
+    model = AccountMapping
+    form_class = AccountMappingForm
+    template_name = "core/settings_form.html"
+    required_permission = MANAGE_CHART_OF_ACCOUNTS
+    success_url = reverse_lazy("core:mapping_list")
+    extra_context = {"cancel_url": "/settings/account-mappings/"}
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        ctx["page_title"] = f"Edit {self.object.get_key_display()}"
+        return ctx

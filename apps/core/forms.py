@@ -10,8 +10,14 @@ from apps.core.models import (
     TaxCode,
     TaxTreatment,
 )
-from apps.ledger.models import Account
-
+from apps.ledger.models import  (
+    Account,
+    AccountMapping,
+    AccountSubtype,
+    AccountType,
+    MappingKey,
+    NormalBalance,
+)
 
 class StyledModelForm(forms.ModelForm):
     """
@@ -243,3 +249,174 @@ class DocumentSequenceForm(StyledModelForm):
                 f"would issue document numbers that are already in use."
             )
         return value
+
+
+#: Which subtypes belong to which account type (mirrors account_subtype_matches_type).
+SUBTYPES_BY_TYPE = {
+    AccountType.ASSET: {AccountSubtype.CURRENT_ASSET, AccountSubtype.NONCURRENT_ASSET},
+    AccountType.LIABILITY: {
+        AccountSubtype.CURRENT_LIABILITY,
+        AccountSubtype.NONCURRENT_LIABILITY,
+    },
+    AccountType.EQUITY: {AccountSubtype.EQUITY},
+    AccountType.INCOME: {AccountSubtype.REVENUE, AccountSubtype.OTHER_INCOME},
+    AccountType.EXPENSE: {
+        AccountSubtype.COGS,
+        AccountSubtype.OPERATING_EXPENSE,
+        AccountSubtype.OTHER_EXPENSE,
+    },
+}
+
+def _article(word):
+    """'a' or 'an', so the validation messages read like English."""
+    return "an" if word[:1].lower() in "aeiou" else "a"
+
+#: Types whose natural balance is a debit (mirrors account_normal_balance_matches_type).
+DEBIT_TYPES = {AccountType.ASSET, AccountType.EXPENSE}
+
+def _article(word):
+    """'a' or 'an', so the validation messages read like English."""
+    return "an" if word[:1].lower() in "aeiou" else "a"
+
+
+class AccountForm(StyledModelForm):
+    """
+    CFG-006 / GL-010. Four database constraints are mirrored here so a wrong
+    combination produces a sentence instead of an IntegrityError page.
+    """
+
+    class Meta:
+        model = Account
+        fields = [
+            "code",
+            "name",
+            "account_type",
+            "subtype",
+            "normal_balance",
+            "parent",
+            "is_postable",
+            "is_control",
+            "control_type",
+            "is_contra",
+            "requires_party",
+            "currency",
+            "is_active",
+            "description",
+        ]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        parents = Account.objects.filter(is_active=True).order_by("code")
+        if self.instance.pk:
+            parents = parents.exclude(pk=self.instance.pk)
+        self.fields["parent"].queryset = parents
+        self.fields["currency"].queryset = Currency.objects.filter(is_active=True)
+
+    def clean_code(self):
+        code = (self.cleaned_data["code"] or "").strip().upper()
+        clash = Account.objects.filter(code__iexact=code)
+        if self.instance.pk:
+            clash = clash.exclude(pk=self.instance.pk)
+        if clash.exists():
+            raise forms.ValidationError(
+                f"Account code “{code}” is already in use by {clash.first().name}."
+            )
+        return code
+
+    def clean(self):
+        cleaned = super().clean()
+        account_type = cleaned.get("account_type")
+        subtype = cleaned.get("subtype")
+        normal_balance = cleaned.get("normal_balance")
+        is_contra = cleaned.get("is_contra")
+        is_control = cleaned.get("is_control")
+        control_type = cleaned.get("control_type")
+        parent = cleaned.get("parent")
+        is_postable = cleaned.get("is_postable")
+
+        # 1. The subtype must belong to the account type (drives BS/P&L grouping).
+        if account_type and subtype and subtype not in SUBTYPES_BY_TYPE[account_type]:
+            allowed = ", ".join(
+                AccountSubtype(s).label for s in sorted(SUBTYPES_BY_TYPE[account_type])
+            )
+            self.add_error(
+                "subtype",
+                f"A {AccountType(account_type).label.lower()} account must use one of: {allowed}.",
+            )
+
+        # 2. Normal balance follows the type — inverted for a contra account.
+        if account_type and normal_balance:
+            expected = (
+                NormalBalance.DEBIT if account_type in DEBIT_TYPES else NormalBalance.CREDIT
+            )
+            if is_contra:
+                expected = (
+                    NormalBalance.CREDIT
+                    if expected == NormalBalance.DEBIT
+                    else NormalBalance.DEBIT
+                )
+            if normal_balance != expected:
+                label = AccountType(account_type).label.lower()
+                prefix = "contra " if is_contra else ""
+                article = _article("contra" if is_contra else label).capitalize()
+                self.add_error(
+                    "normal_balance",
+                    f"{article} {prefix}{label} account carries a "
+                    f"{NormalBalance(expected).label.lower()} balance.",
+                )
+
+        # 3. A control account must name its subledger, and only a control account may.
+        if is_control and not control_type:
+            self.add_error(
+                "control_type", "Say which subledger backs this control account (GL-011)."
+            )
+        if not is_control and control_type:
+            self.add_error(
+                "control_type",
+                "Only a control account can name a subledger. Tick “Is control”.",
+            )
+
+        # 4. No cycles. The database blocks self-parenting only; A -> B -> A would
+        #    slip past it and break every report that walks the tree.
+        node = parent
+        seen = set()
+        while node is not None:
+            if self.instance.pk and node.pk == self.instance.pk:
+                self.add_error("parent", "That would make the account its own ancestor.")
+                break
+            if node.pk in seen:
+                break
+            seen.add(node.pk)
+            node = node.parent
+
+        # 5. GL-010: only a leaf account receives journal lines.
+        if is_postable and self.instance.pk and self.instance.children.exists():
+            self.add_error(
+                "is_postable",
+                "This account has child accounts, so it is a heading. Postings belong "
+                "on its children.",
+            )
+
+        return cleaned
+
+
+class AccountMappingForm(StyledModelForm):
+    """CFG-007. Every automatic posting resolves its accounts through these keys."""
+
+    class Meta:
+        model = AccountMapping
+        fields = ["key", "account", "notes"]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["account"].queryset = Account.objects.filter(
+            is_active=True, is_postable=True
+        ).order_by("code")
+
+        if self.instance.pk:
+            self.fields["key"].disabled = True
+        else:
+            taken = set(AccountMapping.objects.values_list("key", flat=True))
+            self.fields["key"].choices = [
+                (value, label) for value, label in MappingKey.choices if value not in taken
+            ]

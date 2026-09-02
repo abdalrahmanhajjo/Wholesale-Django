@@ -41,4 +41,22 @@ urlpatterns = [
         name="sequence_edit",
     ),
     path("fiscal-periods/", views.FiscalPeriodListView.as_view(), name="fiscalperiod_list"),
+        path("chart-of-accounts/", views.AccountListView.as_view(), name="account_list"),
+    path("chart-of-accounts/new/", views.AccountCreateView.as_view(), name="account_create"),
+    path(
+        "chart-of-accounts/<int:pk>/edit/",
+        views.AccountUpdateView.as_view(),
+        name="account_edit",
+    ),
+    path("account-mappings/", views.AccountMappingListView.as_view(), name="mapping_list"),
+    path(
+        "account-mappings/new/",
+        views.AccountMappingCreateView.as_view(),
+        name="mapping_create",
+    ),
+    path(
+        "account-mappings/<int:pk>/edit/",
+        views.AccountMappingUpdateView.as_view(),
+        name="mapping_edit",
+    ),
 ]

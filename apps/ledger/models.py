@@ -10,6 +10,7 @@ import uuid
 from decimal import Decimal
 
 from django.conf import settings
+from django.urls import reverse
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
 from django.db import models
@@ -191,6 +192,9 @@ class Account(TimeStampedModel):
     def __str__(self):
         return f"{self.code} {self.name}"
 
+    def get_absolute_url(self):
+        return reverse("core:account_edit", args=[self.pk])
+
 
 class MappingKey(models.TextChoices):
     """
@@ -239,6 +243,9 @@ class AccountMapping(TimeStampedModel):
 
     def __str__(self):
         return f"{self.key} -> {self.account_id}"
+
+    def get_absolute_url(self):
+        return reverse("core:mapping_edit", args=[self.pk])
 
 
 # ---------------------------------------------------------------------------

@@ -66,7 +66,11 @@ class Account(TimeStampedModel):
     is_postable = models.BooleanField(default=True)
     is_control = models.BooleanField(
         default=False,
-        help_text="Backed by a subledger (AR/AP/Inventory). Postable only via services (GL-011).",
+        help_text=(
+            "This account is driven by a subledger - receivables, payables or "
+            "inventory - so entries reach it through those workflows rather "
+            "than by direct posting."
+        ),
     )
     control_type = models.CharField(
         max_length=18,

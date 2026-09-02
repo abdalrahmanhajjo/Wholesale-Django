@@ -73,13 +73,14 @@ same field widget styling, and a save/cancel footer.
     </p>
 
     {% comment %}
-    A twelve-column editable grid cannot be read at a phone width, so the
-    region scrolls horizontally — and takes focus, so it can be scrolled from
-    the keyboard (WCAG 2.1.1). A stacked small-screen layout is the follow-on
-    change tracked in the audit.
+    One table, two layouts. At md and up it is a grid, in a region that takes
+    focus so the horizontal scroll is reachable from the keyboard (WCAG 2.1.1).
+    Below md the same rows stack into labelled cards — see .lines-stack — so
+    nobody has to scroll a column header off screen to reach the input it names.
     {% endcomment %}
-    <div class="scroll-region" tabindex="0" role="region" aria-label="Order lines">
-      <table class="w-full text-sm" id="lines-table">
+    <div class="lines-stack-wrap scroll-region px-4 pt-2 md:px-0 md:pt-0"
+         tabindex="0" role="region" aria-label="Order lines">
+      <table class="lines-stack w-full text-sm" id="lines-table">
         <caption class="sr-only">Order lines. Each row is one product with its quantity, price, discount and tax code.</caption>
         <thead>
           <tr class="border-b border-line bg-muted-bg text-[11px] font-bold uppercase tracking-[0.1em] text-muted-fg">
@@ -107,13 +108,13 @@ same field widget styling, and a save/cancel footer.
             <th colspan="8" scope="row" class="px-4 py-3 text-right text-xs font-bold uppercase tracking-wide text-muted-fg">
               Totals, recalculated on save
             </th>
-            <td class="px-4 py-3 text-right tabular-nums" id="sum-gross">
+            <td data-label="Gross" class="px-4 py-3 text-right tabular-nums" id="sum-gross">
               {{ object.subtotal_txn|default:0|floatformat:2 }}
             </td>
-            <td class="px-4 py-3 text-right tabular-nums" id="sum-tax">
+            <td data-label="Tax" class="px-4 py-3 text-right tabular-nums" id="sum-tax">
               {{ object.tax_txn|default:0|floatformat:2 }}
             </td>
-            <td class="px-4 py-3 text-right tabular-nums text-brand-deep" id="sum-total">
+            <td data-label="Total" class="px-4 py-3 text-right tabular-nums text-brand-deep" id="sum-total">
               {{ object.total_txn|default:0|floatformat:2 }}
             </td>
             <td></td>

@@ -253,3 +253,45 @@ class BackLinkTests(SimpleTestCase):
         self.assertIn('href="/parties/customers/"', html)
         self.assertIn("Back to customers", html)
         self.assertIn("i-arrow-left", html)
+
+
+class ComposedFieldNameTests(SimpleTestCase):
+    """
+    Controls whose only visible label is a column header must name themselves.
+
+    This regressed silently once already: the template built the name with
+    `"Quantity, line "|add:line`, and Django's `add` returns "" for a string
+    plus an int, so every order-line control shipped with no accessible name.
+    """
+
+    def field(self):
+        from django import forms as f
+
+        class Line(f.Form):
+            quantity = f.DecimalField(label="Qty")
+
+        return Line()["quantity"]
+
+    def render(self, **kwargs):
+        from apps.core.templatetags.ui import a11y_field
+
+        return a11y_field(self.field(), **kwargs)
+
+    def test_integer_line_number_produces_a_real_name(self):
+        self.assertIn('aria-label="Quantity, line 3"', self.render(label="Quantity", line=3))
+
+    def test_string_line_number_works_the_same(self):
+        self.assertIn('aria-label="Quantity, line 3"', self.render(label="Quantity", line="3"))
+
+    def test_template_placeholder_survives_for_the_clone_script(self):
+        html = self.render(label="Quantity", line="__LINE__")
+        self.assertIn('aria-label="Quantity, line __LINE__"', html)
+
+    def test_label_without_a_line_still_names_the_control(self):
+        self.assertIn('aria-label="Quantity"', self.render(label="Quantity"))
+
+    def test_no_label_leaves_the_attribute_off_rather_than_empty(self):
+        self.assertNotIn("aria-label", self.render())
+
+    def test_extra_keywords_become_hyphenated_data_attributes(self):
+        self.assertIn('data-max="5"', self.render(data_max=5))

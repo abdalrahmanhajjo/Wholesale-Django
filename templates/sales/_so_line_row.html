@@ -8,10 +8,11 @@ input now carries an aria-label naming the column and the line.
 
 `line` is supplied by the caller: the loop counter for existing rows, and the
 literal __LINE__ for the empty-form template, which the add-line script swaps
-for the real number when it clones the row.
+for the real number when it clones the row. The tag composes the name, so the
+value may be an int or a string.
 {% endcomment %}
 <tr class="border-b border-line last:border-0 line-row">
-  <td class="px-4 py-2 align-top">
+  <td class="line-cell line-cell-number px-4 py-2 align-top" data-label="Line">
     {% for hidden in lf.hidden_fields %}
       {{ hidden }}
       {% for error in hidden.errors %}<p class="error-text">{{ error }}</p>{% endfor %}
@@ -19,55 +20,55 @@ for the real number when it clones the row.
     <span class="line-number">{{ lf.line_no.value|default:"New" }}</span>
   </td>
 
-  <td class="px-4 py-2 align-top">
+  <td class="line-cell px-4 py-2 align-top" data-label="Product">
     {% if lf.non_field_errors %}
       {% for error in lf.non_field_errors %}<p class="error-text">{{ error }}</p>{% endfor %}
     {% endif %}
-    {% a11y_field lf.product aria_label="Product, line "|add:line %}
+    {% a11y_field lf.product label="Product" line=line %}
     {% if lf.product.errors %}<p class="error-text" id="{% error_id lf.product %}">{{ lf.product.errors|join:" " }}</p>{% endif %}
   </td>
 
-  <td class="px-4 py-2 align-top">
-    {% a11y_field lf.description aria_label="Description, line "|add:line %}
+  <td class="line-cell px-4 py-2 align-top" data-label="Description">
+    {% a11y_field lf.description label="Description" line=line %}
     {% if lf.description.errors %}<p class="error-text" id="{% error_id lf.description %}">{{ lf.description.errors|join:" " }}</p>{% endif %}
   </td>
 
-  <td class="px-4 py-2 align-top">
-    {% a11y_field lf.unit aria_label="Unit, line "|add:line %}
+  <td class="line-cell px-4 py-2 align-top" data-label="Unit">
+    {% a11y_field lf.unit label="Unit" line=line %}
     {% if lf.unit.errors %}<p class="error-text" id="{% error_id lf.unit %}">{{ lf.unit.errors|join:" " }}</p>{% endif %}
   </td>
 
-  <td class="px-4 py-2 align-top">
-    {% a11y_field lf.quantity aria_label="Quantity, line "|add:line %}
+  <td class="line-cell px-4 py-2 align-top" data-label="Quantity">
+    {% a11y_field lf.quantity label="Quantity" line=line %}
     {% if lf.quantity.errors %}<p class="error-text" id="{% error_id lf.quantity %}">{{ lf.quantity.errors|join:" " }}</p>{% endif %}
   </td>
 
-  <td class="px-4 py-2 align-top">
-    {% a11y_field lf.unit_price aria_label="Unit price, line "|add:line %}
+  <td class="line-cell px-4 py-2 align-top" data-label="Unit price">
+    {% a11y_field lf.unit_price label="Unit price" line=line %}
     {% if lf.unit_price.errors %}<p class="error-text" id="{% error_id lf.unit_price %}">{{ lf.unit_price.errors|join:" " }}</p>{% endif %}
   </td>
 
-  <td class="px-4 py-2 align-top">
-    {% a11y_field lf.discount_percent aria_label="Discount percent, line "|add:line %}
+  <td class="line-cell px-4 py-2 align-top" data-label="Discount %">
+    {% a11y_field lf.discount_percent label="Discount percent" line=line %}
     {% if lf.discount_percent.errors %}<p class="error-text" id="{% error_id lf.discount_percent %}">{{ lf.discount_percent.errors|join:" " }}</p>{% endif %}
   </td>
 
-  <td class="px-4 py-2 align-top">
-    {% a11y_field lf.tax_code aria_label="Tax code, line "|add:line %}
+  <td class="line-cell px-4 py-2 align-top" data-label="Tax code">
+    {% a11y_field lf.tax_code label="Tax code" line=line %}
     {% if lf.tax_code.errors %}<p class="error-text" id="{% error_id lf.tax_code %}">{{ lf.tax_code.errors|join:" " }}</p>{% endif %}
   </td>
 
-  <td class="px-4 py-2 text-right align-top tabular-nums line-gross">
+  <td class="line-cell line-cell-computed px-4 py-2 text-right align-top tabular-nums line-gross" data-label="Gross">
     {% if lf.instance.pk %}{{ lf.instance.gross_txn|floatformat:2 }}{% else %}—{% endif %}
   </td>
-  <td class="px-4 py-2 text-right align-top tabular-nums">
+  <td class="line-cell line-cell-computed px-4 py-2 text-right align-top tabular-nums" data-label="Tax">
     {% if lf.instance.pk %}{{ lf.instance.tax_txn|floatformat:2 }}{% else %}—{% endif %}
   </td>
-  <td class="px-4 py-2 text-right align-top tabular-nums font-semibold">
+  <td class="line-cell line-cell-computed px-4 py-2 text-right align-top tabular-nums font-semibold" data-label="Total">
     {% if lf.instance.pk %}{{ lf.instance.total_txn|floatformat:2 }}{% else %}—{% endif %}
   </td>
 
-  <td class="px-4 py-2 text-center align-top">
+  <td class="line-cell line-cell-action px-4 py-2 text-center align-top" data-label="">
     {% if lf.instance.pk %}
       {% comment %}
       The old markup put aria-label on the <label> wrapping the checkbox. A
@@ -76,7 +77,7 @@ for the real number when it clones the row.
       all. The name goes on the control.
       {% endcomment %}
       <span class="flex items-center justify-center">
-        {% a11y_field lf.DELETE aria_label="Remove line "|add:line %}
+        {% a11y_field lf.DELETE label="Remove" line=line %}
       </span>
     {% else %}
       {# A row added by mistake could not be taken back: DELETE only renders for

@@ -2,6 +2,7 @@ from datetime import date
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
+from django.contrib.contenttypes.models import ContentType
 from django.test import TransactionTestCase
 
 from apps.core.models import (
@@ -33,11 +34,15 @@ from apps.ledger.services import (
 
 class PostingEngineTests(TransactionTestCase):
     def setUp(self):
+        # TransactionTestCase flushes and recreates content types between tests;
+        # discard IDs cached by a preceding case before the posting service uses
+        # them for its generic source relationship.
+        ContentType.objects.clear_cache()
         self.user = get_user_model().objects.create_user(
             id=900_001, username="posting-engine-member4"
         )
         self.currency = Currency.objects.create(
-            code="TST", name="Test Currency", symbol="T", decimal_places=2, is_base=True
+            code="TST", name="Test Currency", symbol="T", decimal_places=2
         )
         fiscal_year = FiscalYear.objects.create(
             id=900_001,

@@ -17,7 +17,7 @@ from django.views.generic import CreateView, DetailView, UpdateView, View
 
 from apps.core import audit
 from apps.core.list_views import BooleanFilter, Column, FilteredListView
-from apps.core.mixins import ActionPermissionMixin, AuditedFormMixin
+from apps.core.mixins import ActionPermissionMixin, AuditedFormMixin, BackLinkMixin
 from apps.core.models import AuditEvent
 from apps.core.permissions import EXPORT_DATA
 from apps.parties.forms import CustomerForm, VendorForm
@@ -79,7 +79,9 @@ class CustomerListView(FilteredListView):
         ]
 
 
-class CustomerCreateView(AuditedFormMixin, ActionPermissionMixin, CreateView):
+class CustomerCreateView(BackLinkMixin, AuditedFormMixin, ActionPermissionMixin, CreateView):
+    back_url_name = "parties:customer_list"
+    back_label = "Back to customers"
     model = Customer
     form_class = CustomerForm
     template_name = "parties/customer_form.html"
@@ -90,7 +92,9 @@ class CustomerCreateView(AuditedFormMixin, ActionPermissionMixin, CreateView):
         return reverse("parties:customer_detail", args=[self.object.pk])
 
 
-class CustomerUpdateView(AuditedFormMixin, ActionPermissionMixin, UpdateView):
+class CustomerUpdateView(BackLinkMixin, AuditedFormMixin, ActionPermissionMixin, UpdateView):
+    back_to_object = True
+    back_label = "Back to this customer"
     model = Customer
     form_class = CustomerForm
     template_name = "parties/customer_form.html"
@@ -105,7 +109,9 @@ class CustomerUpdateView(AuditedFormMixin, ActionPermissionMixin, UpdateView):
         return reverse("parties:customer_detail", args=[self.object.pk])
 
 
-class CustomerDetailView(ActionPermissionMixin, DetailView):
+class CustomerDetailView(BackLinkMixin, ActionPermissionMixin, DetailView):
+    back_url_name = "parties:customer_list"
+    back_label = "Back to customers"
     model = Customer
     template_name = "parties/customer_detail.html"
     required_permission = "parties.view_customer"
@@ -203,7 +209,9 @@ class VendorListView(FilteredListView):
         return [("Vendors", totals["total"]), ("Active", totals["active"])]
 
 
-class VendorCreateView(AuditedFormMixin, ActionPermissionMixin, CreateView):
+class VendorCreateView(BackLinkMixin, AuditedFormMixin, ActionPermissionMixin, CreateView):
+    back_url_name = "parties:vendor_list"
+    back_label = "Back to vendors"
     model = Vendor
     form_class = VendorForm
     template_name = "parties/customer_form.html"
@@ -214,7 +222,9 @@ class VendorCreateView(AuditedFormMixin, ActionPermissionMixin, CreateView):
         return reverse("parties:vendor_detail", args=[self.object.pk])
 
 
-class VendorDetailView(ActionPermissionMixin, DetailView):
+class VendorDetailView(BackLinkMixin, ActionPermissionMixin, DetailView):
+    back_url_name = "parties:vendor_list"
+    back_label = "Back to vendors"
     model = Vendor
     template_name = "parties/vendor_detail.html"
     required_permission = "parties.view_vendor"
@@ -248,7 +258,9 @@ class VendorDetailView(ActionPermissionMixin, DetailView):
         return context
 
 
-class VendorUpdateView(AuditedFormMixin, ActionPermissionMixin, UpdateView):
+class VendorUpdateView(BackLinkMixin, AuditedFormMixin, ActionPermissionMixin, UpdateView):
+    back_to_object = True
+    back_label = "Back to this vendor"
     model = Vendor
     form_class = VendorForm
     template_name = "parties/customer_form.html"

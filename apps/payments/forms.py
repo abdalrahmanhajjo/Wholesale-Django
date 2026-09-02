@@ -3,10 +3,20 @@
 from django import forms
 from django.utils import timezone
 
+from apps.core.form_ui import UIFormMixin
 from apps.payments.models import Payment, PaymentDirection
 
 
-class PaymentForm(forms.ModelForm):
+class PaymentForm(UIFormMixin, forms.ModelForm):
+    placeholders = {
+        "amount_txn": "0.00",
+        "exchange_rate": "1.000000",
+        "reference": "Cheque number or transfer reference",
+        "narration": "What this payment settles",
+    }
+    autocomplete_fields = ["customer", "vendor", "money_account"]
+    plain_selects = ["direction"]
+
     class Meta:
         model = Payment
         fields = [

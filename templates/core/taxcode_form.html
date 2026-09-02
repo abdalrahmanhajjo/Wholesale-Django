@@ -45,7 +45,7 @@
   </div>
 
   <div class="mt-5 flex items-center gap-2">
-    <button type="submit" class="btn-primary">{% if object %}Save changes{% else %}Create tax code{% endif %}</button>
+    <button type="submit" class="btn-primary" data-busy-label="Saving tax code…">{% if object %}Save changes{% else %}Create tax code{% endif %}</button>
     <a href="{% url 'core:taxcode_list' %}" class="btn-ghost">Cancel</a>
   </div>
 </form>

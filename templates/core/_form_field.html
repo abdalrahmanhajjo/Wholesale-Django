@@ -7,7 +7,7 @@ The input is rendered through `a11y_field` so that the help text and any error
 are attached with aria-describedby, and the invalid state is announced rather
 than only coloured.
 {% endcomment %}
-<div class="{{ wrapper_class|default:'' }}">
+<div class="field-wrap {{ wrapper_class|default:'' }}">
   {% if field.field.widget.input_type == "checkbox" %}
     <div class="flex h-full items-end pb-2">
       <label for="{{ field.id_for_label }}" class="flex items-center gap-2.5 text-sm font-semibold">

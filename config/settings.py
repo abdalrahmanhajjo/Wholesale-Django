@@ -129,6 +129,9 @@ TEMPLATES = [
                 "django.template.context_processors.request",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
+                # The company name and base currency appear in the shell of
+                # every page, so they cannot be one view's responsibility.
+                "apps.core.context.company",
             ]
         },
     }

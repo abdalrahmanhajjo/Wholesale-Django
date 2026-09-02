@@ -19,8 +19,8 @@
   </div>
 
   <div class="mt-5 flex items-center gap-2">
-    <button type="submit" class="btn-primary">Save changes</button>
-    <a href="{{ cancel_url|default:'/' }}" class="btn-ghost">Cancel</a>
+    <button type="submit" class="btn-primary" data-busy-label="Saving…">Save changes</button>
+    <a href="{{ back_url|default:'/' }}" class="btn-ghost">Cancel</a>
   </div>
 </form>
 {% endblock %}

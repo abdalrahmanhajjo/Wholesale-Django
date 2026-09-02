@@ -24,7 +24,7 @@ from django.views.generic import (
 
 from apps.core import audit
 from apps.core.list_views import ChoiceFilter, Column, DateRangeFilter, FilteredListView
-from apps.core.mixins import ActionPermissionMixin, ConfirmationRequiredMixin
+from apps.core.mixins import ActionPermissionMixin, BackLinkMixin, ConfirmationRequiredMixin
 from apps.core.models import EDITABLE_STATES, AuditEvent, DocumentStatus
 from apps.core.permissions import APPROVE_SALES_ORDER, EXPORT_DATA, POST_DELIVERY
 from apps.inventory.models import DeliveryNote
@@ -117,7 +117,9 @@ class SalesOrderListView(FilteredListView):
 # ---------------------------------------------------------------------------
 # Create / Update with audit (ACC-005)
 # ---------------------------------------------------------------------------
-class SalesOrderCreateView(ActionPermissionMixin, CreateView):
+class SalesOrderCreateView(BackLinkMixin, ActionPermissionMixin, CreateView):
+    back_url_name = "sales:so_list"
+    back_label = "Back to sales orders"
     model = SalesOrder
     form_class = SalesOrderForm
     template_name = "sales/so_form.html"
@@ -170,7 +172,9 @@ class SalesOrderCreateView(ActionPermissionMixin, CreateView):
         return reverse("sales:so_detail", args=[self.object.pk])
 
 
-class SalesOrderUpdateView(ActionPermissionMixin, UpdateView):
+class SalesOrderUpdateView(BackLinkMixin, ActionPermissionMixin, UpdateView):
+    back_to_object = True
+    back_label = "Back to this order"
     model = SalesOrder
     form_class = SalesOrderForm
     template_name = "sales/so_form.html"
@@ -232,7 +236,9 @@ class SalesOrderUpdateView(ActionPermissionMixin, UpdateView):
 # ---------------------------------------------------------------------------
 # Detail view
 # ---------------------------------------------------------------------------
-class SalesOrderDetailView(ActionPermissionMixin, DetailView):
+class SalesOrderDetailView(BackLinkMixin, ActionPermissionMixin, DetailView):
+    back_url_name = "sales:so_list"
+    back_label = "Back to sales orders"
     model = SalesOrder
     template_name = "sales/so_detail.html"
     required_permission = "sales.view_salesorder"
@@ -413,7 +419,7 @@ class DeliveryOrderSelectForm(forms.Form):
         )
 
 
-class DeliveryNoteCreateView(ActionPermissionMixin, TemplateView):
+class DeliveryNoteCreateView(BackLinkMixin, ActionPermissionMixin, TemplateView):
     """
     Create a delivery note against an approved sales order.
 
@@ -422,6 +428,9 @@ class DeliveryNoteCreateView(ActionPermissionMixin, TemplateView):
     pre-filled from what still needs delivering. POST validates, creates and
     posts the note (SAL-005), then redirects to its detail.
     """
+
+    back_url_name = "sales:so_list"
+    back_label = "Back to sales orders"
 
     template_name = "sales/delivery_note_form.html"
     required_permission = "inventory.add_deliverynote"
@@ -549,7 +558,9 @@ class DeliveryNoteCreateView(ActionPermissionMixin, TemplateView):
             )
 
 
-class DeliveryNoteDetailView(ActionPermissionMixin, DetailView):
+class DeliveryNoteDetailView(BackLinkMixin, ActionPermissionMixin, DetailView):
+    back_url_name = "sales:so_list"
+    back_label = "Back to sales orders"
     model = DeliveryNote
     template_name = "sales/delivery_note_detail.html"
     context_object_name = "note"

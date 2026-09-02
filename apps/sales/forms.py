@@ -10,12 +10,25 @@ from django import forms
 from django.core.exceptions import ValidationError
 from django.forms import formset_factory, inlineformset_factory
 
+from apps.core.form_ui import UIFormMixin
 from apps.inventory.models import DeliveryNote
 from apps.sales.models import DiscountKind, SalesOrder, SalesOrderLine
 from apps.sales.services import remaining_to_deliver
 
 
-class SalesOrderForm(forms.ModelForm):
+class SalesOrderForm(UIFormMixin, forms.ModelForm):
+    placeholders = {
+        "customer_reference": "The customer's own PO number",
+        "exchange_rate": "1.000000",
+        "document_discount_value": "0.00",
+        "billing_address_text": "Street, city, country",
+        "shipping_address_text": "Leave blank to use the billing address",
+        "notes": "Shown on the printed order",
+        "internal_notes": "Not shown to the customer",
+    }
+    autocomplete_fields = ["customer", "warehouse", "salesperson", "payment_term"]
+    plain_selects = ["document_discount_kind", "currency"]
+
     class Meta:
         model = SalesOrder
         fields = [
@@ -90,7 +103,16 @@ class SalesOrderForm(forms.ModelForm):
         return cleaned
 
 
-class SalesOrderLineForm(forms.ModelForm):
+class SalesOrderLineForm(UIFormMixin, forms.ModelForm):
+    """One order line. Rendered inside a table, so placeholders stay terse."""
+
+    placeholders = {
+        "description": "Overrides the product name",
+        "quantity": "0",
+        "unit_price": "0.00",
+        "discount_percent": "0",
+    }
+
     """One server-validated sales-order line in the inline formset."""
 
     class Meta:
@@ -150,7 +172,14 @@ SalesOrderLineFormSet = inlineformset_factory(
 # ---------------------------------------------------------------------------
 # Delivery notes (SAL-005, INV-007)
 # ---------------------------------------------------------------------------
-class DeliveryNoteForm(forms.ModelForm):
+class DeliveryNoteForm(UIFormMixin, forms.ModelForm):
+    placeholders = {
+        "reference": "Your own delivery reference",
+        "carrier": "Courier or driver",
+        "tracking_reference": "Consignment or waybill number",
+    }
+    autocomplete_fields = ["customer", "sales_order", "warehouse"]
+
     """
     Header of a delivery note. `customer` and `sales_order` arrive from the
     order selected on the create flow, so they are hidden here. The note is

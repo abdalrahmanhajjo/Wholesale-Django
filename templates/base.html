@@ -35,6 +35,10 @@ Blocks available to child templates:
 </head>
 
 <body class="h-full bg-canvas font-sans text-ink antialiased">
+{% include "core/_icons.html" %}
+{# Perceived performance: server-rendered navigation has no spinner of its own,
+   so a click that takes a second looks like a click that did nothing. #}
+<div id="nav-progress" class="nav-progress" hidden></div>
 <a href="#main-content" class="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-lg focus:bg-brand focus:px-4 focus:py-2 focus:font-semibold focus:text-ink">Skip to content</a>
 <div class="flex min-h-full">
 
@@ -53,7 +57,7 @@ Blocks available to child templates:
         <div class="company-switcher">
           <span class="grid h-8 w-8 place-items-center rounded-lg bg-brand/[.15] text-xs font-bold text-emerald-300" aria-hidden="true">AW</span>
           <span class="min-w-0">
-            <strong class="block truncate text-xs text-slate-200">Atlas Wholesale</strong>
+            <strong class="block truncate text-xs text-slate-200">{{ company_name }}</strong>
             <small class="block text-[11px] text-nav-muted">Main company · {{ base_currency|default:"USD" }}</small>
           </span>
         </div>
@@ -164,10 +168,10 @@ Blocks available to child templates:
       <button type="button" id="sidebar-toggle"
               class="grid h-10 w-10 place-items-center rounded-lg text-muted-fg hover:bg-muted-bg lg:hidden"
               aria-label="Open navigation menu" aria-controls="sidebar" aria-expanded="false">
-        <span aria-hidden="true">☰</span>
+        <svg class="icon" aria-hidden="true"><use href="#i-menu"></use></svg>
       </button>
       <div class="min-w-0">
-        <p class="text-[11px] font-semibold uppercase tracking-[.12em] text-muted-fg">Atlas Wholesale</p>
+        <p class="text-[11px] font-semibold uppercase tracking-[.12em] text-muted-fg">{{ company_name }}</p>
         {# A paragraph, not a heading: the page's own <h1> must come first. #}
         <p class="truncate text-sm font-bold">{% block header_title %}{{ page_title|default:"Dashboard" }}{% endblock %}</p>
       </div>
@@ -180,26 +184,28 @@ Blocks available to child templates:
       errors are announced rather than left to be noticed.
       {% endcomment %}
       {% if messages %}
-        <div class="mb-5 space-y-2">
+        <div class="mb-5 space-y-2" id="messages">
           {% for message in messages %}
             {% if message.tags == 'error' %}
-              <div class="alert-error" role="alert">
-                <span aria-hidden="true">&#9888;</span>
+              <div class="alert-error" role="alert" data-dismissible>
+                <svg class="icon shrink-0" aria-hidden="true"><use href="#i-alert"></use></svg>
                 <p class="alert-body text-danger-strong"><span class="font-bold">Could not complete: </span>{{ message }}</p>
               </div>
             {% elif message.tags == 'warning' %}
-              <div class="alert-warning" role="alert">
-                <span aria-hidden="true">&#9888;</span>
+              <div class="alert-warning" role="alert" data-dismissible>
+                <svg class="icon shrink-0" aria-hidden="true"><use href="#i-alert"></use></svg>
                 <p class="alert-body text-amber-900"><span class="font-bold">Check this: </span>{{ message }}</p>
               </div>
             {% elif message.tags == 'success' %}
-              <div class="alert-success" role="status">
-                <span aria-hidden="true" class="text-brand-deep">&#10003;</span>
+              {# Success fades on its own; a failure never does, because the
+                 person may still need to act on it. #}
+              <div class="alert-success" role="status" data-dismissible data-autodismiss="7000">
+                <svg class="icon shrink-0 text-brand-deep" aria-hidden="true"><use href="#i-check"></use></svg>
                 <p class="alert-body"><span class="font-bold text-brand-deep">Done: </span>{{ message }}</p>
               </div>
             {% else %}
-              <div class="alert-info" role="status">
-                <span aria-hidden="true" class="text-muted-fg">&#8505;</span>
+              <div class="alert-info" role="status" data-dismissible data-autodismiss="7000">
+                <svg class="icon shrink-0 text-muted-fg" aria-hidden="true"><use href="#i-info"></use></svg>
                 <p class="alert-body">{{ message }}</p>
               </div>
             {% endif %}
@@ -207,7 +213,16 @@ Blocks available to child templates:
         </div>
       {% endif %}
 
-      {% block breadcrumb %}{% endblock %}
+      {% comment %}
+      Return path. Any page one level in fills `back_url` / `back_label` — set
+      as view context or overridden in the block — and gets the same arrow in
+      the same place.
+      {% endcomment %}
+      {% block breadcrumb %}
+        {% if back_url %}
+          <div class="mb-4">{% include "core/_back_link.html" %}</div>
+        {% endif %}
+      {% endblock %}
 
       {% block page_header %}
         {% if page_title %}
@@ -227,11 +242,12 @@ Blocks available to child templates:
     </main>
 
     <footer class="border-t border-line px-4 py-4 text-xs text-muted-fg sm:px-6 lg:px-8">
-      Atlas Wholesale · {% now "Y" %} · base currency {{ base_currency|default:"USD" }}
+      {{ company_name }} · {% now "Y" %} · base currency {{ base_currency|default:"—" }}
     </footer>
   </div>
 </div>
 <script src="{% static 'js/app.js' %}" defer></script>
+<script src="{% static 'js/forms.js' %}" defer></script>
 {% block extra_scripts %}{% endblock %}
 </body>
 </html>

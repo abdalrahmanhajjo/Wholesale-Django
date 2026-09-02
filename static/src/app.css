@@ -106,6 +106,107 @@
     @apply px-3 pb-1 pt-5 text-[10px] font-bold uppercase tracking-[0.14em] text-nav-muted;
   }
 
+
+  /* ============================================================ icons ==== */
+  /* One size, one stroke weight, aligned to the text it sits beside. */
+  .icon { @apply h-[1.15em] w-[1.15em] shrink-0; }
+  .icon-lg { @apply h-5 w-5; }
+
+  /* ======================================================== back link ==== */
+  .back-link {
+    @apply inline-flex min-h-[36px] items-center gap-1.5 rounded-lg px-2 py-1
+           text-sm font-semibold text-muted-fg transition-colors
+           hover:bg-muted-bg hover:text-ink;
+  }
+  .back-link .icon { @apply transition-transform; }
+  .back-link:hover .icon { @apply -translate-x-0.5; }
+
+  /* ==================================================== field feedback === */
+  .field-wrap { @apply flex flex-col; }
+  .field-live { @apply mt-1 flex items-start gap-1.5 text-[13px] leading-5; }
+  .field-live:empty { @apply hidden; }
+  .field-live-error { @apply font-medium text-danger-strong; }
+  .field-live-ok { @apply text-brand-deep; }
+
+  /* ========================================================= combobox ==== */
+  .combo { @apply relative; }
+  /* The native select stays in the DOM and keeps submitting the value; it is
+     only removed from view and from the tab order. */
+  .combo-native {
+    @apply absolute h-px w-px overflow-hidden opacity-0;
+    clip: rect(0 0 0 0);
+  }
+  .combo-list {
+    @apply absolute z-30 mt-1 max-h-64 w-full overflow-y-auto rounded-xl2 border
+           border-input-line bg-white py-1 shadow-[0_12px_32px_rgba(7,26,47,.14)];
+  }
+  .combo-option {
+    @apply cursor-pointer px-3 py-2 text-sm text-ink;
+  }
+  .combo-option:hover, .combo-option.is-active { @apply bg-muted-bg; }
+  .combo-option[aria-selected="true"] { @apply font-semibold text-brand-deep; }
+  .combo-empty { @apply px-3 py-3 text-sm text-muted-fg; }
+
+  /* ================================================== buttons: busy ===== */
+  .btn.is-busy { @apply cursor-progress opacity-90; }
+  .spinner {
+    @apply inline-block h-3.5 w-3.5 shrink-0 rounded-full border-2 border-current
+           border-r-transparent align-[-2px];
+    animation: spin .7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ==================================================== alert dismiss === */
+  .alert { @apply relative; }
+  .alert-close {
+    @apply ml-auto grid h-7 w-7 shrink-0 place-items-center rounded-lg
+           text-current opacity-60 transition-opacity hover:opacity-100;
+  }
+
+  /* =================================================== nav progress ===== */
+  .nav-progress {
+    @apply pointer-events-none fixed inset-x-0 top-0 z-50 h-[3px] bg-transparent;
+  }
+  .nav-progress.is-running::after {
+    @apply absolute inset-y-0 left-0 bg-brand-deep;
+    content: "";
+    animation: nav-progress 2.2s cubic-bezier(.2,.8,.3,1) forwards;
+  }
+  @keyframes nav-progress {
+    0%   { width: 0; }
+    60%  { width: 72%; }
+    100% { width: 92%; }
+  }
+
+  /* ======================================================== skeleton ==== */
+  .skeleton {
+    @apply rounded-lg bg-muted-bg;
+    background-image: linear-gradient(90deg, transparent, rgba(255,255,255,.65), transparent);
+    background-size: 200% 100%;
+    animation: shimmer 1.4s ease-in-out infinite;
+  }
+  @keyframes shimmer { to { background-position: -200% 0; } }
+
+  /* ================================================ responsive tables === */
+  /* Below sm a wide table stops being a table and becomes one card per record,
+     each cell labelled by the column header carried in data-label. Scrolling a
+     twelve-column grid sideways on a phone is not reading. */
+  @media (max-width: 639px) {
+    .table-stack thead { @apply sr-only; }
+    .table-stack tbody tr {
+      @apply mb-3 block rounded-xl2 border border-line bg-white p-3;
+    }
+    .table-stack tbody td {
+      @apply flex items-baseline justify-between gap-4 border-0 px-0 py-1.5 text-left;
+    }
+    .table-stack tbody td::before {
+      content: attr(data-label);
+      @apply shrink-0 text-[11px] font-bold uppercase tracking-wide text-muted-fg;
+    }
+    .table-stack tbody td:empty { @apply hidden; }
+    .table-stack tfoot td, .table-stack tfoot th { @apply block text-right; }
+  }
+
   /* Ink is invisible against the navy sidebar and the navy panels. */
   .on-dark { --focus-ring: #ffffff; --focus-ring-offset: #071a2f; }
 
@@ -147,4 +248,7 @@ body { font-feature-settings: "tnum" 1, "ss01" 1; }
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; }
   .metric-card:hover { transform: none; }
   .btn:active { transform: none; }
+  .spinner, .skeleton, .nav-progress.is-running::after { animation: none !important; }
+  .nav-progress.is-running::after { width: 92%; }
+  .back-link:hover .icon { transform: none; }
 }

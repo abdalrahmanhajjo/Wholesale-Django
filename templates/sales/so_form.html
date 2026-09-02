@@ -127,7 +127,7 @@ same field widget styling, and a save/cancel footer.
   </section>
 
   <div class="mt-5 flex flex-wrap items-center gap-2">
-    <button type="submit" class="btn-primary">
+    <button type="submit" class="btn-primary" data-busy-label="Saving order…">
       {% if object %}Save changes{% else %}Create sales order{% endif %}
     </button>
     <a href="{% if object %}{% url 'sales:so_detail' object.pk %}{% else %}{% url 'sales:so_list' %}{% endif %}"
@@ -192,8 +192,13 @@ same field widget styling, and a save/cancel footer.
     lineBody.appendChild(fragment);
     formsetTotal.value = index + 1;
     updateAddLineState();
+    // Give the new row the same live validation and searchable selects as the
+    // rows that came with the page.
+    if (row) {
+      document.dispatchEvent(new CustomEvent('ledgerwise:rows-added', { detail: { root: row } }));
+    }
     // Land in the row that was just created rather than making the user tab to it.
-    const firstInput = row && row.querySelector('select, input:not([type=hidden]), textarea');
+    const firstInput = row && row.querySelector('input:not([type=hidden]), select, textarea');
     if (firstInput) firstInput.focus();
   });
 

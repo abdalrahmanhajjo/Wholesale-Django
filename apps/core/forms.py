@@ -2,6 +2,7 @@
 
 from django import forms
 
+from apps.core.form_ui import UIFormMixin
 from apps.core.models import (
     Company,
     Currency,
@@ -13,30 +14,15 @@ from apps.core.models import (
 from apps.ledger.models import Account
 
 
-class StyledModelForm(forms.ModelForm):
+class StyledModelForm(UIFormMixin, forms.ModelForm):
     """
-    A ModelForm whose widgets already carry the project's CSS classes.
+    A ModelForm carrying the project's field presentation.
 
-    CustomerForm and VendorForm each repeat this loop; putting it here means
-    every settings form inherits the look, and those two can be reduced to it.
+    The styling loop that used to live here — and in a second copy in
+    CustomerForm and a third in VendorForm — is now `UIFormMixin`, which also
+    supplies placeholders, keyboard hints, autofill and the live-validation
+    contract. Settings forms get all of it by subclassing this.
     """
-
-    CHECKBOX_CLASS = "h-4 w-4 rounded border-line text-brand focus:ring-brand/30"
-    TEXTAREA_CLASS = (
-        "block w-full rounded-xl border border-line bg-white px-3 py-2 text-sm "
-        "focus:border-brand focus:ring-2 focus:ring-brand/30 focus:outline-none"
-    )
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        for field in self.fields.values():
-            widget = field.widget
-            if isinstance(widget, forms.CheckboxInput):
-                widget.attrs.setdefault("class", self.CHECKBOX_CLASS)
-            elif isinstance(widget, forms.Textarea):
-                widget.attrs.setdefault("class", self.TEXTAREA_CLASS)
-            else:
-                widget.attrs.setdefault("class", "field")
 
 
 class CurrencyForm(StyledModelForm):

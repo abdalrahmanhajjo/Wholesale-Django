@@ -15,7 +15,6 @@ from django.test import Client, RequestFactory, TestCase
 from django.urls import reverse
 from django.views import View
 
-from apps.accounts.models import User
 from apps.core.mixins import ActionPermissionMixin, require_action
 from apps.core.permissions import (
     ACCOUNTANT,
@@ -27,15 +26,7 @@ from apps.core.permissions import (
     POST_SALES_INVOICE,
     SALES,
 )
-
-
-def make_user(username, group_name=None, **kwargs):
-    user = User.objects.create_user(
-        username=username, email=f"{username}@example.com", password="testpass-12345", **kwargs
-    )
-    if group_name:
-        user.groups.add(Group.objects.get(name=group_name))
-    return user
+from apps.core.tests.factories import make_user
 
 
 class RoleMatrixTests(TestCase):

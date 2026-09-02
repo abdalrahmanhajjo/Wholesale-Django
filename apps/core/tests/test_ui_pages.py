@@ -15,11 +15,10 @@ notice a page that broke, not to specify how a page looks.
 
 import re
 
-from django.contrib.auth.models import Group
 from django.test import TestCase
 
-from apps.accounts.models import User
 from apps.core.permissions import OWNER_ADMIN
+from apps.core.tests.factories import make_user
 
 #: Screens reachable without an existing record.
 PAGES = [
@@ -57,10 +56,7 @@ NEEDS_BACK_LINK = {
 class EveryPageRendersTests(TestCase):
     @classmethod
     def setUpTestData(cls):
-        cls.user = User.objects.create_user(
-            username="ui-probe", email="ui@example.com", password="testpass-12345"
-        )
-        cls.user.groups.add(Group.objects.get(name=OWNER_ADMIN))
+        cls.user = make_user("ui-probe", OWNER_ADMIN)
 
     def setUp(self):
         self.client.force_login(self.user)

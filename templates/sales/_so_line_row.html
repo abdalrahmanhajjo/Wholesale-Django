@@ -24,7 +24,11 @@ value may be an int or a string.
     {% if lf.non_field_errors %}
       {% for error in lf.non_field_errors %}<p class="error-text">{{ error }}</p>{% endfor %}
     {% endif %}
-    {% a11y_field lf.product label="Product" line=line %}
+    {% comment %}
+    Filled from the embedded product map in so_form.html, so the network prefill
+    is switched off here to avoid two mechanisms doing one job.
+    {% endcomment %}
+    {% a11y_field lf.product label="Product" line=line data_prefill="off" %}
     {% if lf.product.errors %}<p class="error-text" id="{% error_id lf.product %}">{{ lf.product.errors|join:" " }}</p>{% endif %}
   </td>
 

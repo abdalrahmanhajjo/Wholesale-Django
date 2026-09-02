@@ -156,6 +156,7 @@ button that says what it will do.
         Create and post delivery note
       </button>
       <a href="{% url 'sales:so_detail' order.pk %}" class="btn-ghost">Cancel</a>
+      <a href="{% url 'sales:delivery_list' %}" class="btn-ghost">All delivery notes</a>
       <p class="basis-full text-sm text-muted-fg sm:basis-auto sm:pl-2">
         Posting moves the stock. It cannot be undone from this screen.
       </p>

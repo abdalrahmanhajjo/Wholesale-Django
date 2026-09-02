@@ -268,8 +268,14 @@ class UIFormMixin:
             # is the same every time.
             searchable = True
         else:
-            # Static choices are already in memory, so counting them is free.
-            searchable = len(field.choices) > COMBOBOX_THRESHOLD
+            # Static choices are cheap to count, but Django hands some of them
+            # over as a lazy iterator with no length — a model field with
+            # `choices` yields a BlankChoiceIterator. Materialise it; these are
+            # in-memory tuples, never a query.
+            try:
+                searchable = len(field.choices) > COMBOBOX_THRESHOLD
+            except TypeError:
+                searchable = sum(1 for _ in field.choices) > COMBOBOX_THRESHOLD
 
         if name in self.autocomplete_fields or searchable or kind:
             attrs.setdefault("data-combobox", "")

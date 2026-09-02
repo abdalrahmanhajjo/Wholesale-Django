@@ -83,8 +83,24 @@ a click that takes a second looks like a click that did nothing.
         <ul aria-labelledby="nav-operations">
           {% if perms.sales.view_salesorder %}
             <li>
-              <a href="{% url 'sales:so_list' %}" class="nav-link {% if request.resolver_match.app_name == 'sales' %}nav-link-active{% endif %}"
-                 {% if request.resolver_match.app_name == 'sales' %}aria-current="page"{% endif %}>Sales</a>
+              <a href="{% url 'sales:so_list' %}" class="nav-link {% if request.resolver_match.url_name|slice:':3' == 'so_' %}nav-link-active{% endif %}"
+                 {% if request.resolver_match.url_name|slice:':3' == 'so_' %}aria-current="page"{% endif %}>Sales orders</a>
+            </li>
+          {% endif %}
+          {% comment %}
+          Deliveries and invoices arrived with the sales-invoice work and belong
+          beside the orders they come from.
+          {% endcomment %}
+          {% if perms.inventory.view_deliverynote %}
+            <li>
+              <a href="{% url 'sales:delivery_list' %}" class="nav-link {% if request.resolver_match.url_name|slice:':9' == 'delivery_' %}nav-link-active{% endif %}"
+                 {% if request.resolver_match.url_name|slice:':9' == 'delivery_' %}aria-current="page"{% endif %}>Deliveries</a>
+            </li>
+          {% endif %}
+          {% if perms.sales.view_salesinvoice %}
+            <li>
+              <a href="{% url 'sales:invoice_list' %}" class="nav-link {% if request.resolver_match.url_name|slice:':8' == 'invoice_' %}nav-link-active{% endif %}"
+                 {% if request.resolver_match.url_name|slice:':8' == 'invoice_' %}aria-current="page"{% endif %}>Invoices</a>
             </li>
           {% endif %}
           {% comment %}

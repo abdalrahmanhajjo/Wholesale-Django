@@ -347,6 +347,21 @@ class SuggestAndCheckAttributeTests(SimpleTestCase):
         self.assertEqual(attrs["data-suggest"], "customer")
         self.assertIn("data-combobox", attrs)
 
+    def test_a_lazy_choice_iterator_does_not_crash(self):
+        """
+        Django hands a model field's `choices` over as a BlankChoiceIterator,
+        which has no length. Counting it directly raised a TypeError and took
+        the number-series screen down with it.
+        """
+        from django import forms as f
+
+        from apps.core.form_ui import UIFormMixin
+
+        class Lazy(UIFormMixin, f.Form):
+            kind = f.ChoiceField(label="Kind", choices=(c for c in [("a", "A"), ("b", "B")]))
+
+        self.assertIsNotNone(Lazy().fields["kind"].widget.attrs.get("class"))
+
     def test_a_short_unknown_select_stays_a_native_control(self):
         """Two options are faster as a dropdown than as a search box."""
         self.assertNotIn("data-combobox", self.form().fields["direction"].widget.attrs)

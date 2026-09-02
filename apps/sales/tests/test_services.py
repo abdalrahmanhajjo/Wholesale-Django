@@ -38,9 +38,7 @@ class NumberingTests(TestCase):
         # Be resilient to a stale SO/DEFAULT row left in the persisted
         # --keepdb test database by other suites; this test asserts the
         # raise, so it owns a clean slate (SAL-001 numbering).
-        DocumentSequence.objects.filter(
-            document_type="SO", series="DEFAULT"
-        ).delete()
+        DocumentSequence.objects.filter(document_type="SO", series="DEFAULT").delete()
         with self.assertRaises(ValueError):
             services.allocate_so_number()
 
@@ -55,8 +53,11 @@ class LineArithmeticTests(TestCase):
     def test_exclusive_tax_exact(self):
         # qty 10 x price 20 = gross 200; 10% discount -> discount 20, net 180
         line = f.make_line(
-            self.order, qty=Decimal("10"), price=Decimal("20"),
-            discount=Decimal("10"), tax=self.tax,
+            self.order,
+            qty=Decimal("10"),
+            price=Decimal("20"),
+            discount=Decimal("10"),
+            tax=self.tax,
         )
         services.calculate_line(line)
 
@@ -71,8 +72,7 @@ class LineArithmeticTests(TestCase):
     def test_inclusive_tax_backs_out(self):
         # price includes tax: taxable base = net / (1 + rate/100)
         tax = f.make_tax(code="VAT-INC", rate=Decimal("11.0"), is_inclusive=True)
-        line = f.make_line(self.order, qty=Decimal("1"), price=Decimal("111"),
-                           tax=tax)
+        line = f.make_line(self.order, qty=Decimal("1"), price=Decimal("111"), tax=tax)
         services.calculate_line(line)
 
         self.assertEqual(line.gross_txn, Decimal("111.0000"))
@@ -85,7 +85,9 @@ class LineArithmeticTests(TestCase):
     def test_line_discount_within_gross(self):
         # A 100% discount leaves net zero, never negative.
         line = f.make_line(
-            self.order, qty=Decimal("1"), price=Decimal("100"),
+            self.order,
+            qty=Decimal("1"),
+            price=Decimal("100"),
             discount=Decimal("100"),
         )
         services.calculate_line(line)
@@ -186,8 +188,7 @@ class RecalculateTotalsTests(TestCase):
     def test_totals_roll_up(self):
         order = f.make_order()
         tax = f.make_tax(rate=Decimal("11.0"))
-        line = f.make_line(order, qty=Decimal("2"), price=Decimal("100"),
-                           tax=tax, line_no=1)
+        line = f.make_line(order, qty=Decimal("2"), price=Decimal("100"), tax=tax, line_no=1)
         services.calculate_line(line)
         line.save()
         services.calculate_totals(order)
@@ -205,6 +206,7 @@ class ApprovalWorkflowTests(TestCase):
 
     def setUp(self):
         from apps.accounts.models import User
+
         self.user = User.objects.create_user(
             username="sales-user", email="s@example.com", password="x-1234567"
         )

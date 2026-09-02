@@ -225,6 +225,7 @@ class SalesInvoice(FinancialDocumentBase):
 
     def get_absolute_url(self):
         from django.urls import reverse
+
         return reverse("sales:invoice_detail", args=[self.pk])
 
 

@@ -9,36 +9,48 @@ Follows the parties/views.py worked example exactly:
 
 from decimal import Decimal, InvalidOperation
 
+from django import forms
 from django.contrib import messages
 from django.db import transaction
-from django.db.models import Q, Count, Sum
-from django import forms
-from django.forms import Form, IntegerField, ModelChoiceField
+from django.db.models import Count, Q, Sum
 from django.shortcuts import get_object_or_404, redirect
-from django.urls import reverse, reverse_lazy
+from django.urls import reverse
 from django.utils import timezone
 from django.views.generic import (
-    CreateView, DetailView, TemplateView, UpdateView, View,
+    CreateView,
+    DetailView,
+    TemplateView,
+    UpdateView,
+    View,
 )
 
 from apps.core import audit
-from apps.core.list_views import Column, ChoiceFilter, DateRangeFilter, FilteredListView
-from apps.core.mixins import ActionPermissionMixin, ConfirmationRequiredMixin
-from apps.core.models import AuditEvent, Company, DocumentStatus, TaxCode, ZERO
+from apps.core.list_views import ChoiceFilter, Column, DateRangeFilter, FilteredListView
+from apps.core.mixins import ActionPermissionMixin, BackLinkMixin, ConfirmationRequiredMixin
+from apps.core.models import (
+    EDITABLE_STATES,
+    ZERO,
+    AuditEvent,
+    Company,
+    DocumentStatus,
+    TaxCode,
+)
 from apps.core.permissions import (
     APPROVE_SALES_ORDER,
     EXPORT_DATA,
     POST_DELIVERY,
     POST_SALES_INVOICE,
 )
+from apps.inventory.models import DeliveryNote
 from apps.ledger.services import PostingError
-
-from apps.inventory.models import DeliveryNote, DeliveryNoteLine
-from apps.sales.forms import (
-    DeliveryLineFormSet, DeliveryNoteForm, SalesOrderForm, SalesOrderLineFormSet,
-)
-from apps.sales.models import SalesInvoice, SalesOrder, SalesOrderLine
 from apps.sales import services
+from apps.sales.forms import (
+    DeliveryLineFormSet,
+    DeliveryNoteForm,
+    SalesOrderForm,
+    SalesOrderLineFormSet,
+)
+from apps.sales.models import SalesInvoice, SalesOrder
 
 
 def _tax_rate_map():
@@ -55,6 +67,7 @@ def _product_map():
     Used to auto-fill a sales-order line when its product is chosen (UX).
     """
     from apps.catalog.models import Product
+
     return {
         p.pk: {
             "price": str(p.sales_price),
@@ -92,7 +105,7 @@ def _number_lines(formset):
 # ---------------------------------------------------------------------------
 class SalesOrderListView(FilteredListView):
     model = SalesOrder
-    permission_required = "sales.view_salesorder"
+    required_permission = "sales.view_salesorder"
     page_title = "Sales Orders"
     page_subtitle = "Orders awaiting fulfilment, or already completed."
     create_url_name = "sales:so_create"
@@ -112,24 +125,24 @@ class SalesOrderListView(FilteredListView):
     ]
 
     search_fields = [
-        "number", "customer__name", "customer__code", "customer_reference",
+        "number",
+        "customer__name",
+        "customer__code",
+        "customer_reference",
     ]
     trigram_search_fields = ["customer__name"]
 
     filters = [
         ChoiceFilter(
-            "status", "Status",
+            "status",
+            "Status",
             list(DocumentStatus.choices),
         ),
         DateRangeFilter("document_date", "Date range"),
     ]
 
     def get_queryset(self):
-        return (
-            super()
-            .get_queryset()
-            .select_related("customer", "warehouse")
-        )
+        return super().get_queryset().select_related("customer", "warehouse")
 
     def get_summary(self):
         totals = SalesOrder.objects.aggregate(
@@ -152,7 +165,9 @@ class SalesOrderListView(FilteredListView):
 # ---------------------------------------------------------------------------
 # Create / Update with audit (ACC-005)
 # ---------------------------------------------------------------------------
-class SalesOrderCreateView(ActionPermissionMixin, CreateView):
+class SalesOrderCreateView(BackLinkMixin, ActionPermissionMixin, CreateView):
+    back_url_name = "sales:so_list"
+    back_label = "Back to sales orders"
     model = SalesOrder
     form_class = SalesOrderForm
     template_name = "sales/so_form.html"
@@ -175,39 +190,43 @@ class SalesOrderCreateView(ActionPermissionMixin, CreateView):
         return ctx
 
     def form_valid(self, form):
+        """
+        Nothing is written until the lines are valid.
+
+        Saving the header first and warning about the lines afterwards leaves
+        two problems behind. A document number is drawn from a controlled
+        sequence (CFG-008, NFR-008), so a rejected submit burns one and puts a
+        gap in the numbering, which is exactly the thing an auditor asks about.
+        And the order it leaves in the database has no lines, so it is not a
+        document anyone can act on. Returning early inside `atomic()` does not
+        undo either: only an exception rolls a block back, and this path raises
+        nothing.
+        """
         formset = self.get_formset()
-        ctx = self.get_context_data(form=form, line_formset=formset)
+        if not formset.is_valid():
+            return self.render_to_response(
+                self.get_context_data(form=form, line_formset=formset)
+            )
 
         with transaction.atomic():
-            # Generate number first so the object is saved
             form.instance.number = services.allocate_so_number()
             form.instance.created_by = self.request.user
             form.instance.updated_by = self.request.user
             form.instance.status = DocumentStatus.DRAFT
             self.object = form.save()
 
-            if formset.is_valid():
-                formset.instance = self.object
-                _number_lines(formset)
-                formset.save()
+            formset.instance = self.object
+            _number_lines(formset)
+            formset.save()
 
-                # Full recalculation (SAL-002)
-                services.recalculate_order(self.object)
+            # Full recalculation (SAL-002)
+            services.recalculate_order(self.object)
 
-                audit.record_create(self.request, self.object)
-                messages.success(
-                    self.request,
-                    f"Sales order {self.object.number} created.",
-                )
-            else:
-                # If lines are invalid, still save header but warn
-                audit.record_create(self.request, self.object)
-                messages.warning(
-                    self.request,
-                    f"Order {self.object.number} saved. "
-                    "Please fix the line errors below.",
-                )
-                return self.render_to_response(ctx)
+            audit.record_create(self.request, self.object)
+            messages.success(
+                self.request,
+                f"Sales order {self.object.number} created.",
+            )
 
         return redirect(self.get_success_url())
 
@@ -215,11 +234,25 @@ class SalesOrderCreateView(ActionPermissionMixin, CreateView):
         return reverse("sales:so_detail", args=[self.object.pk])
 
 
-class SalesOrderUpdateView(ActionPermissionMixin, UpdateView):
+class SalesOrderUpdateView(BackLinkMixin, ActionPermissionMixin, UpdateView):
+    back_to_object = True
+    back_label = "Back to this order"
     model = SalesOrder
     form_class = SalesOrderForm
     template_name = "sales/so_form.html"
     required_permission = "sales.change_salesorder"
+
+    def get_queryset(self):
+        """
+        Posted, completed and cancelled documents are immutable (BR-004).
+
+        Filtering the queryset rather than checking in dispatch means the guard
+        covers GET and POST from one place: a non-editable order is not found,
+        so it can neither be opened nor submitted to. Losing this let an
+        approved order be reopened and edited, which is the rule the whole
+        double-entry model rests on.
+        """
+        return super().get_queryset().filter(status__in=EDITABLE_STATES)
 
     def get_formset(self):
         return SalesOrderLineFormSet(
@@ -265,8 +298,7 @@ class SalesOrderUpdateView(ActionPermissionMixin, UpdateView):
                 if line_changes:
                     suffix = "s" if line_changes != 1 else ""
                     detail = (
-                        f"{detail + ', ' if detail else ''}"
-                        f"{line_changes} line{suffix}"
+                        f"{detail + ', ' if detail else ''}" f"{line_changes} line{suffix}"
                     )
                 messages.success(
                     self.request,
@@ -284,7 +316,9 @@ class SalesOrderUpdateView(ActionPermissionMixin, UpdateView):
 # ---------------------------------------------------------------------------
 # Detail view
 # ---------------------------------------------------------------------------
-class SalesOrderDetailView(ActionPermissionMixin, DetailView):
+class SalesOrderDetailView(BackLinkMixin, ActionPermissionMixin, DetailView):
+    back_url_name = "sales:so_list"
+    back_label = "Back to sales orders"
     model = SalesOrder
     template_name = "sales/so_detail.html"
     required_permission = "sales.view_salesorder"
@@ -294,15 +328,11 @@ class SalesOrderDetailView(ActionPermissionMixin, DetailView):
         ctx = super().get_context_data(**kwargs)
         ctx["page_title"] = self.object.number
         ctx["page_subtitle"] = f"Order for {self.object.customer}"
-        ctx["audit_events"] = (
-            AuditEvent.objects
-            .filter(
-                content_type__app_label="sales",
-                content_type__model="salesorder",
-                object_id=self.object.pk,
-            )
-            .select_related("user")[:20]
-        )
+        ctx["audit_events"] = AuditEvent.objects.filter(
+            content_type__app_label="sales",
+            content_type__model="salesorder",
+            object_id=self.object.pk,
+        ).select_related("user")[:20]
         return ctx
 
 
@@ -403,8 +433,12 @@ class DeliveryNoteListView(FilteredListView):
     ]
 
     search_fields = [
-        "number", "customer__name", "customer__code", "sales_order__number",
-        "carrier", "tracking_reference",
+        "number",
+        "customer__name",
+        "customer__code",
+        "sales_order__number",
+        "carrier",
+        "tracking_reference",
     ]
     trigram_search_fields = ["customer__name"]
 
@@ -414,11 +448,7 @@ class DeliveryNoteListView(FilteredListView):
     ]
 
     def get_queryset(self):
-        return (
-            super()
-            .get_queryset()
-            .select_related("customer", "warehouse", "sales_order")
-        )
+        return super().get_queryset().select_related("customer", "warehouse", "sales_order")
 
     def get_summary(self):
         agg = DeliveryNote.objects.aggregate(
@@ -446,14 +476,15 @@ class DeliveryOrderSelectForm(forms.Form):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["order"].queryset = (
-            SalesOrder.objects
-            .filter(status__in=[DocumentStatus.APPROVED, DocumentStatus.PARTIAL])
+            SalesOrder.objects.filter(
+                status__in=[DocumentStatus.APPROVED, DocumentStatus.PARTIAL]
+            )
             .select_related("customer", "warehouse")
             .order_by("-document_date")
         )
 
 
-class DeliveryNoteCreateView(ActionPermissionMixin, TemplateView):
+class DeliveryNoteCreateView(BackLinkMixin, ActionPermissionMixin, TemplateView):
     """
     Create a delivery note against an approved sales order.
 
@@ -462,6 +493,9 @@ class DeliveryNoteCreateView(ActionPermissionMixin, TemplateView):
     pre-filled from what still needs delivering. POST validates, creates and
     posts the note (SAL-005), then redirects to its detail.
     """
+
+    back_url_name = "sales:delivery_list"
+    back_label = "Back to delivery notes"
 
     template_name = "sales/delivery_note_form.html"
     required_permission = "inventory.add_deliverynote"
@@ -489,8 +523,7 @@ class DeliveryNoteCreateView(ActionPermissionMixin, TemplateView):
         formset = DeliveryLineFormSet(
             self.request.POST or None,
             initial=[
-                {"sales_order_line": ln.pk, "quantity": remaining}
-                for ln, remaining in rows
+                {"sales_order_line": ln.pk, "quantity": remaining} for ln, remaining in rows
             ],
             prefix="lines",
         )
@@ -575,9 +608,7 @@ class DeliveryNoteCreateView(ActionPermissionMixin, TemplateView):
                 notes=header.cleaned_data.get("notes", ""),
                 carrier=header.cleaned_data.get("carrier", ""),
                 tracking_reference=header.cleaned_data.get("tracking_reference", ""),
-                shipping_address_text=header.cleaned_data.get(
-                    "shipping_address_text", ""
-                ),
+                shipping_address_text=header.cleaned_data.get("shipping_address_text", ""),
             )
             services.post_delivery(note, request.user)
             messages.success(
@@ -592,7 +623,9 @@ class DeliveryNoteCreateView(ActionPermissionMixin, TemplateView):
             )
 
 
-class DeliveryNoteDetailView(ActionPermissionMixin, DetailView):
+class DeliveryNoteDetailView(BackLinkMixin, ActionPermissionMixin, DetailView):
+    back_url_name = "sales:delivery_list"
+    back_label = "Back to delivery notes"
     model = DeliveryNote
     template_name = "sales/delivery_note_detail.html"
     context_object_name = "note"
@@ -602,15 +635,11 @@ class DeliveryNoteDetailView(ActionPermissionMixin, DetailView):
         ctx = super().get_context_data(**kwargs)
         ctx["page_title"] = self.object.number
         ctx["page_subtitle"] = f"Delivery for {self.object.customer}"
-        ctx["audit_events"] = (
-            AuditEvent.objects
-            .filter(
-                content_type__app_label="inventory",
-                content_type__model="deliverynote",
-                object_id=self.object.pk,
-            )
-            .select_related("user")[:20]
-        )
+        ctx["audit_events"] = AuditEvent.objects.filter(
+            content_type__app_label="inventory",
+            content_type__model="deliverynote",
+            object_id=self.object.pk,
+        ).select_related("user")[:20]
         return ctx
 
 
@@ -641,7 +670,7 @@ class DeliveryNotePostView(ActionPermissionMixin, View):
 # ---------------------------------------------------------------------------
 class SalesInvoiceListView(FilteredListView):
     model = SalesInvoice
-    permission_required = "sales.view_salesinvoice"
+    required_permission = "sales.view_salesinvoice"
     page_title = "Sales invoices"
     page_subtitle = "Amounts billed to customers and posted to the ledger."
     create_url_name = "sales:invoice_create"
@@ -661,7 +690,10 @@ class SalesInvoiceListView(FilteredListView):
     ]
 
     search_fields = [
-        "number", "customer__name", "customer__code", "customer_reference",
+        "number",
+        "customer__name",
+        "customer__code",
+        "customer_reference",
     ]
     trigram_search_fields = ["customer__name"]
 
@@ -671,11 +703,7 @@ class SalesInvoiceListView(FilteredListView):
     ]
 
     def get_queryset(self):
-        return (
-            super()
-            .get_queryset()
-            .select_related("customer")
-        )
+        return super().get_queryset().select_related("customer")
 
     def get_summary(self):
         agg = SalesInvoice.objects.aggregate(
@@ -693,7 +721,7 @@ class SalesInvoiceListView(FilteredListView):
         ]
 
 
-class SalesInvoiceCreateView(ActionPermissionMixin, TemplateView):
+class SalesInvoiceCreateView(BackLinkMixin, ActionPermissionMixin, TemplateView):
     """
     Create a sales invoice (SAL-006).
 
@@ -703,6 +731,9 @@ class SalesInvoiceCreateView(ActionPermissionMixin, TemplateView):
     again and drafts the invoice (DRAFT — submit and post are separate steps),
     then redirects to its detail.
     """
+
+    back_url_name = "sales:invoice_list"
+    back_label = "Back to invoices"
 
     template_name = "sales/invoice_form.html"
     required_permission = "sales.add_salesinvoice"
@@ -761,7 +792,7 @@ class SalesInvoiceCreateView(ActionPermissionMixin, TemplateView):
 
         rows = services.build_invoice_lines_from_delivery(delivery)
         quantities = {}
-        for dl, remaining in rows:
+        for dl, _remaining in rows:
             raw = request.POST.get(f"qty_{dl.pk}")
             if raw:
                 try:
@@ -773,9 +804,7 @@ class SalesInvoiceCreateView(ActionPermissionMixin, TemplateView):
 
         if not quantities:
             messages.error(request, "Choose at least one quantity to invoice.")
-            return self.render_to_response(
-                self.get_context_data(rows=rows)
-            )
+            return self.render_to_response(self.get_context_data(rows=rows))
 
         try:
             invoice = services.create_invoice_from_delivery(
@@ -787,43 +816,34 @@ class SalesInvoiceCreateView(ActionPermissionMixin, TemplateView):
             return redirect("sales:invoice_detail", pk=invoice.pk)
         except ValueError as exc:
             messages.error(request, str(exc))
-            return self.render_to_response(
-                self.get_context_data(rows=rows)
-            )
+            return self.render_to_response(self.get_context_data(rows=rows))
 
 
-class SalesInvoiceDetailView(ActionPermissionMixin, DetailView):
+class SalesInvoiceDetailView(BackLinkMixin, ActionPermissionMixin, DetailView):
+    back_url_name = "sales:invoice_list"
+    back_label = "Back to invoices"
     model = SalesInvoice
     template_name = "sales/invoice_detail.html"
     context_object_name = "invoice"
     required_permission = "sales.view_salesinvoice"
 
     def get_queryset(self):
-        return (
-            super()
-            .get_queryset()
-            .select_related("customer", "journal_entry")
-        )
+        return super().get_queryset().select_related("customer", "journal_entry")
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
         ctx["page_title"] = self.object.number
         ctx["page_subtitle"] = f"Invoice for {self.object.customer}"
         ctx["source_delivery"] = (
-            DeliveryNote.objects
-            .filter(lines__invoice_lines__invoice=self.object)
+            DeliveryNote.objects.filter(lines__invoice_lines__invoice=self.object)
             .distinct()
             .first()
         )
-        ctx["audit_events"] = (
-            AuditEvent.objects
-            .filter(
-                content_type__app_label="sales",
-                content_type__model="salesinvoice",
-                object_id=self.object.pk,
-            )
-            .select_related("user")[:20]
-        )
+        ctx["audit_events"] = AuditEvent.objects.filter(
+            content_type__app_label="sales",
+            content_type__model="salesinvoice",
+            object_id=self.object.pk,
+        ).select_related("user")[:20]
         return ctx
 
 
@@ -865,8 +885,11 @@ class SalesInvoicePostView(ActionPermissionMixin, View):
         return redirect("sales:invoice_detail", pk=pk)
 
 
-class SalesInvoicePrintView(ActionPermissionMixin, TemplateView):
+class SalesInvoicePrintView(BackLinkMixin, ActionPermissionMixin, TemplateView):
     """Printable invoice (PTY-003) — snapshots only, no dynamic values."""
+
+    back_url_name = "sales:invoice_list"
+    back_label = "Back to invoices"
 
     template_name = "sales/invoice_print.html"
     required_permission = "sales.view_salesinvoice"
@@ -876,7 +899,5 @@ class SalesInvoicePrintView(ActionPermissionMixin, TemplateView):
         ctx["invoice"] = get_object_or_404(
             SalesInvoice.objects.select_related("customer"), pk=self.kwargs["pk"]
         )
-        ctx["company"] = (
-            Company.objects.select_related("base_currency").first()
-        )
+        ctx["company"] = Company.objects.select_related("base_currency").first()
         return ctx

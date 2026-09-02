@@ -297,54 +297,31 @@ class ComposedFieldNameTests(SimpleTestCase):
         self.assertIn('data-max="5"', self.render(data_max=5))
 
 
-class FloatingLabelTests(SimpleTestCase):
+class LabelPlacementTests(SimpleTestCase):
     """
-    The pattern suits text-like inputs only.
+    Labels sit above their field, never inside it.
 
-    A date input draws its own placeholder and a picker button, a select always
-    shows a value, and a checkbox has no interior — a label floating over any of
-    them collides with what the browser paints.
+    A floating label and a placeholder compete for the same pixels, and these
+    forms need the placeholder: it carries the expected format. On a textarea
+    the two printed over each other and neither could be read.
     """
 
-    def fields(self):
+    def field(self):
         from django import forms as f
 
         class Demo(f.Form):
             name = f.CharField(label="Name")
-            notes = f.CharField(label="Notes", widget=f.Textarea)
-            when = f.DateField(label="When", widget=f.DateInput(attrs={"type": "date"}))
-            kind = f.ChoiceField(label="Kind", choices=[("a", "A")])
-            active = f.BooleanField(label="Active", required=False)
 
-        return Demo()
+        return Demo()["name"]
 
-    def floatable(self, name):
-        from apps.core.templatetags.ui import is_floatable
+    def test_the_partial_does_not_float_labels(self):
+        html = render_to_string("core/_form_field.html", {"field": self.field()})
+        self.assertNotIn("is-floating", html)
 
-        return is_floatable(self.fields()[name])
-
-    def test_text_and_textarea_float(self):
-        self.assertTrue(self.floatable("name"))
-        self.assertTrue(self.floatable("notes"))
-
-    def test_date_select_and_checkbox_do_not(self):
-        self.assertFalse(self.floatable("when"))
-        self.assertFalse(self.floatable("kind"))
-        self.assertFalse(self.floatable("active"))
-
-    def test_the_partial_only_floats_where_it_fits(self):
-        form = self.fields()
-        self.assertIn(
-            "is-floating", render_to_string("core/_form_field.html", {"field": form["name"]})
-        )
-        self.assertNotIn(
-            "is-floating", render_to_string("core/_form_field.html", {"field": form["when"]})
-        )
-
-    def test_the_label_stays_a_real_label_for_the_control(self):
-        """The motion is presentation; the association must not change."""
-        html = render_to_string("core/_form_field.html", {"field": self.fields()["name"]})
+    def test_the_label_names_its_control(self):
+        html = render_to_string("core/_form_field.html", {"field": self.field()})
         self.assertIn('for="id_name"', html)
+        self.assertIn("Name", html)
 
 
 class SuggestAndCheckAttributeTests(SimpleTestCase):
@@ -369,6 +346,21 @@ class SuggestAndCheckAttributeTests(SimpleTestCase):
         attrs = self.form().fields["customer"].widget.attrs
         self.assertEqual(attrs["data-suggest"], "customer")
         self.assertIn("data-combobox", attrs)
+
+    def test_a_lazy_choice_iterator_does_not_crash(self):
+        """
+        Django hands a model field's `choices` over as a BlankChoiceIterator,
+        which has no length. Counting it directly raised a TypeError and took
+        the number-series screen down with it.
+        """
+        from django import forms as f
+
+        from apps.core.form_ui import UIFormMixin
+
+        class Lazy(UIFormMixin, f.Form):
+            kind = f.ChoiceField(label="Kind", choices=(c for c in [("a", "A"), ("b", "B")]))
+
+        self.assertIsNotNone(Lazy().fields["kind"].widget.attrs.get("class"))
 
     def test_a_short_unknown_select_stays_a_native_control(self):
         """Two options are faster as a dropdown than as a search box."""
@@ -443,9 +435,6 @@ class CompiledStylesheetTests(SimpleTestCase):
         "field-live-warning",
         "field-live-ok",
         "field-live-info",
-        "is-floating",
-        "is-filled",
-        "is-focused",
         "is-prefilled",
         "field-adornment",
         "field-with-adornment",
@@ -482,3 +471,75 @@ class CompiledStylesheetTests(SimpleTestCase):
             pathlib.Path(__file__).resolve().parents[3] / "tailwind.config.js"
         ).read_text()
         self.assertIn("static/js", config)
+
+
+class DropdownLayoutTests(SimpleTestCase):
+    """
+    Rules the suggestion list depends on, each of which had already broken it.
+
+    A card that clips its own overflow cut the list off after three results; a
+    display utility silently beat the `hidden` attribute so the wizard's Back
+    and Save buttons showed on every step.
+    """
+
+    def css(self):
+        import pathlib
+
+        return (
+            pathlib.Path(__file__).resolve().parents[3] / "static" / "css" / "app.css"
+        ).read_text()
+
+    def test_hidden_attribute_beats_a_display_utility(self):
+        """
+        `.btn` sets inline-flex, which outranks the user-agent rule for
+        [hidden]. Without this, `el.hidden = true` does nothing to a button.
+        """
+        self.assertIn("[hidden]{display:none!important}", self.css())
+
+    def test_a_form_section_does_not_clip_its_own_dropdown(self):
+        import re
+
+        section = re.search(r"\.form-section\{([^}]*)\}", self.css())
+        self.assertIsNotNone(section, ".form-section missing from the stylesheet")
+        self.assertNotIn("overflow:hidden", section.group(1))
+
+
+class MoneyFieldDetectionTests(SimpleTestCase):
+    """
+    Only an amount is money.
+
+    MONEY, QTY and PCT are all four decimal places in this schema, so counting
+    decimals classified an exchange rate and a discount percentage as money —
+    both were shown grouped with a currency symbol beside the box.
+    """
+
+    def rule(self, form, name):
+        return form.fields[name].widget.attrs.get("data-rule")
+
+    def test_amounts_are_money(self):
+        from apps.payments.forms import PaymentForm
+        from apps.sales.forms import SalesOrderLineForm
+
+        self.assertEqual(self.rule(PaymentForm(), "amount_txn"), "money")
+        self.assertEqual(self.rule(SalesOrderLineForm(), "unit_price"), "money")
+
+    def test_a_rate_is_not_money(self):
+        from apps.sales.forms import SalesOrderForm
+
+        self.assertEqual(self.rule(SalesOrderForm(), "exchange_rate"), "decimal")
+
+    def test_a_percentage_is_not_money(self):
+        from apps.sales.forms import SalesOrderLineForm
+
+        self.assertEqual(self.rule(SalesOrderLineForm(), "discount_percent"), "decimal")
+
+    def test_a_quantity_is_not_money(self):
+        from apps.sales.forms import SalesOrderLineForm
+
+        self.assertEqual(self.rule(SalesOrderLineForm(), "quantity"), "decimal")
+
+    def test_a_discount_that_may_be_a_percentage_is_not_money(self):
+        """Its unit depends on document_discount_kind, so no currency is shown."""
+        from apps.sales.forms import SalesOrderForm
+
+        self.assertEqual(self.rule(SalesOrderForm(), "document_discount_value"), "decimal")

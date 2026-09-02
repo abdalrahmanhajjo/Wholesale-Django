@@ -230,10 +230,15 @@
     var problem = problemWith(field);
     if (problem) { say(field, "error", problem); return; }
     if ((field.value || "").trim() && field.dataset.touched === "yes") {
-      // A tick on a hard field — a code, a tax ID — is worth the pixel. Nothing
-      // is announced; it is for the eye.
-      say(field, "ok", field.dataset.okText || "Looks right");
-      askServer(field);
+      // Only fields the server actually vets — a code that must be unique, a
+      // name that might duplicate — earn a tick. Confirming that a date is a
+      // date, or that a prefilled exchange rate of 1 is a number, is noise on
+      // every field at once.
+      if (field.dataset.check) {
+        askServer(field);
+      } else {
+        say(field, null, "");
+      }
       return;
     }
     say(field, null, "");
@@ -276,7 +281,6 @@
     if (field.hasAttribute("aria-invalid")) field.dataset.serverError = "yes";
 
     var wrap = field.closest(".field-wrap");
-    if (wrap && (field.value || "").trim()) wrap.classList.add("is-filled");
 
     var run = debounce(function () {
       // Judging a half-typed email is how live validation earns its bad name,
@@ -293,21 +297,15 @@
         field.dataset.serverError = "no";
         field.removeAttribute("aria-invalid");
       }
-      if (wrap) wrap.classList.toggle("is-filled", !!(field.value || "").trim());
       run();
     });
 
     field.addEventListener("focus", function () {
-      if (wrap) wrap.classList.add("is-focused");
       unformatMoney(field);
     });
 
     field.addEventListener("blur", function () {
       field.dataset.touched = "yes";
-      if (wrap) {
-        wrap.classList.remove("is-focused");
-        wrap.classList.toggle("is-filled", !!(field.value || "").trim());
-      }
       formatMoney(field);
       check(field);
     });
@@ -325,10 +323,13 @@
     if (field.dataset.rule !== "money") return;
     var raw = bare(field.value);
     if (!raw || isNaN(Number(raw))) return;
+    // Two places always, so a column of amounts lines up, but never fewer
+    // than the value carries: a stored 1250.1234 must not be shown as 1,250.12
+    // and then saved back rounded.
     var places = Number(field.dataset.decimals || 2);
     field.value = Number(raw).toLocaleString("en-US", {
-      minimumFractionDigits: places,
-      maximumFractionDigits: places
+      minimumFractionDigits: 2,
+      maximumFractionDigits: Math.max(2, places)
     });
   }
 
@@ -348,12 +349,17 @@
     var symbol = field.dataset.currency || document.body.dataset.baseCurrency;
     if (!symbol) return;
     field.dataset.adorned = "yes";
-    var wrap = field.closest(".field-wrap");
-    if (!wrap) return;
-    wrap.classList.add("has-adornment");
+
+    // Wrap the control alone. Anchored to .field-wrap the currency fell to the
+    // bottom of the group, printing under the help text instead of inside the
+    // box.
+    var control = el("span", "field-control");
+    field.parentNode.insertBefore(control, field);
+    control.appendChild(field);
+
     var tag = el("span", "field-adornment", symbol);
     tag.setAttribute("aria-hidden", "true");   // the label already says the currency
-    field.parentNode.insertBefore(tag, field);
+    control.insertBefore(tag, field);
     field.classList.add("field-with-adornment");
   }
 
@@ -408,14 +414,28 @@
 
     var active = -1;
     var shown = [];
+    var lastTerm = "";
 
     function textOf(option) { return option.textContent.trim(); }
+
+    // Marks the typed text inside a result, built with DOM nodes rather than
+    // innerHTML so a record whose name contains < or & cannot inject markup.
+    function highlight(text, term, className) {
+      var node = el("span", className || "combo-option-label");
+      var at = term ? text.toLowerCase().indexOf(term.toLowerCase()) : -1;
+      if (at === -1) {
+        node.textContent = text;
+        return node;
+      }
+      node.appendChild(document.createTextNode(text.slice(0, at)));
+      node.appendChild(el("mark", null, text.slice(at, at + term.length)));
+      node.appendChild(document.createTextNode(text.slice(at + term.length)));
+      return node;
+    }
 
     function sync() {
       var chosen = select.options[select.selectedIndex];
       input.value = chosen && chosen.value ? textOf(chosen) : "";
-      var w = input.closest(".field-wrap");
-      if (w) w.classList.toggle("is-filled", !!input.value);
     }
 
     function close() {
@@ -447,9 +467,10 @@
       prefillFrom(select, kind, item.value);
     }
 
-    function draw(items, heading) {
+    function draw(items, heading, term) {
       list.innerHTML = "";
       shown = items;
+      lastTerm = term || "";
       if (heading) {
         var head = el("li", "combo-heading", heading);
         head.setAttribute("role", "presentation");
@@ -463,11 +484,22 @@
           node.id = list.id + "_" + i;
           node.setAttribute("role", "option");
           node.setAttribute("aria-selected", String(item.value === select.value));
-          node.appendChild(el("span", "combo-option-label", item.label));
-          if (item.detail) node.appendChild(el("span", "combo-option-detail", item.detail));
+          node.appendChild(highlight(item.label, lastTerm));
+          if (item.detail) node.appendChild(highlight(item.detail, lastTerm, "combo-option-detail"));
           node.addEventListener("mousedown", function (e) { e.preventDefault(); pick(item); });
           list.appendChild(node);
         });
+        var foot = el("li", "combo-foot");
+        foot.setAttribute("role", "presentation");
+        foot.appendChild(el("span", null,
+          items.length + (items.length === 1 ? " match" : " matches")));
+        var keys = el("span", "flex items-center gap-1");
+        keys.appendChild(el("span", "combo-key", "↑↓"));
+        keys.appendChild(el("span", null, "move"));
+        keys.appendChild(el("span", "combo-key", "↵"));
+        keys.appendChild(el("span", null, "choose"));
+        foot.appendChild(keys);
+        list.appendChild(foot);
       }
       list.hidden = false;
       input.setAttribute("aria-expanded", "true");
@@ -489,12 +521,12 @@
         .then(function (data) {
           if (input.dataset.token !== token) return;   // a newer keystroke won
           list.classList.remove("is-loading");
-          if (document.activeElement === input) draw(data.results, "");
+          if (document.activeElement === input) draw(data.results, "", term);
         })
         .catch(function () {
           list.classList.remove("is-loading");
           // The server is unreachable; the rendered options are still here.
-          if (document.activeElement === input) draw(localMatches(term), "Offline — searching this page only");
+          if (document.activeElement === input) draw(localMatches(term), "Offline — searching this page only", term);
         });
     }, SEARCH_MS);
 
@@ -503,11 +535,11 @@
         var recent = kind ? readStore(storeKey, []) : [];
         if (recent.length) { draw(recent, "Recently used"); return; }
       }
-      if (kind) { draw(localMatches(term || ""), ""); searchServer(term || ""); }
-      else { draw(localMatches(term || ""), ""); }
+      if (kind) { draw(localMatches(term || ""), "", term); searchServer(term || ""); }
+      else { draw(localMatches(term || ""), "", term); }
     }
 
-    function highlight(next) {
+    function moveActive(next) {
       var items = list.querySelectorAll(".combo-option");
       if (!items.length) return;
       if (active > -1) items[active].classList.remove("is-active");
@@ -522,8 +554,8 @@
     input.addEventListener("blur", function () { setTimeout(function () { close(); sync(); }, 140); });
 
     input.addEventListener("keydown", function (event) {
-      if (event.key === "ArrowDown") { event.preventDefault(); if (list.hidden) open(input.value); highlight(active + 1); }
-      else if (event.key === "ArrowUp") { event.preventDefault(); highlight(active - 1); }
+      if (event.key === "ArrowDown") { event.preventDefault(); if (list.hidden) open(input.value); moveActive(active + 1); }
+      else if (event.key === "ArrowUp") { event.preventDefault(); moveActive(active - 1); }
       else if (event.key === "Enter") {
         if (!list.hidden && active > -1) { event.preventDefault(); pick(shown[active]); }
       } else if (event.key === "Escape") {
@@ -557,7 +589,7 @@
           target.dispatchEvent(new Event("change", { bubbles: true }));
           var w = target.closest(".field-wrap");
           if (w) {
-            w.classList.add("is-prefilled", "is-filled");
+            w.classList.add("is-prefilled");
             setTimeout(function () { w.classList.remove("is-prefilled"); }, 1400);
           }
           filled.push(labelOf(target));

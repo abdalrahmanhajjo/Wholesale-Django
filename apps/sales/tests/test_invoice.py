@@ -17,11 +17,10 @@ from django.urls import reverse
 
 from apps.core.audit import AuditEvent
 from apps.core.models import DocumentSequence, DocumentStatus
-from apps.inventory.models import DeliveryNote, DeliveryNoteLine
 from apps.ledger.models import Account, AccountMapping, MappingKey
-from apps.ledger.services import PostingError, PostingEngineUnavailable
+from apps.ledger.services import PostingEngineUnavailable, PostingError
 from apps.sales import services
-from apps.sales.models import SalesInvoice, SalesInvoiceLine
+from apps.sales.models import SalesInvoice
 from apps.sales.tests.factories import (
     make_customer,
     make_line,
@@ -41,9 +40,23 @@ def _ensure_account_mappings():
     already creates them; this keeps the tests self-contained if that changes.
     """
     specs = {
-        MappingKey.ACCOUNTS_RECEIVABLE: ("1210", "ASSET", "CURRENT_ASSET", "DEBIT", True, "AR"),
+        MappingKey.ACCOUNTS_RECEIVABLE: (
+            "1210",
+            "ASSET",
+            "CURRENT_ASSET",
+            "DEBIT",
+            True,
+            "AR",
+        ),
         MappingKey.SALES_REVENUE: ("4100", "INCOME", "REVENUE", "CREDIT", False, ""),
-        MappingKey.OUTPUT_TAX: ("2310", "LIABILITY", "CURRENT_LIABILITY", "CREDIT", True, "OUTPUT_TAX"),
+        MappingKey.OUTPUT_TAX: (
+            "2310",
+            "LIABILITY",
+            "CURRENT_LIABILITY",
+            "CREDIT",
+            True,
+            "OUTPUT_TAX",
+        ),
         MappingKey.INVENTORY: ("1310", "ASSET", "CURRENT_ASSET", "DEBIT", True, "INVENTORY"),
         MappingKey.COGS: ("5010", "EXPENSE", "COGS", "DEBIT", False, ""),
         MappingKey.ROUNDING_GAIN: ("4820", "INCOME", "OTHER_INCOME", "CREDIT", False, ""),
@@ -83,8 +96,12 @@ class InvoiceServicesTest(TestCase):
         order = make_order(
             customer=customer or self.customer, warehouse=warehouse or self.warehouse
         )
-        make_line(order, product=self.product_a, qty=Decimal("10"), price=Decimal("100"), line_no=1)
-        make_line(order, product=self.product_b, qty=Decimal("4"), price=Decimal("250"), line_no=2)
+        make_line(
+            order, product=self.product_a, qty=Decimal("10"), price=Decimal("100"), line_no=1
+        )
+        make_line(
+            order, product=self.product_b, qty=Decimal("4"), price=Decimal("250"), line_no=2
+        )
         order.status = DocumentStatus.SUBMITTED
         order.save(update_fields=["status"])
         order.status = DocumentStatus.APPROVED
@@ -105,7 +122,8 @@ class InvoiceServicesTest(TestCase):
 
     def _make_invoice(self, note):
         quantities = {
-            dl.pk: dl.quantity for dl in note.lines.select_related("product")
+            dl.pk: dl.quantity
+            for dl in note.lines.select_related("product")
             if services.remaining_to_invoice(dl) > ZERO
         }
         return services.create_invoice_from_delivery(
@@ -161,9 +179,7 @@ class InvoiceServicesTest(TestCase):
         self.assertEqual(invoice.sales_order, note.sales_order)
         self.assertEqual(invoice.lines.count(), 2)
         self.assertEqual(invoice.customer_name_snapshot, self.customer.name)
-        self.assertEqual(
-            invoice.shipping_address_text, note.shipping_address_text
-        )
+        self.assertEqual(invoice.shipping_address_text, note.shipping_address_text)
 
     def test_create_invoice_copies_line_values_from_order(self):
         note = self._make_posted_delivery()
@@ -176,12 +192,14 @@ class InvoiceServicesTest(TestCase):
     def test_create_invoice_rejects_unposted_delivery(self):
         order = self._make_approved_order()
         note = services.draft_delivery_from_order(
-            order=order, user=self.user,
+            order=order,
+            user=self.user,
             quantities={ln.pk: ln.quantity for ln in order.lines.all()},
         )
         with self.assertRaises(ValueError) as ctx:
             services.create_invoice_from_delivery(
-                delivery=note, user=self.user,
+                delivery=note,
+                user=self.user,
                 quantities={dl.pk: dl.quantity for dl in note.lines.all()},
             )
         self.assertIn("POSTED", str(ctx.exception))
@@ -191,7 +209,9 @@ class InvoiceServicesTest(TestCase):
         dl = note.lines.get(line_no=1)
         with self.assertRaises(ValueError) as ctx:
             services.create_invoice_from_delivery(
-                delivery=note, user=self.user, quantities={dl.pk: Decimal("11")},
+                delivery=note,
+                user=self.user,
+                quantities={dl.pk: Decimal("11")},
             )
         self.assertIn("double-invoicing", str(ctx.exception))
 
@@ -199,7 +219,9 @@ class InvoiceServicesTest(TestCase):
         note = self._make_posted_delivery()
         with self.assertRaises(ValueError) as ctx:
             services.create_invoice_from_delivery(
-                delivery=note, user=self.user, quantities={},
+                delivery=note,
+                user=self.user,
+                quantities={},
             )
         self.assertIn("No quantities", str(ctx.exception))
 
@@ -280,8 +302,9 @@ class InvoiceServicesTest(TestCase):
         tax = make_tax(code="INV-VAT", rate=Decimal("11.0"))
         product = make_product(sku="INV-TAX", price=Decimal("100"), tax=tax)
         order = make_order(customer=self.customer, warehouse=self.warehouse)
-        make_line(order, product=product, qty=Decimal("10"), price=Decimal("100"),
-                  tax=tax, line_no=1)
+        make_line(
+            order, product=product, qty=Decimal("10"), price=Decimal("100"), tax=tax, line_no=1
+        )
         order.status = DocumentStatus.APPROVED
         order.approved_at = "2026-08-15T10:00:00Z"
         order.save(update_fields=["status", "approved_at"])
@@ -290,7 +313,8 @@ class InvoiceServicesTest(TestCase):
         )
         services.post_delivery(note, self.user)
         invoice = services.create_invoice_from_delivery(
-            delivery=note, user=self.user,
+            delivery=note,
+            user=self.user,
             quantities={note.lines.get().pk: Decimal("10")},
         )
         self.assertGreater(invoice.tax_base, ZERO)
@@ -362,19 +386,26 @@ class InvoiceViewTests(TestCase):
         cls.product = make_product(sku="INV-VIEW", price=Decimal("100"))
         cls.creator = _make_user(
             "invoice-creator",
-            permissions=["sales.add_salesinvoice", "sales.view_salesinvoice",
-                         "sales.change_salesinvoice"],
+            permissions=[
+                "sales.add_salesinvoice",
+                "sales.view_salesinvoice",
+                "sales.change_salesinvoice",
+            ],
         )
         cls.poster = _make_user(
             "invoice-poster",
-            permissions=["sales.view_salesinvoice", "sales.change_salesinvoice",
-                         "core.post_sales_invoice"],
+            permissions=[
+                "sales.view_salesinvoice",
+                "sales.change_salesinvoice",
+                "core.post_sales_invoice",
+            ],
         )
 
     def setUp(self):
         order = make_order(customer=self.customer, warehouse=self.warehouse)
-        ln = make_line(order, product=self.product, qty=Decimal("5"),
-                       price=Decimal("100"), line_no=1)
+        ln = make_line(
+            order, product=self.product, qty=Decimal("5"), price=Decimal("100"), line_no=1
+        )
         order.status = DocumentStatus.APPROVED
         order.approved_at = "2026-08-15T10:00:00Z"
         order.save(update_fields=["status", "approved_at"])
@@ -386,7 +417,9 @@ class InvoiceViewTests(TestCase):
     def _invoice(self):
         dl = self.note.lines.get(line_no=1)
         return services.create_invoice_from_delivery(
-            delivery=self.note, user=self.creator, quantities={dl.pk: Decimal("5")},
+            delivery=self.note,
+            user=self.creator,
+            quantities={dl.pk: Decimal("5")},
         )
 
     def test_list_renders(self):
@@ -425,9 +458,7 @@ class InvoiceViewTests(TestCase):
     def test_submit_view(self):
         invoice = self._invoice()
         self.client.force_login(self.creator)
-        response = self.client.post(
-            reverse("sales:invoice_submit", args=[invoice.pk])
-        )
+        response = self.client.post(reverse("sales:invoice_submit", args=[invoice.pk]))
         self.assertEqual(response.status_code, 302)
         invoice.refresh_from_db()
         self.assertEqual(invoice.status, DocumentStatus.SUBMITTED)
@@ -461,7 +492,9 @@ class InvoiceViewTests(TestCase):
     def test_get_absolute_url_resolves_to_detail(self):
         """The list 'View' link and Number column use get_absolute_url — it must exist and resolve."""
         invoice = self._invoice()
-        self.assertEqual(invoice.get_absolute_url(), reverse("sales:invoice_detail", args=[invoice.pk]))
+        self.assertEqual(
+            invoice.get_absolute_url(), reverse("sales:invoice_detail", args=[invoice.pk])
+        )
 
     def test_print_renders(self):
         invoice = self._invoice()
@@ -474,8 +507,6 @@ class InvoiceViewTests(TestCase):
 def _make_user(username, permissions=()):
     user = make_user(username)
     for codename in permissions:
-        user.user_permissions.add(
-            Permission.objects.get(codename=codename.split(".")[-1])
-        )
+        user.user_permissions.add(Permission.objects.get(codename=codename.split(".")[-1]))
     user.save()
     return user

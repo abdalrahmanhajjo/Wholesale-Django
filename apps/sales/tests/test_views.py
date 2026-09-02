@@ -84,11 +84,14 @@ class SalesOrderEditTests(TestCase):
         self.warehouse = f.make_warehouse()
         self.product_a = f.make_product(sku="P-EDIT-1", price=Decimal("100"))
         self.product_b = f.make_product(sku="P-EDIT-2", price=Decimal("250"))
-        self.order = f.make_order(
-            customer=self.customer, warehouse=self.warehouse
+        self.order = f.make_order(customer=self.customer, warehouse=self.warehouse)
+        f.make_line(
+            self.order,
+            product=self.product_a,
+            qty=Decimal("10"),
+            price=Decimal("100"),
+            line_no=1,
         )
-        f.make_line(self.order, product=self.product_a, qty=Decimal("10"),
-                    price=Decimal("100"), line_no=1)
 
     def _post_data(self):
         from apps.sales.models import DiscountKind

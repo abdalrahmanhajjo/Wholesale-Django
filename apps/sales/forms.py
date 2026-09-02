@@ -6,24 +6,34 @@ formset for lines, with the same widget-styling loop so every control looks
 identical to CustomerForm.
 """
 
-from decimal import Decimal
-
 from django import forms
 from django.core.exceptions import ValidationError
 from django.forms import formset_factory, inlineformset_factory
 
 from apps.catalog.models import Product, UnitOfMeasure
+from apps.core.form_ui import UIFormMixin
 from apps.core.models import DocumentStatus, TaxCode
 from apps.inventory.models import DeliveryNote, DeliveryNoteLine
 from apps.sales.models import DiscountKind, SalesInvoice, SalesOrder, SalesOrderLine
 from apps.sales.services import (
-    recalculate_order,
     remaining_to_deliver,
     remaining_to_invoice,
 )
 
 
-class SalesOrderForm(forms.ModelForm):
+class SalesOrderForm(UIFormMixin, forms.ModelForm):
+    placeholders = {
+        "customer_reference": "The customer's own PO number",
+        "exchange_rate": "1.000000",
+        "document_discount_value": "0.00",
+        "billing_address_text": "Street, city, country",
+        "shipping_address_text": "Leave blank to use the billing address",
+        "notes": "Shown on the printed order",
+        "internal_notes": "Not shown to the customer",
+    }
+    autocomplete_fields = ["customer", "warehouse", "salesperson", "payment_term"]
+    plain_selects = ["document_discount_kind", "currency"]
+
     class Meta:
         model = SalesOrder
         fields = [
@@ -59,31 +69,16 @@ class SalesOrderForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         # Same widget-styling loop as CustomerForm (UX-002)
-        for fld in self.fields.values():
-            widget = fld.widget
-            if isinstance(widget, forms.CheckboxInput):
-                widget.attrs.setdefault(
-                    "class",
-                    "h-4 w-4 rounded border-line text-brand focus:ring-brand/30",
-                )
-            elif isinstance(widget, forms.Textarea):
-                widget.attrs.setdefault(
-                    "class",
-                    "block w-full rounded-xl2 border border-line bg-white px-3 py-2 text-sm "
-                    "focus:border-brand focus:ring-2 focus:ring-brand/30 focus:outline-none",
-                )
-            else:
-                widget.attrs.setdefault("class", "field")
 
         # Only active, non-archived records
-        self.fields["customer"].queryset = (
-            self.fields["customer"].queryset.filter(is_active=True)
+        self.fields["customer"].queryset = self.fields["customer"].queryset.filter(
+            is_active=True
         )
-        self.fields["warehouse"].queryset = (
-            self.fields["warehouse"].queryset.filter(is_active=True)
+        self.fields["warehouse"].queryset = self.fields["warehouse"].queryset.filter(
+            is_active=True
         )
-        self.fields["payment_term"].queryset = (
-            self.fields["payment_term"].queryset.filter(is_active=True)
+        self.fields["payment_term"].queryset = self.fields["payment_term"].queryset.filter(
+            is_active=True
         )
 
     def clean(self):
@@ -98,8 +93,15 @@ class SalesOrderForm(forms.ModelForm):
         return cleaned
 
 
-class SalesOrderLineForm(forms.ModelForm):
+class SalesOrderLineForm(UIFormMixin, forms.ModelForm):
     """One line in the formset. Product is chosen; price/tax auto-populate via JS."""
+
+    placeholders = {
+        "description": "Overrides the product name",
+        "quantity": "0",
+        "unit_price": "0.00",
+        "discount_percent": "0",
+    }
 
     class Meta:
         model = SalesOrderLine
@@ -123,31 +125,28 @@ class SalesOrderLineForm(forms.ModelForm):
         # line_no is assigned automatically by the view at save time, so the
         # user never types it and it must not block validation.
         self.fields["line_no"].required = False
-        for fld in self.fields.values():
-            widget = fld.widget
-            if isinstance(widget, forms.CheckboxInput):
-                widget.attrs.setdefault(
-                    "class",
-                    "h-4 w-4 rounded border-line text-brand focus:ring-brand/30",
-                )
-            else:
-                widget.attrs.setdefault("class", "field")
         # Only active products
-        self.fields["product"].queryset = (
-            self.fields["product"].queryset.filter(is_active=True)
+        self.fields["product"].queryset = self.fields["product"].queryset.filter(
+            is_active=True
         )
-        self.fields["tax_code"].queryset = (
-            self.fields["tax_code"].queryset.filter(is_active=True)
+        self.fields["tax_code"].queryset = self.fields["tax_code"].queryset.filter(
+            is_active=True
         )
 
 
 # 10 lines max for SO (can adjust)
+#: The screen says "Up to 10 lines per order" and the add-line script stops at
+#: ten, but a limit the browser alone enforces is not a limit — the form is a
+#: plain POST and TOTAL_FORMS is whatever the client sends. validate_max makes
+#: the server the authority, which is where it has to be.
 SalesOrderLineFormSet = inlineformset_factory(
     SalesOrder,
     SalesOrderLine,
     form=SalesOrderLineForm,
     extra=1,
     can_delete=True,
+    max_num=10,
+    validate_max=True,
     min_num=0,
     validate_min=False,
 )
@@ -156,19 +155,33 @@ SalesOrderLineFormSet = inlineformset_factory(
 # ---------------------------------------------------------------------------
 # Delivery notes (SAL-005, INV-007)
 # ---------------------------------------------------------------------------
-class DeliveryNoteForm(forms.ModelForm):
+class DeliveryNoteForm(UIFormMixin, forms.ModelForm):
     """
     Header of a delivery note. `customer` and `sales_order` arrive from the
     order selected on the create flow, so they are hidden here. The note is
     created as DRAFT and posted separately (warehouse double-check).
 
     """
+
+    placeholders = {
+        "reference": "Your own delivery reference",
+        "carrier": "Courier or driver",
+        "tracking_reference": "Consignment or waybill number",
+    }
+    autocomplete_fields = ["customer", "sales_order", "warehouse"]
+
     class Meta:
         model = DeliveryNote
         fields = [
-            "customer", "sales_order", "warehouse", "document_date",
-            "reference", "carrier", "tracking_reference",
-            "shipping_address_text", "notes",
+            "customer",
+            "sales_order",
+            "warehouse",
+            "document_date",
+            "reference",
+            "carrier",
+            "tracking_reference",
+            "shipping_address_text",
+            "notes",
         ]
         widgets = {
             "customer": forms.HiddenInput(),
@@ -177,32 +190,19 @@ class DeliveryNoteForm(forms.ModelForm):
             "shipping_address_text": forms.Textarea(attrs={"rows": 2}),
             "notes": forms.Textarea(attrs={"rows": 2}),
             "carrier": forms.TextInput(attrs={"placeholder": "Carrier (optional)"}),
-            "tracking_reference": forms.TextInput(attrs={"placeholder": "Tracking (optional)"}),
+            "tracking_reference": forms.TextInput(
+                attrs={"placeholder": "Tracking (optional)"}
+            ),
         }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        for fld in self.fields.values():
-            widget = fld.widget
-            if isinstance(widget, forms.CheckboxInput):
-                widget.attrs.setdefault(
-                    "class",
-                    "h-4 w-4 rounded border-line text-brand focus:ring-brand/30",
-                )
-            elif isinstance(widget, forms.Textarea):
-                widget.attrs.setdefault(
-                    "class",
-                    "block w-full rounded-xl2 border border-line bg-white px-3 py-2 text-sm "
-                    "focus:border-brand focus:ring-2 focus:ring-brand/30 focus:outline-none",
-                )
-            else:
-                widget.attrs.setdefault("class", "field")
-        self.fields["warehouse"].queryset = (
-            self.fields["warehouse"].queryset.filter(is_active=True)
+        self.fields["warehouse"].queryset = self.fields["warehouse"].queryset.filter(
+            is_active=True
         )
 
 
-class DeliveryLineForm(forms.Form):
+class DeliveryLineForm(UIFormMixin, forms.Form):
     """One editable row in the create-from-order flow.
 
     Only the quantity is entered here; product and order-line are carried
@@ -241,8 +241,10 @@ DeliveryLineFormSet = formset_factory(
     extra=0,
 )
 
+
 class InvoiceSourceForm(forms.Form):
     """Step 1 of create: where does this invoice come from?"""
+
     SOURCE_ORDER = "ORDER"
     SOURCE_DELIVERY = "DELIVERY"
     SOURCE_DIRECT = "DIRECT"
@@ -258,6 +260,7 @@ class InvoiceSourceForm(forms.Form):
 
 class DeliverySelectForm(forms.Form):
     """Pick a POSTED delivery (like your DeliveryOrderSelectForm)."""
+
     delivery = forms.ModelChoiceField(
         queryset=DeliveryNote.objects.filter(status=DocumentStatus.POSTED),
         empty_label="Select a posted delivery…",
@@ -265,13 +268,27 @@ class DeliverySelectForm(forms.Form):
     )
 
 
-class SalesInvoiceForm(forms.ModelForm):
+class SalesInvoiceForm(UIFormMixin, forms.ModelForm):
+    placeholders = {
+        "reference": "Your own invoice reference",
+        "notes": "Shown on the printed invoice",
+    }
+    autocomplete_fields = ["customer", "sales_order", "payment_term"]
+
     class Meta:
         model = SalesInvoice
         fields = [
-            "customer", "warehouse", "sales_order", "payment_term",
-            "document_date", "posting_date", "due_date", "customer_reference",
-            "billing_address_text", "shipping_address_text", "notes",
+            "customer",
+            "warehouse",
+            "sales_order",
+            "payment_term",
+            "document_date",
+            "posting_date",
+            "due_date",
+            "customer_reference",
+            "billing_address_text",
+            "shipping_address_text",
+            "notes",
         ]
         widgets = {
             "customer": forms.HiddenInput(),
@@ -287,34 +304,54 @@ class SalesInvoiceForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         for fld in self.fields.values():
-            fld.widget.attrs.setdefault("class",
+            fld.widget.attrs.setdefault(
+                "class",
                 "block w-full rounded-xl2 border border-line bg-white px-3 py-2 "
                 "text-sm focus:border-brand focus:ring-2 focus:ring-brand/30 "
-                "focus:outline-none")
-        self.fields["payment_term"].queryset = (
-            self.fields["payment_term"].queryset.filter(is_active=True)
+                "focus:outline-none",
+            )
+        self.fields["payment_term"].queryset = self.fields["payment_term"].queryset.filter(
+            is_active=True
         )
 
 
-class SalesInvoiceLineForm(forms.Form):
+class SalesInvoiceLineForm(UIFormMixin, forms.Form):
     """One editable line; product/qty/price are entered, delivery_line hidden."""
+
     delivery_line = forms.IntegerField(widget=forms.HiddenInput(), required=False)
-    product = forms.ModelChoiceField(queryset=Product.objects.filter(is_active=True),
-                                     widget=forms.Select(attrs={"class": "field"}))
-    unit = forms.ModelChoiceField(queryset=UnitOfMeasure.objects.all(),
-                                  widget=forms.HiddenInput(), required=False)
-    quantity = forms.DecimalField(min_value=0, max_digits=18, decimal_places=4,
-                                  widget=forms.NumberInput(attrs={"step": "0.0001",
-                                                                  "class": "field"}))
-    unit_price = forms.DecimalField(min_value=0, max_digits=18, decimal_places=4,
-                                    widget=forms.NumberInput(attrs={"step": "0.0001",
-                                                                    "class": "field"}))
-    discount_percent = forms.DecimalField(required=False, min_value=0, max_value=100,
-                                          initial=0, max_digits=9, decimal_places=4,
-                                          widget=forms.NumberInput(attrs={"class": "field"}))
-    tax_code = forms.ModelChoiceField(queryset=TaxCode.objects.filter(is_active=True),
-                                      required=False,
-                                      widget=forms.Select(attrs={"class": "field"}))
+    product = forms.ModelChoiceField(
+        queryset=Product.objects.filter(is_active=True),
+        widget=forms.Select(attrs={"class": "field"}),
+    )
+    unit = forms.ModelChoiceField(
+        queryset=UnitOfMeasure.objects.all(), widget=forms.HiddenInput(), required=False
+    )
+    quantity = forms.DecimalField(
+        min_value=0,
+        max_digits=18,
+        decimal_places=4,
+        widget=forms.NumberInput(attrs={"step": "0.0001", "class": "field"}),
+    )
+    unit_price = forms.DecimalField(
+        min_value=0,
+        max_digits=18,
+        decimal_places=4,
+        widget=forms.NumberInput(attrs={"step": "0.0001", "class": "field"}),
+    )
+    discount_percent = forms.DecimalField(
+        required=False,
+        min_value=0,
+        max_value=100,
+        initial=0,
+        max_digits=9,
+        decimal_places=4,
+        widget=forms.NumberInput(attrs={"class": "field"}),
+    )
+    tax_code = forms.ModelChoiceField(
+        queryset=TaxCode.objects.filter(is_active=True),
+        required=False,
+        widget=forms.Select(attrs={"class": "field"}),
+    )
 
     def clean_quantity(self):
         qty = self.cleaned_data["quantity"]
@@ -329,6 +366,4 @@ class SalesInvoiceLineForm(forms.Form):
         return qty
 
 
-SalesInvoiceLineFormSet = formset_factory(
-    SalesInvoiceLineForm, extra=1, can_delete=True
-)
+SalesInvoiceLineFormSet = formset_factory(SalesInvoiceLineForm, extra=1, can_delete=True)

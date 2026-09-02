@@ -253,9 +253,10 @@ Blocks available: `title`, `header_title`, `page_title`, `page_subtitle`,
 Add a new component class to `base.html` rather than inventing a one-off — and
 tell the team, since `base.html` is Member 1's file.
 
-**Note on Tailwind:** we use the Play CDN, which compiles in the browser. That
-is right for this build but not for production — a real deployment needs a
-compiled stylesheet. It is on the Slice 7 hardening list.
+**Tailwind build:** templates load the committed `static/css/app.css`; the
+browser never runs the Tailwind compiler. If you change templates,
+`static/src/app.css`, or `tailwind.config.js`, run `npm run build:css` and
+commit the generated stylesheet. Use `npm run watch:css` while iterating.
 
 ---
 

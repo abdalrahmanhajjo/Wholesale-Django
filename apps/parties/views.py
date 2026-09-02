@@ -11,7 +11,7 @@ from django.contrib import messages
 from django.db import transaction
 from django.db.models import Count, Q
 from django.shortcuts import get_object_or_404, redirect
-from django.urls import reverse, reverse_lazy
+from django.urls import reverse
 from django.utils import timezone
 from django.views.generic import CreateView, DetailView, UpdateView, View
 
@@ -31,7 +31,7 @@ class CustomerListView(FilteredListView):
     """PTY-001, UX-002, UX-005, UX-007."""
 
     model = Customer
-    permission_required = "parties.view_customer"
+    required_permission = "parties.view_customer"
     page_title = "Customers"
     page_subtitle = "Everyone you sell to, and their credit position."
     create_url_name = "parties:customer_create"
@@ -67,7 +67,7 @@ class CustomerListView(FilteredListView):
 
     def get_summary(self):
         # One query for the three tiles rather than three.
-        totals = Customer.objects.aggregate(
+        totals = self.get_queryset().aggregate(
             total=Count("id"),
             active=Count("id", filter=Q(is_active=True)),
             on_hold=Count("id", filter=Q(credit_hold=True)),
@@ -133,7 +133,7 @@ class CustomerCreateView(AuditedFormMixin, ActionPermissionMixin, CreateView):
     model = Customer
     form_class = CustomerForm
     template_name = "parties/customer_form.html"
-    permission_required = "parties.add_customer"
+    required_permission = "parties.add_customer"
     extra_context = {"page_title": "New customer"}
 
     def get_success_url(self):
@@ -144,7 +144,7 @@ class CustomerUpdateView(AuditedFormMixin, ActionPermissionMixin, UpdateView):
     model = Customer
     form_class = CustomerForm
     template_name = "parties/customer_form.html"
-    permission_required = "parties.change_customer"
+    required_permission = "parties.change_customer"
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
@@ -158,8 +158,11 @@ class CustomerUpdateView(AuditedFormMixin, ActionPermissionMixin, UpdateView):
 class CustomerDetailView(ActionPermissionMixin, DetailView):
     model = Customer
     template_name = "parties/customer_detail.html"
-    permission_required = "parties.view_customer"
+    required_permission = "parties.view_customer"
     context_object_name = "customer"
+
+    def get_queryset(self):
+        return super().get_queryset().select_related("currency", "payment_term", "salesperson")
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
@@ -180,9 +183,14 @@ class CustomerDeactivateView(ActionPermissionMixin, View):
     party. There is deliberately no delete view for customers at all.
     """
 
-    permission_required = "parties.change_customer"
+    required_permission = "parties.change_customer"
 
     def post(self, request, pk):
+        reason = request.POST.get("reason", "").strip()
+        if not reason:
+            messages.error(request, "Give a reason for the customer status change.")
+            return redirect("parties:customer_detail", pk=pk)
+
         customer = get_object_or_404(Customer, pk=pk)
         before = audit.snapshot(customer)
         reactivating = not customer.is_active
@@ -198,7 +206,7 @@ class CustomerDeactivateView(ActionPermissionMixin, View):
                 request,
                 customer,
                 before,
-                reason=request.POST.get("reason", "").strip(),
+                reason=reason,
             )
 
         messages.success(
@@ -212,7 +220,7 @@ class CustomerDeactivateView(ActionPermissionMixin, View):
 # ---------------------------------------------------------------------------
 class VendorListView(FilteredListView):
     model = Vendor
-    permission_required = "parties.view_vendor"
+    required_permission = "parties.view_vendor"
     page_title = "Vendors"
     page_subtitle = "Everyone you buy from."
     create_url_name = "parties:vendor_create"
@@ -239,7 +247,7 @@ class VendorListView(FilteredListView):
         return super().get_queryset().select_related("currency", "payment_term")
 
     def get_summary(self):
-        totals = Vendor.objects.aggregate(
+        totals = self.get_queryset().aggregate(
             total=Count("id"), active=Count("id", filter=Q(is_active=True))
         )
         return [("Vendors", totals["total"]), ("Active", totals["active"])]
@@ -249,17 +257,53 @@ class VendorCreateView(AuditedFormMixin, ActionPermissionMixin, CreateView):
     model = Vendor
     form_class = VendorForm
     template_name = "parties/customer_form.html"
-    permission_required = "parties.add_vendor"
+    required_permission = "parties.add_vendor"
     extra_context = {"page_title": "New vendor", "party_kind": "vendor"}
 
     def get_success_url(self):
-        return reverse("parties:vendor_list")
+        return reverse("parties:vendor_detail", args=[self.object.pk])
+
+
+class VendorDetailView(ActionPermissionMixin, DetailView):
+    model = Vendor
+    template_name = "parties/vendor_detail.html"
+    required_permission = "parties.view_vendor"
+    context_object_name = "vendor"
+
+    def get_queryset(self):
+        return (
+            super()
+            .get_queryset()
+            .select_related(
+                "currency",
+                "payment_term",
+                "payable_account",
+                "advance_account",
+                "default_tax_code",
+                "default_expense_account",
+            )
+        )
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context.update(
+            page_title=self.object.name,
+            page_subtitle=f"Vendor {self.object.code}",
+            audit_events=AuditEvent.objects.filter(
+                content_type__app_label="parties",
+                content_type__model="vendor",
+                object_id=self.object.pk,
+            ).select_related("user")[:20],
+        )
+        return context
 
 
 class VendorUpdateView(AuditedFormMixin, ActionPermissionMixin, UpdateView):
     model = Vendor
     form_class = VendorForm
     template_name = "parties/customer_form.html"
-    permission_required = "parties.change_vendor"
+    required_permission = "parties.change_vendor"
     extra_context = {"party_kind": "vendor"}
-    success_url = reverse_lazy("parties:vendor_list")
+
+    def get_success_url(self):
+        return reverse("parties:vendor_detail", args=[self.object.pk])

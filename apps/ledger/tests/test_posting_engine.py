@@ -2,6 +2,7 @@ from datetime import date
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
+from django.contrib.contenttypes.models import ContentType
 from django.test import TransactionTestCase
 
 from apps.core.models import (
@@ -33,25 +34,29 @@ from apps.ledger.services import (
 
 class PostingEngineTests(TransactionTestCase):
     def setUp(self):
+        # TransactionTestCase flushes and recreates content types between tests;
+        # discard IDs cached by a preceding case before the posting service uses
+        # them for its generic source relationship.
+        ContentType.objects.clear_cache()
         self.user = get_user_model().objects.create_user(
             id=900_001, username="posting-engine-member4"
         )
         self.currency = Currency.objects.create(
-            code="TST", name="Test Currency", symbol="T", decimal_places=2, is_base=True
+            code="TST", name="Test Currency", symbol="T", decimal_places=2
         )
         fiscal_year = FiscalYear.objects.create(
             id=900_001,
-            code="T-FY-2026",
-            start_date=date(2026, 1, 1),
-            end_date=date(2026, 12, 31),
+            code="T-FY-2099",
+            start_date=date(2099, 1, 1),
+            end_date=date(2099, 12, 31),
         )
         FiscalPeriod.objects.create(
             id=900_001,
             fiscal_year=fiscal_year,
             period_no=8,
-            name="Test August 2026",
-            start_date=date(2026, 8, 1),
-            end_date=date(2026, 8, 31),
+            name="Test August 2099",
+            start_date=date(2099, 8, 1),
+            end_date=date(2099, 8, 31),
         )
         DocumentSequence.objects.create(
             id=900_001,
@@ -98,7 +103,7 @@ class PostingEngineTests(TransactionTestCase):
 
     def build_journal(self, source, *, user):
         return JournalDraft(
-            entry_date=date(2026, 8, 31),
+            entry_date=date(2099, 8, 31),
             journal_type="GENERAL",
             narration=f"Production posting for {source.series} by {user.username}",
             currency=self.currency,

@@ -80,6 +80,7 @@ class SalesOrder(FinancialDocumentBase):
 
     def get_absolute_url(self):
         from django.urls import reverse
+
         return reverse("sales:so_detail", args=[self.pk])
 
 

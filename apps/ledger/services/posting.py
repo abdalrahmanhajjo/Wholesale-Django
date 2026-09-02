@@ -39,6 +39,7 @@ from apps.ledger.models import (
 from apps.ledger.services.exceptions import (
     PostingContractError,
     PostingEngineUnavailable,
+    PostingError,
     PostingErrorCode,
 )
 
@@ -288,6 +289,12 @@ class PostingService(ABC, Generic[SourceT]):
                     "Posting implementation must return PostingResult",
                     code=PostingErrorCode.INVALID_SERVICE_RESULT,
                 )
+        except PostingError as exc:
+            logger.warning(
+                "Posting rejected",
+                extra={**context, "posting_error_code": str(exc.code)},
+            )
+            raise
         except Exception:
             logger.exception("Posting failed", extra=context)
             raise

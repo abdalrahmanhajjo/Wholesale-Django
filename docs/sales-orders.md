@@ -131,8 +131,8 @@ Coverage:
 
 * Posting an approved order to the ledger is **not** part of this day; it
   lands when Member 4's posting engine is wired in.
-* Container/staging deployments will want the compiled stylesheet listed in
-  the README hardening notes; the current build uses the Play Tailwind CDN.
+* The shared stylesheet is compiled at build time and committed; after changing
+  template class names, run `npm run build:css` as documented in the README.
 * Shared-file edits touched by this work were flagged to Member 1 per
   CONTRIBUTING.md: `templates/core/list_base.html` (live-search script) and
   `templates/_theme.html` (removed a developer comment).

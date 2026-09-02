@@ -160,14 +160,18 @@ status actions and audit history.
         <form method="post" action="{% url 'sales:so_approve' order.pk %}" class="mt-4 space-y-3">
           {% csrf_token %}
           <input type="hidden" name="confirm" value="yes">
-          <input type="text" name="reason" placeholder="Reason for approval (required)"
+          <label for="approval-reason" class="sr-only">Reason for approval</label>
+          <input type="text" id="approval-reason" name="reason"
+                 placeholder="Reason for approval (required)"
                  class="field" required>
           <button type="submit" class="btn-accent w-full">Approve</button>
         </form>
         <form method="post" action="{% url 'sales:so_reject' order.pk %}" class="mt-3 space-y-3">
           {% csrf_token %}
           <input type="hidden" name="confirm" value="yes">
-          <input type="text" name="reason" placeholder="Reason for rejection (required)"
+          <label for="rejection-reason" class="sr-only">Reason for rejection</label>
+          <input type="text" id="rejection-reason" name="reason"
+                 placeholder="Reason for rejection (required)"
                  class="field" required>
           <button type="submit" class="btn-danger w-full">Reject</button>
         </form>

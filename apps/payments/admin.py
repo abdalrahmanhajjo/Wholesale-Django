@@ -19,10 +19,25 @@ class PaymentMethodAdmin(admin.ModelAdmin):
 
 @admin.register(Payment)
 class PaymentAdmin(admin.ModelAdmin):
-    list_display = ("number", "direction", "payment_date", "party", "amount_txn", "currency", "method", "status")
+    list_display = (
+        "number",
+        "direction",
+        "payment_date",
+        "party",
+        "amount_txn",
+        "currency",
+        "method",
+        "status",
+    )
     list_filter = ("direction", "status", "method", "money_account", "currency")
     search_fields = ("number", "reference", "customer__name", "vendor__name")
-    readonly_fields = ("amount_base", "allocated_txn", "unallocated_txn", "created_at", "updated_at")
+    readonly_fields = (
+        "amount_base",
+        "allocated_txn",
+        "unallocated_txn",
+        "created_at",
+        "updated_at",
+    )
 
 
 admin.site.register(Allocation)

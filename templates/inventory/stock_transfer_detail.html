@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% comment %}
+Stock transfer detail and the post action (INV-008).
+
+Posting is gated server-side by StockTransferPostView (core.post_stock_movement)
+regardless of which buttons a `{% if perms.* %}` check happens to hide
+(CONTRIBUTING.md §4b, ACC-004).
+{% endcomment %}
+
+{% block header_title %}{{ transfer.number }}{% endblock %}
+
+{% block actions %}
+  {% if can_edit and perms.inventory.change_stocktransfer %}
+    <a href="{% url 'inventory:st_edit' transfer.pk %}" class="btn-ghost">Edit</a>
+  {% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="grid gap-4 lg:grid-cols-3">
+
+  <div class="space-y-4 lg:col-span-2">
+    <div class="card card-pad">
+      <div class="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p class="eyebrow">Stock transfer</p>
+          <h2 class="display mt-1 text-2xl">{{ transfer.number }}</h2>
+          <p class="text-sm text-muted-fg">{{ transfer.from_warehouse }} → {{ transfer.to_warehouse }}</p>
+        </div>
+        {% include "core/_status_badge.html" with value=transfer.status display=transfer.get_status_display %}
+      </div>
+
+      <dl class="mt-6 grid gap-x-6 gap-y-4 sm:grid-cols-2">
+        <div><dt class="eyebrow">From</dt><dd class="mt-1 text-sm">{{ transfer.from_warehouse }}</dd></div>
+        <div><dt class="eyebrow">To</dt><dd class="mt-1 text-sm">{{ transfer.to_warehouse }}</dd></div>
+        <div><dt class="eyebrow">Transfer date</dt><dd class="mt-1 text-sm">{{ transfer.document_date }}</dd></div>
+        <div><dt class="eyebrow">Reason</dt><dd class="mt-1 text-sm">{{ transfer.reason|default:"—" }}</dd></div>
+      </dl>
+    </div>
+
+    <div class="card">
+      <p class="card-title border-b border-line p-4 sm:p-5">Lines</p>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-line bg-muted-bg text-[11px] font-bold uppercase tracking-[0.1em] text-muted-fg">
+              <th class="px-4 py-2 text-left">Product</th>
+              <th class="px-4 py-2 text-right">Quantity</th>
+              <th class="px-4 py-2 text-right">Unit cost</th>
+              <th class="px-4 py-2 text-right">Total cost</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for line in lines %}
+              <tr class="border-b border-line last:border-0">
+                <td class="px-4 py-2 font-medium">{{ line.product }}</td>
+                <td class="px-4 py-2 text-right tabular-nums">{{ line.quantity }}</td>
+                <td class="px-4 py-2 text-right tabular-nums">{{ line.unit_cost|floatformat:4 }}</td>
+                <td class="px-4 py-2 text-right tabular-nums font-medium">{{ line.total_cost|floatformat:2 }}</td>
+              </tr>
+            {% empty %}
+              <tr><td colspan="4" class="px-4 py-8 text-center text-sm text-muted-fg">No lines yet.</td></tr>
+            {% endfor %}
+          </tbody>
+          <tfoot>
+            <tr class="border-t-2 border-line font-semibold">
+              <td colspan="3" class="px-4 py-2 text-right text-xs uppercase tracking-wide text-muted-fg">Total cost</td>
+              <td class="px-4 py-2 text-right tabular-nums">{{ transfer.total_cost_base|floatformat:2 }}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+
+    {% if transfer.notes %}
+      <div class="card card-pad">
+        <p class="eyebrow">Notes</p>
+        <p class="mt-1 whitespace-pre-line text-sm text-muted-fg">{{ transfer.notes }}</p>
+      </div>
+    {% endif %}
+  </div>
+
+  <div class="space-y-4">
+    <div class="card card-pad">
+      <p class="eyebrow">Posting (INV-008)</p>
+      <h2 class="card-title mt-2">{{ transfer.get_status_display }}</h2>
+
+      {% if transfer.status == "DRAFT" %}
+        {% if perms.core.post_stock_movement %}
+          <form method="post" action="{% url 'inventory:st_post' transfer.pk %}" class="mt-3">
+            {% csrf_token %}
+            <button type="submit" class="btn-primary w-full">Post transfer</button>
+          </form>
+          <p class="help mt-2">Posting moves each line's quantity out of the source warehouse and into the destination at the cost it left at.</p>
+        {% endif %}
+      {% elif transfer.status == "POSTED" %}
+        <p class="mt-2 text-sm text-muted-fg">
+          Posted by {{ transfer.posted_by|default:"—" }} on {{ transfer.posted_at|date:"j M Y, H:i" }}.
+        </p>
+      {% endif %}
+    </div>
+
+    <div class="card card-pad">
+      <p class="eyebrow">Audit history</p>
+      <h2 class="card-title mt-2">What changed, and who changed it</h2>
+      <ul class="mt-4 space-y-4">
+        {% for event in audit_events %}
+          <li class="border-l-2 border-line pl-3">
+            <p class="text-xs font-bold uppercase tracking-wide text-brand-deep">{{ event.get_action_display }}</p>
+            <p class="text-sm">{{ event.user|default:"system" }}</p>
+            <p class="text-xs text-muted-fg">{{ event.occurred_at|date:"j M Y, H:i" }}</p>
+          </li>
+        {% empty %}
+          <li class="text-sm text-muted-fg">No changes recorded yet.</li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -3,10 +3,15 @@
 from django.contrib import admin
 
 from apps.inventory.models import (
+    AdjustmentReason,
     GoodsReceipt,
     GoodsReceiptLine,
+    StockAdjustment,
+    StockAdjustmentLine,
     StockBalance,
     StockMovement,
+    StockTransfer,
+    StockTransferLine,
     Warehouse,
 )
 
@@ -79,3 +84,64 @@ class StockMovementAdmin(admin.ModelAdmin):
 
     def has_delete_permission(self, request, obj=None):
         return False
+
+
+class StockTransferLineInline(admin.TabularInline):
+    model = StockTransferLine
+    extra = 0
+    fields = ("line_no", "product", "quantity", "unit_cost", "total_cost")
+    readonly_fields = ("unit_cost", "total_cost")
+
+
+@admin.register(StockTransfer)
+class StockTransferAdmin(admin.ModelAdmin):
+    list_display = (
+        "number",
+        "from_warehouse",
+        "to_warehouse",
+        "document_date",
+        "status",
+        "total_cost_base",
+    )
+    list_filter = ("status", "from_warehouse", "to_warehouse")
+    search_fields = ("number", "reason")
+    date_hierarchy = "document_date"
+    inlines = [StockTransferLineInline]
+    readonly_fields = ("status", "posted_at", "posted_by", "journal_entry")
+
+
+class StockAdjustmentLineInline(admin.TabularInline):
+    model = StockAdjustmentLine
+    extra = 0
+    fields = ("line_no", "product", "quantity_delta", "unit_cost", "value_delta", "note")
+    readonly_fields = ("unit_cost", "value_delta")
+
+
+@admin.register(StockAdjustment)
+class StockAdjustmentAdmin(admin.ModelAdmin):
+    list_display = (
+        "number",
+        "warehouse",
+        "reason",
+        "document_date",
+        "status",
+        "total_value_base",
+    )
+    list_filter = ("status", "warehouse", "reason")
+    search_fields = ("number", "narration")
+    date_hierarchy = "document_date"
+    inlines = [StockAdjustmentLineInline]
+    readonly_fields = (
+        "status",
+        "approved_at",
+        "approved_by",
+        "posted_at",
+        "posted_by",
+        "journal_entry",
+    )
+
+
+@admin.register(AdjustmentReason)
+class AdjustmentReasonAdmin(admin.ModelAdmin):
+    list_display = ("code", "name", "increases_stock", "requires_approval", "is_active")
+    search_fields = ("code", "name")

@@ -1,6 +1,7 @@
 """
-Goods receipt screens: list, create/edit with an accept/reject line formset,
-detail, and post (PUR-003, PUR-004, INV-006).
+Goods receipt, stock transfer and stock adjustment screens: list, create/edit,
+detail, and the posting / approval actions (PUR-003, PUR-004, INV-006,
+INV-008, INV-009).
 
 Shape copied from apps/purchases/views.py per CONTRIBUTING.md §4d/§4e.
 """
@@ -17,14 +18,29 @@ from apps.core import audit
 from apps.core.list_views import ChoiceFilter, Column, FilteredListView
 from apps.core.mixins import ActionPermissionMixin
 from apps.core.models import AuditEvent, DocumentStatus
-from apps.core.permissions import EXPORT_DATA, POST_GOODS_RECEIPT
+from apps.core.permissions import (
+    APPROVE_STOCK_ADJUSTMENT,
+    EXPORT_DATA,
+    POST_GOODS_RECEIPT,
+    POST_STOCK_MOVEMENT,
+)
 from apps.inventory import services
-from apps.inventory.forms import GoodsReceiptForm, GoodsReceiptLineFormSet
+from apps.inventory.forms import (
+    GoodsReceiptForm,
+    GoodsReceiptLineFormSet,
+    StockAdjustmentForm,
+    StockAdjustmentLineFormSet,
+    StockAdjustmentRejectForm,
+    StockTransferForm,
+    StockTransferLineFormSet,
+)
 from apps.inventory.models import (
     GoodsReceipt,
     MovementType,
+    StockAdjustment,
     StockBalance,
     StockMovement,
+    StockTransfer,
     Warehouse,
 )
 from apps.purchases.models import PurchaseOrder
@@ -365,3 +381,434 @@ class StockValuationListView(FilteredListView):
             ("Total value", totals["total_value"] or 0),
             ("Below reorder level", below_reorder),
         ]
+
+
+# ---------------------------------------------------------------------------
+# Stock transfers: list, create/edit, detail, post (INV-008)
+# ---------------------------------------------------------------------------
+class StockTransferListView(FilteredListView):
+    model = StockTransfer
+    required_permission = "inventory.view_stocktransfer"
+    page_title = "Stock transfers"
+    page_subtitle = "Moving stock between warehouses."
+    create_url_name = "inventory:st_create"
+    create_label = "New transfer"
+    export_permission = EXPORT_DATA
+    export_filename = "stock-transfers"
+    default_ordering = "-document_date"
+
+    columns = [
+        Column("number", "Number", sortable=True, link=True, css="font-mono text-xs"),
+        Column("from_warehouse", "From", sortable=True, order_by="from_warehouse__code"),
+        Column("to_warehouse", "To", sortable=True, order_by="to_warehouse__code"),
+        Column("document_date", "Date", sortable=True),
+        Column("total_cost_base", "Cost", align="right", money=True, sortable=True),
+        Column("status", "Status", badge=True, align="center"),
+    ]
+    search_fields = ["number", "reason"]
+    filters = [ChoiceFilter("status", "Status", DocumentStatus.choices)]
+
+    def get_queryset(self):
+        return super().get_queryset().select_related("from_warehouse", "to_warehouse")
+
+    def get_summary(self):
+        totals = StockTransfer.objects.aggregate(
+            total=Count("id"),
+            draft=Count("id", filter=Q(status=DocumentStatus.DRAFT)),
+            posted=Count("id", filter=Q(status=DocumentStatus.POSTED)),
+        )
+        return [
+            ("Transfers", totals["total"]),
+            ("Draft", totals["draft"]),
+            ("Posted", totals["posted"]),
+        ]
+
+
+class StockTransferFormView(ActionPermissionMixin, View):
+    """Shared GET/POST handling for create and edit."""
+
+    template_name = "inventory/stock_transfer_form.html"
+    is_create = True
+
+    def get_object(self, pk):
+        return get_object_or_404(StockTransfer, pk=pk)
+
+    def is_locked(self, transfer):
+        return not self.is_create and transfer.status != DocumentStatus.DRAFT
+
+    def render_form(self, request, form, formset, transfer):
+        return render(
+            request,
+            self.template_name,
+            {
+                "form": form,
+                "formset": formset,
+                "empty_form": formset.empty_form,
+                "object": None if self.is_create else transfer,
+                "page_title": "New stock transfer"
+                if self.is_create
+                else f"Edit {transfer.number}",
+            },
+        )
+
+    def _locked_redirect(self, request, transfer):
+        messages.error(
+            request,
+            f"{transfer.number} is {transfer.get_status_display()} and can no longer be edited.",
+        )
+        return redirect(transfer.get_absolute_url())
+
+    def get(self, request, pk=None):
+        transfer = StockTransfer() if self.is_create else self.get_object(pk)
+        if self.is_locked(transfer):
+            return self._locked_redirect(request, transfer)
+        form = StockTransferForm(instance=transfer)
+        formset = StockTransferLineFormSet(instance=transfer, prefix="lines")
+        return self.render_form(request, form, formset, transfer)
+
+    def post(self, request, pk=None):
+        transfer = StockTransfer() if self.is_create else self.get_object(pk)
+        if self.is_locked(transfer):
+            return self._locked_redirect(request, transfer)
+
+        before = None if self.is_create else audit.snapshot(transfer)
+        form = StockTransferForm(request.POST, instance=transfer)
+        formset = StockTransferLineFormSet(request.POST, instance=transfer, prefix="lines")
+
+        if form.is_valid() and formset.is_valid():
+            with transaction.atomic():
+                transfer = form.save(commit=False)
+                is_new = transfer.pk is None
+                if is_new:
+                    transfer.number = services.allocate_st_number(transfer.document_date)
+                    transfer.created_by = request.user
+                transfer.updated_by = request.user
+                transfer.save()
+
+                instances = formset.save(commit=False)
+                for obj in formset.deleted_objects:
+                    obj.delete()
+                next_line_no = (
+                    transfer.lines.aggregate(Max("line_no"))["line_no__max"] or 0
+                ) + 1
+                for instance in instances:
+                    instance.transfer = transfer
+                    if instance.pk is None:
+                        instance.line_no = next_line_no
+                        next_line_no += 1
+                    instance.save()
+
+                services.recalculate_transfer(transfer)
+
+                if is_new:
+                    audit.record_create(request, transfer)
+                    messages.success(request, f"{transfer.number} created as a draft.")
+                else:
+                    event = audit.record_update(request, transfer, before)
+                    if event:
+                        messages.success(request, f"{transfer.number} updated.")
+                    else:
+                        messages.info(request, "No changes to save.")
+
+            return redirect(transfer.get_absolute_url())
+
+        return self.render_form(request, form, formset, transfer)
+
+
+class StockTransferCreateView(StockTransferFormView):
+    required_permission = "inventory.add_stocktransfer"
+    is_create = True
+
+
+class StockTransferEditView(StockTransferFormView):
+    required_permission = "inventory.change_stocktransfer"
+    is_create = False
+
+
+class StockTransferDetailView(ActionPermissionMixin, DetailView):
+    model = StockTransfer
+    template_name = "inventory/stock_transfer_detail.html"
+    required_permission = "inventory.view_stocktransfer"
+    context_object_name = "transfer"
+
+    def get_queryset(self):
+        return super().get_queryset().select_related("from_warehouse", "to_warehouse")
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        ctx["page_title"] = self.object.number
+        ctx["page_subtitle"] = f"{self.object.from_warehouse} → {self.object.to_warehouse}"
+        ctx["lines"] = self.object.lines.select_related("product")
+        ctx["can_edit"] = self.object.status == DocumentStatus.DRAFT
+        ctx["audit_events"] = AuditEvent.objects.filter(
+            content_type__app_label="inventory",
+            content_type__model="stocktransfer",
+            object_id=self.object.pk,
+        ).select_related("user")[:20]
+        return ctx
+
+
+class StockTransferPostView(ActionPermissionMixin, View):
+    required_permission = POST_STOCK_MOVEMENT
+
+    def post(self, request, pk):
+        transfer = get_object_or_404(StockTransfer, pk=pk)
+        try:
+            services.post_stock_transfer(transfer, request.user, request)
+        except ValidationError as exc:
+            messages.error(request, " ".join(exc.messages))
+        else:
+            messages.success(request, f"{transfer.number} posted — stock moved.")
+        return redirect("inventory:st_detail", pk=pk)
+
+
+# ---------------------------------------------------------------------------
+# Stock adjustments: list, create/edit, detail, approval workflow, post
+# (INV-009)
+# ---------------------------------------------------------------------------
+class StockAdjustmentListView(FilteredListView):
+    model = StockAdjustment
+    required_permission = "inventory.view_stockadjustment"
+    page_title = "Stock adjustments"
+    page_subtitle = "Correcting stock on hand, with a reason and an audit trail."
+    create_url_name = "inventory:sa_create"
+    create_label = "New adjustment"
+    export_permission = EXPORT_DATA
+    export_filename = "stock-adjustments"
+    default_ordering = "-document_date"
+
+    columns = [
+        Column("number", "Number", sortable=True, link=True, css="font-mono text-xs"),
+        Column("warehouse", "Warehouse", sortable=True, order_by="warehouse__code"),
+        Column("reason", "Reason", sortable=True, order_by="reason__name"),
+        Column("document_date", "Date", sortable=True),
+        Column("total_value_base", "Value", align="right", money=True, sortable=True),
+        Column("status", "Status", badge=True, align="center"),
+    ]
+    search_fields = ["number", "narration"]
+    filters = [ChoiceFilter("status", "Status", DocumentStatus.choices)]
+
+    def get_queryset(self):
+        return super().get_queryset().select_related("warehouse", "reason")
+
+    def get_summary(self):
+        totals = StockAdjustment.objects.aggregate(
+            total=Count("id"),
+            draft=Count("id", filter=Q(status=DocumentStatus.DRAFT)),
+            posted=Count("id", filter=Q(status=DocumentStatus.POSTED)),
+        )
+        return [
+            ("Adjustments", totals["total"]),
+            ("Draft", totals["draft"]),
+            ("Posted", totals["posted"]),
+        ]
+
+
+class StockAdjustmentFormView(ActionPermissionMixin, View):
+    """Shared GET/POST handling for create and edit."""
+
+    template_name = "inventory/stock_adjustment_form.html"
+    is_create = True
+
+    def get_object(self, pk):
+        return get_object_or_404(StockAdjustment, pk=pk)
+
+    def is_locked(self, adjustment):
+        return not self.is_create and adjustment.status not in (
+            DocumentStatus.DRAFT,
+            DocumentStatus.SUBMITTED,
+            DocumentStatus.REJECTED,
+        )
+
+    def render_form(self, request, form, formset, adjustment):
+        return render(
+            request,
+            self.template_name,
+            {
+                "form": form,
+                "formset": formset,
+                "empty_form": formset.empty_form,
+                "object": None if self.is_create else adjustment,
+                "page_title": "New stock adjustment"
+                if self.is_create
+                else f"Edit {adjustment.number}",
+            },
+        )
+
+    def _locked_redirect(self, request, adjustment):
+        messages.error(
+            request,
+            f"{adjustment.number} is {adjustment.get_status_display()} "
+            "and can no longer be edited.",
+        )
+        return redirect(adjustment.get_absolute_url())
+
+    def get(self, request, pk=None):
+        adjustment = StockAdjustment() if self.is_create else self.get_object(pk)
+        if self.is_locked(adjustment):
+            return self._locked_redirect(request, adjustment)
+        form = StockAdjustmentForm(instance=adjustment)
+        formset = StockAdjustmentLineFormSet(instance=adjustment, prefix="lines")
+        return self.render_form(request, form, formset, adjustment)
+
+    def post(self, request, pk=None):
+        adjustment = StockAdjustment() if self.is_create else self.get_object(pk)
+        if self.is_locked(adjustment):
+            return self._locked_redirect(request, adjustment)
+
+        before = None if self.is_create else audit.snapshot(adjustment)
+        form = StockAdjustmentForm(request.POST, instance=adjustment)
+        formset = StockAdjustmentLineFormSet(request.POST, instance=adjustment, prefix="lines")
+
+        if form.is_valid() and formset.is_valid():
+            reason = form.cleaned_data["reason"]
+            bad_lines = services.validate_adjustment_directions(reason, formset.cleaned_data)
+            if bad_lines:
+                direction = "increase" if reason.increases_stock else "decrease"
+                messages.error(
+                    request,
+                    f'"{reason}" only allows lines that {direction} stock — check line '
+                    f'{", ".join(map(str, bad_lines))}.',
+                )
+                return self.render_form(request, form, formset, adjustment)
+
+            with transaction.atomic():
+                adjustment = form.save(commit=False)
+                is_new = adjustment.pk is None
+                if is_new:
+                    adjustment.number = services.allocate_sa_number(adjustment.document_date)
+                    adjustment.created_by = request.user
+                adjustment.updated_by = request.user
+                adjustment.save()
+
+                instances = formset.save(commit=False)
+                for obj in formset.deleted_objects:
+                    obj.delete()
+                next_line_no = (
+                    adjustment.lines.aggregate(Max("line_no"))["line_no__max"] or 0
+                ) + 1
+                for instance in instances:
+                    instance.adjustment = adjustment
+                    if instance.pk is None:
+                        instance.line_no = next_line_no
+                        next_line_no += 1
+                    instance.save()
+
+                services.recalculate_adjustment(adjustment)
+
+                if is_new:
+                    audit.record_create(request, adjustment)
+                    messages.success(request, f"{adjustment.number} created as a draft.")
+                else:
+                    event = audit.record_update(request, adjustment, before)
+                    if event:
+                        messages.success(request, f"{adjustment.number} updated.")
+                    else:
+                        messages.info(request, "No changes to save.")
+
+            return redirect(adjustment.get_absolute_url())
+
+        return self.render_form(request, form, formset, adjustment)
+
+
+class StockAdjustmentCreateView(StockAdjustmentFormView):
+    required_permission = "inventory.add_stockadjustment"
+    is_create = True
+
+
+class StockAdjustmentEditView(StockAdjustmentFormView):
+    required_permission = "inventory.change_stockadjustment"
+    is_create = False
+
+
+class StockAdjustmentDetailView(ActionPermissionMixin, DetailView):
+    model = StockAdjustment
+    template_name = "inventory/stock_adjustment_detail.html"
+    required_permission = "inventory.view_stockadjustment"
+    context_object_name = "adjustment"
+
+    def get_queryset(self):
+        return super().get_queryset().select_related("warehouse", "reason")
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        ctx["page_title"] = self.object.number
+        ctx["page_subtitle"] = f"{self.object.reason} at {self.object.warehouse}"
+        ctx["lines"] = self.object.lines.select_related("product")
+        ctx["reject_form"] = StockAdjustmentRejectForm()
+        ctx["can_edit"] = self.object.status in (
+            DocumentStatus.DRAFT,
+            DocumentStatus.SUBMITTED,
+            DocumentStatus.REJECTED,
+        )
+        ctx["audit_events"] = AuditEvent.objects.filter(
+            content_type__app_label="inventory",
+            content_type__model="stockadjustment",
+            object_id=self.object.pk,
+        ).select_related("user")[:20]
+        return ctx
+
+
+class StockAdjustmentSubmitView(ActionPermissionMixin, View):
+    required_permission = "inventory.change_stockadjustment"
+
+    def post(self, request, pk):
+        adjustment = get_object_or_404(StockAdjustment, pk=pk)
+        try:
+            services.submit_stock_adjustment(adjustment, request.user, request)
+        except ValidationError as exc:
+            messages.error(request, " ".join(exc.messages))
+        else:
+            if adjustment.status == DocumentStatus.APPROVED:
+                messages.success(request, f"{adjustment.number} submitted and auto-approved.")
+            else:
+                messages.success(request, f"{adjustment.number} submitted for approval.")
+        return redirect("inventory:sa_detail", pk=pk)
+
+
+class StockAdjustmentApproveView(ActionPermissionMixin, View):
+    required_permission = APPROVE_STOCK_ADJUSTMENT
+
+    def post(self, request, pk):
+        adjustment = get_object_or_404(StockAdjustment, pk=pk)
+        try:
+            services.approve_stock_adjustment(adjustment, request.user, request)
+        except ValidationError as exc:
+            messages.error(request, " ".join(exc.messages))
+        else:
+            messages.success(request, f"{adjustment.number} approved.")
+        return redirect("inventory:sa_detail", pk=pk)
+
+
+class StockAdjustmentRejectView(ActionPermissionMixin, View):
+    required_permission = APPROVE_STOCK_ADJUSTMENT
+
+    def post(self, request, pk):
+        adjustment = get_object_or_404(StockAdjustment, pk=pk)
+        form = StockAdjustmentRejectForm(request.POST)
+        if not form.is_valid():
+            messages.error(request, "Give a reason for rejecting this adjustment.")
+            return redirect("inventory:sa_detail", pk=pk)
+        try:
+            services.reject_stock_adjustment(
+                adjustment, request.user, form.cleaned_data["reason"], request
+            )
+        except ValidationError as exc:
+            messages.error(request, " ".join(exc.messages))
+        else:
+            messages.success(request, f"{adjustment.number} rejected.")
+        return redirect("inventory:sa_detail", pk=pk)
+
+
+class StockAdjustmentPostView(ActionPermissionMixin, View):
+    required_permission = POST_STOCK_MOVEMENT
+
+    def post(self, request, pk):
+        adjustment = get_object_or_404(StockAdjustment, pk=pk)
+        try:
+            services.post_stock_adjustment(adjustment, request.user, request)
+        except ValidationError as exc:
+            messages.error(request, " ".join(exc.messages))
+        else:
+            messages.success(request, f"{adjustment.number} posted — stock updated.")
+        return redirect("inventory:sa_detail", pk=pk)

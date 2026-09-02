@@ -548,6 +548,11 @@ class StockTransfer(TimeStampedModel):
     def __str__(self):
         return self.number
 
+    def get_absolute_url(self):
+        from django.urls import reverse
+
+        return reverse("inventory:st_detail", args=[self.pk])
+
 
 class StockTransferLine(models.Model):
     transfer = models.ForeignKey(StockTransfer, on_delete=models.CASCADE, related_name="lines")
@@ -642,6 +647,11 @@ class StockAdjustment(TimeStampedModel):
 
     def __str__(self):
         return self.number
+
+    def get_absolute_url(self):
+        from django.urls import reverse
+
+        return reverse("inventory:sa_detail", args=[self.pk])
 
 
 class StockAdjustmentLine(models.Model):

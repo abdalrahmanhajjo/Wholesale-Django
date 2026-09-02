@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+{% comment %}
+Stock adjustment detail, the INV-009 approval workflow, and the post action.
+
+Every action below is gated server-side by the matching view (submit needs
+inventory.change_stockadjustment, approve/reject need
+core.approve_stock_adjustment, post needs core.post_stock_movement)
+regardless of which buttons a `{% if perms.* %}` check happens to hide
+(CONTRIBUTING.md §4b, ACC-004).
+{% endcomment %}
+
+{% block header_title %}{{ adjustment.number }}{% endblock %}
+
+{% block actions %}
+  {% if can_edit and perms.inventory.change_stockadjustment %}
+    <a href="{% url 'inventory:sa_edit' adjustment.pk %}" class="btn-ghost">Edit</a>
+  {% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="grid gap-4 lg:grid-cols-3">
+
+  <div class="space-y-4 lg:col-span-2">
+    <div class="card card-pad">
+      <div class="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p class="eyebrow">Stock adjustment</p>
+          <h2 class="display mt-1 text-2xl">{{ adjustment.number }}</h2>
+          <p class="text-sm text-muted-fg">{{ adjustment.reason }} — {{ adjustment.warehouse }}</p>
+        </div>
+        {% include "core/_status_badge.html" with value=adjustment.status display=adjustment.get_status_display %}
+      </div>
+
+      <dl class="mt-6 grid gap-x-6 gap-y-4 sm:grid-cols-2">
+        <div><dt class="eyebrow">Warehouse</dt><dd class="mt-1 text-sm">{{ adjustment.warehouse }}</dd></div>
+        <div><dt class="eyebrow">Reason</dt><dd class="mt-1 text-sm">{{ adjustment.reason }}</dd></div>
+        <div><dt class="eyebrow">Date</dt><dd class="mt-1 text-sm">{{ adjustment.document_date }}</dd></div>
+        <div><dt class="eyebrow">Attachment reference</dt><dd class="mt-1 text-sm">{{ adjustment.attachment_reference|default:"—" }}</dd></div>
+      </dl>
+    </div>
+
+    <div class="card">
+      <p class="card-title border-b border-line p-4 sm:p-5">Lines</p>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-line bg-muted-bg text-[11px] font-bold uppercase tracking-[0.1em] text-muted-fg">
+              <th class="px-4 py-2 text-left">Product</th>
+              <th class="px-4 py-2 text-right">Quantity change</th>
+              <th class="px-4 py-2 text-right">Unit cost</th>
+              <th class="px-4 py-2 text-right">Value change</th>
+              <th class="px-4 py-2 text-left">Note</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for line in lines %}
+              <tr class="border-b border-line last:border-0">
+                <td class="px-4 py-2 font-medium">{{ line.product }}</td>
+                <td class="px-4 py-2 text-right tabular-nums">{{ line.quantity_delta }}</td>
+                <td class="px-4 py-2 text-right tabular-nums">{{ line.unit_cost|floatformat:4 }}</td>
+                <td class="px-4 py-2 text-right tabular-nums font-medium">{{ line.value_delta|floatformat:2 }}</td>
+                <td class="px-4 py-2 text-sm text-muted-fg">{{ line.note|default:"—" }}</td>
+              </tr>
+            {% empty %}
+              <tr><td colspan="5" class="px-4 py-8 text-center text-sm text-muted-fg">No lines yet.</td></tr>
+            {% endfor %}
+          </tbody>
+          <tfoot>
+            <tr class="border-t-2 border-line font-semibold">
+              <td colspan="3" class="px-4 py-2 text-right text-xs uppercase tracking-wide text-muted-fg">Net value</td>
+              <td class="px-4 py-2 text-right tabular-nums">{{ adjustment.total_value_base|floatformat:2 }}</td>
+              <td></td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+
+    {% if adjustment.narration %}
+      <div class="card card-pad">
+        <p class="eyebrow">Narration</p>
+        <p class="mt-1 whitespace-pre-line text-sm text-muted-fg">{{ adjustment.narration }}</p>
+      </div>
+    {% endif %}
+  </div>
+
+  <div class="space-y-4">
+    <div class="card card-pad">
+      <p class="eyebrow">Approval (INV-009)</p>
+      <h2 class="card-title mt-2">{{ adjustment.get_status_display }}</h2>
+
+      {% if adjustment.status == "DRAFT" or adjustment.status == "REJECTED" %}
+        {% if perms.inventory.change_stockadjustment %}
+          <form method="post" action="{% url 'inventory:sa_submit' adjustment.pk %}" class="mt-3">
+            {% csrf_token %}
+            <button type="submit" class="btn-primary w-full">
+              {% if adjustment.reason.requires_approval %}Submit for approval{% else %}Submit{% endif %}
+            </button>
+          </form>
+          {% if not adjustment.reason.requires_approval %}
+            <p class="help mt-2">"{{ adjustment.reason }}" doesn't require sign-off — submitting approves it immediately.</p>
+          {% endif %}
+        {% endif %}
+      {% elif adjustment.status == "SUBMITTED" %}
+        <p class="mt-2 text-sm text-muted-fg">Awaiting sign-off.</p>
+        {% if perms.core.approve_stock_adjustment %}
+          <form method="post" action="{% url 'inventory:sa_approve' adjustment.pk %}" class="mt-3">
+            {% csrf_token %}
+            <button type="submit" class="btn-accent w-full">Approve</button>
+          </form>
+          <form method="post" action="{% url 'inventory:sa_reject' adjustment.pk %}" class="mt-2 space-y-2">
+            {% csrf_token %}
+            {% include "core/_form_field.html" with field=reject_form.reason %}
+            <button type="submit" class="btn-danger w-full">Reject</button>
+          </form>
+        {% endif %}
+      {% elif adjustment.status == "APPROVED" %}
+        <p class="mt-2 text-sm text-muted-fg">
+          Approved by {{ adjustment.approved_by|default:"—" }} on {{ adjustment.approved_at|date:"j M Y, H:i" }}.
+        </p>
+        {% if perms.core.post_stock_movement %}
+          <form method="post" action="{% url 'inventory:sa_post' adjustment.pk %}" class="mt-3">
+            {% csrf_token %}
+            <button type="submit" class="btn-primary w-full">Post adjustment</button>
+          </form>
+        {% endif %}
+      {% elif adjustment.status == "POSTED" %}
+        <p class="mt-2 text-sm text-muted-fg">
+          Posted by {{ adjustment.posted_by|default:"—" }} on {{ adjustment.posted_at|date:"j M Y, H:i" }}.
+        </p>
+      {% endif %}
+    </div>
+
+    <div class="card card-pad">
+      <p class="eyebrow">Audit history</p>
+      <h2 class="card-title mt-2">What changed, and who changed it</h2>
+      <ul class="mt-4 space-y-4">
+        {% for event in audit_events %}
+          <li class="border-l-2 border-line pl-3">
+            <p class="text-xs font-bold uppercase tracking-wide text-brand-deep">{{ event.get_action_display }}</p>
+            <p class="text-sm">{{ event.user|default:"system" }}</p>
+            <p class="text-xs text-muted-fg">{{ event.occurred_at|date:"j M Y, H:i" }}</p>
+            {% if event.reason %}<p class="mt-1 text-xs italic text-muted-fg">{{ event.reason }}</p>{% endif %}
+          </li>
+        {% empty %}
+          <li class="text-sm text-muted-fg">No changes recorded yet.</li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+</div>
+{% endblock %}

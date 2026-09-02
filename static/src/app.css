@@ -271,6 +271,141 @@
     .lines-stack-wrap { @apply overflow-visible; }
   }
 
+
+  /* ========================================================= form shell === */
+  /*
+   * One layout for every form in the product: a stack of sections, each a card
+   * with a heading and a two-column grid that collapses to one below sm. The
+   * grid is declared once here rather than repeated as utility classes on each
+   * template, so column behaviour cannot drift between screens.
+   */
+  .form-shell { @apply mx-auto flex w-full flex-col gap-4; }
+  .form-section { @apply card overflow-hidden; }
+  .form-section-head {
+    @apply flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1
+           border-b border-line px-5 py-4 sm:px-6;
+  }
+  .form-section-title { @apply text-base font-bold text-ink; }
+  .form-section-hint { @apply w-full text-sm text-muted-fg; }
+  .form-section-body { @apply grid gap-x-5 gap-y-4 p-5 sm:grid-cols-2 sm:p-6; }
+  .form-section-body-1 { @apply sm:grid-cols-1; }
+  .form-section-body-3 { @apply sm:grid-cols-2 lg:grid-cols-3; }
+  /* Long text should not be forced into half a row. */
+  .field-wide { @apply sm:col-span-2; }
+  .form-actions {
+    @apply sticky bottom-0 z-10 -mx-1 flex flex-wrap items-center gap-3
+           border-t border-line bg-canvas/95 px-1 py-4 backdrop-blur;
+  }
+  .form-actions-hint { @apply basis-full text-sm text-muted-fg sm:basis-auto; }
+
+  /* ==================================================== floating labels === */
+  /*
+   * The label starts where the placeholder would be and rises when the field is
+   * focused or filled. It stays a real <label for=...> throughout — the motion
+   * is presentation only, so nothing about how the control is named changes.
+   *
+   * The placeholder is hidden until focus. Showing both at once would print two
+   * strings in the same place; revealing the format example the moment someone
+   * starts typing is when it is actually useful.
+   */
+  .field-wrap.is-floating { @apply relative pt-2; }
+  .field-wrap.is-floating > .label {
+    @apply pointer-events-none absolute left-3 top-[1.15rem] z-10 mb-0 origin-left
+           text-sm font-medium text-muted-fg transition-all duration-150;
+  }
+  .field-wrap.is-floating.is-focused > .label,
+  .field-wrap.is-floating.is-filled > .label {
+    @apply top-0 text-[11px] font-bold uppercase tracking-[0.08em] text-ink;
+  }
+  .field-wrap.is-floating .field { @apply h-11 pt-3; }
+  .field-wrap.is-floating textarea.field { @apply h-auto pt-5; }
+  .field-wrap.is-floating .field::placeholder { @apply text-transparent transition-colors; }
+  .field-wrap.is-floating.is-focused .field::placeholder { @apply text-muted-fg; }
+
+  /* ======================================================= field states === */
+  .field-wrap.is-error   .field { @apply border-danger-strong bg-red-50/40; }
+  .field-wrap.is-warning .field { @apply border-amber-600; }
+  .field-wrap.is-ok      .field { @apply border-brand-deep; }
+  .field-wrap.is-error.is-floating   > .label { @apply text-danger-strong; }
+  .field-wrap.is-warning.is-floating > .label { @apply text-amber-800; }
+  .field:disabled, .field[readonly] {
+    @apply cursor-not-allowed border-line bg-muted-bg text-muted-fg;
+  }
+
+  .field-live-warning { @apply font-medium text-amber-900; }
+  .field-live-info { @apply text-muted-fg; }
+
+  /* A value the system filled in announces itself briefly, then settles. */
+  .field-wrap.is-prefilled .field {
+    animation: prefill-flash 1.4s ease-out;
+  }
+  @keyframes prefill-flash {
+    0%   { background-color: #edf9f1; border-color: #1f7447; }
+    100% { background-color: #fff; }
+  }
+
+  /* ============================================== currency adornment ===== */
+  .field-wrap.has-adornment { @apply relative; }
+  .field-adornment {
+    @apply pointer-events-none absolute bottom-0 left-3 flex h-10 items-center
+           text-sm font-semibold text-muted-fg;
+  }
+  .field-with-adornment { @apply pl-12 text-right tabular-nums; }
+
+  /* ============================================ suggestion list detail === */
+  .combo-option { @apply flex flex-col gap-0.5; }
+  .combo-option-label { @apply text-sm font-medium text-ink; }
+  .combo-option-detail { @apply text-xs text-muted-fg; }
+  .combo-heading {
+    @apply px-3 pb-1 pt-2 text-[10px] font-bold uppercase tracking-[0.12em] text-muted-fg;
+  }
+  .combo-list { animation: combo-in .12s ease-out; }
+  .combo-list.is-loading { @apply opacity-60; }
+  @keyframes combo-in {
+    from { opacity: 0; transform: translateY(-3px); }
+    to   { opacity: 1; transform: none; }
+  }
+
+  /* ==================================================== step navigation == */
+  /*
+   * Only the sales order is long enough to earn steps. Everything else is short
+   * enough that splitting it would add clicks without removing any confusion.
+   * The steps are sections of one form, shown and hidden — never separate
+   * requests — so nothing is submitted until the whole document is complete and
+   * the browser back button still leaves the page rather than losing the work.
+   */
+  .steps { @apply flex flex-wrap gap-2 border-b border-line pb-4; }
+  .step {
+    @apply flex flex-1 items-center gap-2.5 rounded-xl2 border border-line
+           bg-white px-3 py-2.5 text-left transition-colors;
+  }
+  .step:hover { @apply bg-muted-bg; }
+  .step-index {
+    @apply grid h-6 w-6 shrink-0 place-items-center rounded-full border
+           border-input-line text-[11px] font-bold text-muted-fg;
+  }
+  .step-label { @apply text-sm font-semibold text-ink; }
+  .step-note { @apply block text-[11px] font-normal text-muted-fg; }
+  .step[aria-current="step"] { @apply border-ink bg-ink text-white; }
+  .step[aria-current="step"] .step-label { @apply text-white; }
+  .step[aria-current="step"] .step-note { @apply text-slate-300; }
+  .step[aria-current="step"] .step-index { @apply border-white/40 text-white; }
+  .step.is-complete .step-index { @apply border-brand-deep bg-brand-tint text-brand-deep; }
+  .step.is-invalid .step-index { @apply border-danger-strong text-danger-strong; }
+
+  .step-panel { animation: step-in .18s ease-out; }
+  @keyframes step-in {
+    from { opacity: 0; transform: translateX(6px); }
+    to   { opacity: 1; transform: none; }
+  }
+
+  /* ================================================== saved confirmation = */
+  .save-tick { animation: tick-in .32s cubic-bezier(.2,.9,.3,1.2); }
+  @keyframes tick-in {
+    0%   { transform: scale(.6); opacity: 0; }
+    100% { transform: scale(1);  opacity: 1; }
+  }
+
   /* Ink is invisible against the navy sidebar and the navy panels. */
   .on-dark { --focus-ring: #ffffff; --focus-ring-offset: #071a2f; }
 
@@ -312,7 +447,9 @@ body { font-feature-settings: "tnum" 1, "ss01" 1; }
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; }
   .metric-card:hover { transform: none; }
   .btn:active { transform: none; }
-  .spinner, .skeleton, .nav-progress.is-running::after { animation: none !important; }
+  .spinner, .skeleton, .nav-progress.is-running::after,
+  .combo-list, .step-panel, .save-tick, .field-wrap.is-prefilled .field { animation: none !important; }
+  .field-wrap.is-floating > .label { transition: none !important; }
   .nav-progress.is-running::after { width: 92%; }
   .back-link:hover .icon { transform: none; }
 }

@@ -27,7 +27,14 @@ from django.views.generic import (
 from apps.core import audit
 from apps.core.list_views import ChoiceFilter, Column, DateRangeFilter, FilteredListView
 from apps.core.mixins import ActionPermissionMixin, BackLinkMixin, ConfirmationRequiredMixin
-from apps.core.models import ZERO, AuditEvent, Company, DocumentStatus, TaxCode
+from apps.core.models import (
+    EDITABLE_STATES,
+    ZERO,
+    AuditEvent,
+    Company,
+    DocumentStatus,
+    TaxCode,
+)
 from apps.core.permissions import (
     APPROVE_SALES_ORDER,
     EXPORT_DATA,
@@ -234,6 +241,18 @@ class SalesOrderUpdateView(BackLinkMixin, ActionPermissionMixin, UpdateView):
     form_class = SalesOrderForm
     template_name = "sales/so_form.html"
     required_permission = "sales.change_salesorder"
+
+    def get_queryset(self):
+        """
+        Posted, completed and cancelled documents are immutable (BR-004).
+
+        Filtering the queryset rather than checking in dispatch means the guard
+        covers GET and POST from one place: a non-editable order is not found,
+        so it can neither be opened nor submitted to. Losing this let an
+        approved order be reopened and edited, which is the rule the whole
+        double-entry model rests on.
+        """
+        return super().get_queryset().filter(status__in=EDITABLE_STATES)
 
     def get_formset(self):
         return SalesOrderLineFormSet(

@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% comment %}Create / edit a currency (CFG-003, BR-002).{% endcomment %}
+
+{% block header_title %}{{ page_title }}{% endblock %}
+
+{% block content %}
+<form method="post" novalidate class="max-w-2xl">
+  {% csrf_token %}
+
+  {% if form.non_field_errors %}
+    <div class="card card-pad mb-5 border-l-4 border-l-danger">
+      {% for error in form.non_field_errors %}<p class="text-sm text-danger">{{ error }}</p>{% endfor %}
+    </div>
+  {% endif %}
+
+  <div class="card card-pad">
+    <p class="eyebrow">Currency</p>
+    <div class="mt-4 grid gap-4 sm:grid-cols-2">
+      {% include "core/_form_field.html" with field=form.code %}
+      {% include "core/_form_field.html" with field=form.name %}
+      {% include "core/_form_field.html" with field=form.symbol %}
+      {% include "core/_form_field.html" with field=form.decimal_places %}
+    </div>
+    <div class="mt-4 grid gap-4 sm:grid-cols-2">
+      {% include "core/_form_field.html" with field=form.is_base %}
+      {% include "core/_form_field.html" with field=form.is_active %}
+    </div>
+  </div>
+
+  <div class="mt-5 flex items-center gap-2">
+    <button type="submit" class="btn-primary">Save</button>
+    <a href="{% url 'core:currency_list' %}" class="btn-ghost">Cancel</a>
+  </div>
+</form>
+{% endblock %}

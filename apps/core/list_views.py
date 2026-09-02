@@ -136,9 +136,9 @@ class FilteredListView(ActionPermissionMixin, ListView):
     create_label = "New"
     page_title = ""
     page_subtitle = ""
-    #: Reads are open to anyone with the model's view permission; the action
-    #: permission on the mixin is only enforced for writes.
-    enforce_on_safe_methods = False
+    # Lists contain commercially sensitive data. Subclasses must declare a
+    # model view permission and the mixin enforces it for GET and export alike.
+    enforce_on_safe_methods = True
 
     # -- queryset ----------------------------------------------------------
     def get_queryset(self):
@@ -220,7 +220,7 @@ class FilteredListView(ActionPermissionMixin, ListView):
 
         count = 0
         for obj in queryset.iterator(chunk_size=500):
-            writer.writerow([_cell_value(obj, c) for c in columns])
+            writer.writerow([_csv_value(obj, c) for c in columns])
             count += 1
 
         audit.record_export(self.request, f"{self.export_filename} ({count} rows)", count)
@@ -287,6 +287,10 @@ class FilteredListView(ActionPermissionMixin, ListView):
                 "summary": self.get_summary() if self.show_summary else [],
                 "can_export": bool(self.export_permission)
                 and self.request.user.has_perm(self.export_permission),
+                "can_create": bool(self.create_url_name)
+                and self.request.user.has_perm(
+                    f"{self.model._meta.app_label}.add_{self.model._meta.model_name}"
+                ),
                 "create_url_name": self.create_url_name,
                 "create_label": self.create_label,
                 "page_title": self.page_title or self.model._meta.verbose_name_plural.title(),
@@ -308,6 +312,16 @@ def _cell_value(obj, column):
         if value is None:
             return ""
     return value() if callable(value) else value
+
+
+def _csv_value(obj, column):
+    """Return a spreadsheet-safe CSV value without converting real numbers."""
+    value = _cell_value(obj, column)
+    if isinstance(value, str):
+        candidate = value.lstrip(" ")
+        if candidate.startswith(("=", "+", "-", "@", "\t", "\r")):
+            return f"'{value}"
+    return value
 
 
 def _render_cell(obj, column):

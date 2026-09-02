@@ -51,9 +51,18 @@ class InvalidResultPostingService(PostingService[DocumentSequence]):
 class PostingContractTests(TestCase):
     @classmethod
     def setUpTestData(cls):
-        cls.user = get_user_model().objects.create_user(username="member4")
-        cls.currency = Currency.objects.get(is_base=True)
+        cls.user = get_user_model().objects.create_user(id=910_001, username="member4")
+        cls.currency, _ = Currency.objects.update_or_create(
+            code="USD",
+            defaults={
+                "name": "Posting Contract Test Currency",
+                "symbol": "T",
+                "decimal_places": 2,
+                "is_base": True,
+            },
+        )
         cls.account = Account.objects.create(
+            id=910_001,
             code="TEST-1000",
             name="Posting contract account",
             account_type=AccountType.ASSET,
@@ -61,6 +70,7 @@ class PostingContractTests(TestCase):
             normal_balance=NormalBalance.DEBIT,
         )
         cls.source = DocumentSequence.objects.create(
+            id=910_001,
             document_type=DocumentType.JOURNAL_ENTRY,
             series="SOURCE",
         )

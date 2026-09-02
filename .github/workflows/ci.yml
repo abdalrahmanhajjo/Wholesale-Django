@@ -1,0 +1,88 @@
+name: Quality gates
+
+on:
+  pull_request:
+  push:
+    branches: [dev, main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: postgres
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres?sslmode=disable
+      DJANGO_DEBUG: "1"
+      DJANGO_TIME_ZONE: UTC
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+          python -m pip check
+          npm ci
+
+      - name: Verify generated CSS
+        run: |
+          npm run build:css
+          git diff --exit-code -- static/css/app.css
+
+      - name: Audit frontend dependencies
+        run: npm audit --audit-level=high
+
+      - name: Static quality checks
+        run: |
+          ruff format --check .
+          ruff check .
+          python manage.py check
+          python manage.py makemigrations --check --dry-run
+
+      - name: Deployment security check
+        env:
+          DJANGO_DEBUG: "0"
+          DJANGO_SECRET_KEY: ci-only-long-random-secret-key-8f1c35a264ef4dbca38ab6de
+          DJANGO_ALLOWED_HOSTS: example.com
+          DJANGO_HSTS_INCLUDE_SUBDOMAINS: "1"
+          DJANGO_HSTS_PRELOAD: "1"
+        run: python manage.py check --deploy --fail-level WARNING
+
+      - name: Test
+        env:
+          APP_LOG_LEVEL: CRITICAL
+          DJANGO_REQUEST_LOG_LEVEL: CRITICAL
+        run: python manage.py test --noinput

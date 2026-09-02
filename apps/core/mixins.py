@@ -28,8 +28,13 @@ For a plain function view, use `@require_action(POST_SALES_INVOICE)`.
 
 from functools import wraps
 
+from django.contrib import messages
 from django.contrib.auth.mixins import AccessMixin, LoginRequiredMixin
 from django.core.exceptions import PermissionDenied
+from django.db import transaction
+from django.shortcuts import redirect
+
+from apps.core import audit
 
 #: HTTP methods that do not change state. Everything else is a write.
 SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS", "TRACE"})
@@ -165,3 +170,59 @@ def require_action(*permissions):
         return wrapped
 
     return decorator
+
+
+class AuditedFormMixin:
+    """
+    Saves the object and writes the ACC-005 audit event in one transaction.
+
+    Doing it here rather than in each view means no screen can forget, and a
+    failed save never leaves an audit event claiming a change that did not
+    happen (BR-005).
+    """
+
+    audit_reason = ""
+
+    def form_valid(self, form):
+        # `self.object` is None on a CreateView and the loaded row on an
+        # UpdateView. Never infer this from the pk: a model with a natural
+        # primary key (Currency.code) already has one before it is ever saved.
+        is_create = self.object is None
+        # Re-read from the database rather than snapshotting `self.object` —
+        # the form has already applied cleaned_data to that instance, so it
+        # holds the *after* values by the time we get here.
+        before = (
+            None if is_create else audit.snapshot(self.model.objects.get(pk=self.object.pk))
+        )
+
+        with transaction.atomic():
+            form.instance.updated_by = self.request.user
+            if is_create:
+                form.instance.created_by = self.request.user
+            self.object = form.save()
+
+            if is_create:
+                audit.record_create(self.request, self.object, reason=self.audit_reason)
+                messages.success(self.request, f"{self.object} created.")
+            else:
+                event = audit.record_update(
+                    self.request, self.object, before, reason=self.audit_reason
+                )
+                if event:
+                    changed = ", ".join(event.changes.keys())
+                    messages.success(self.request, f"{self.object} updated ({changed}).")
+                else:
+                    messages.info(self.request, "No changes to save.")
+
+        return redirect(self.get_success_url())
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        form = ctx["form"]
+        # PTY-007 soft warnings, only once the form has been validated.
+        ctx["duplicate_warnings"] = (
+            form.duplicate_warnings()
+            if hasattr(form, "duplicate_warnings") and form.is_bound and form.is_valid()
+            else []
+        )
+        return ctx

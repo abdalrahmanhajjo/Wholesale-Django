@@ -38,13 +38,13 @@ IGNORED_FIELDS = frozenset({"updated_at", "created_at", "updated_by", "created_b
 
 def _jsonify(value):
     """Make a field value safe for a JSONField and readable in a diff."""
-    if value is None or isinstance(value, (bool, int, float, str)):
+    if value is None or isinstance(value, bool | int | float | str):
         return value
     if isinstance(value, Decimal):
         # str, not float — BR-001 applies to the audit trail too. A float here
         # would show 0.1 + 0.2 problems in the history of a money field.
         return str(value)
-    if isinstance(value, (datetime, date)):
+    if isinstance(value, datetime | date):
         return value.isoformat()
     if isinstance(value, uuid.UUID):
         return str(value)
@@ -122,15 +122,27 @@ def record(
 
     content_type = object_id = None
     if instance is not None and instance.pk is not None:
-        content_type = ContentType.objects.get_for_model(instance)
-        object_id = instance.pk
+        # AuditEvent.object_id is a BigIntegerField, so only integer-primary-key
+        # models can provide a generic relation. Natural-key models still retain
+        # their actor, action, representation and complete field-level changes.
+        if isinstance(instance.pk, int):
+            content_type = ContentType.objects.get_for_model(instance)
+            object_id = instance.pk
+
+    resolved_repr = (
+        object_repr
+        if object_repr is not None
+        else str(instance)
+        if instance is not None
+        else ""
+    )
 
     return AuditEvent.objects.create(
         action=action,
         user=user,
         content_type=content_type,
         object_id=object_id,
-        object_repr=(object_repr or str(instance))[:255] if instance else "",
+        object_repr=resolved_repr[:255],
         changes=changes or None,
         reason=reason,
         correlation_id=correlation_id or _correlation_id(request),
@@ -138,10 +150,11 @@ def record(
     )
 
 
-def record_create(request, instance, reason=""):
+def record_create(request, instance, reason="", *, user=None):
     return record(
         AuditAction.CREATE,
         instance,
+        user=user,
         request=request,
         changes={"created": snapshot(instance)},
         reason=reason,
@@ -167,14 +180,21 @@ def record_delete(request, instance, reason=""):
     )
 
 
-def record_action(request, action, instance, reason="", **extra):
+def record_action(request, action, instance, reason="", *, user=None, **extra):
     """
     For the non-CRUD verbs — approve, post, reverse, allocate, close period.
 
     These are the ones ACC-005 and NFR-006 care about most: every approve, post,
     reverse and close must be attributable to a user and a time.
     """
-    return record(action, instance, request=request, reason=reason, changes=extra or None)
+    return record(
+        action,
+        instance,
+        user=user,
+        request=request,
+        reason=reason,
+        changes=extra or None,
+    )
 
 
 def record_export(request, description, row_count=None):

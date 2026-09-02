@@ -74,19 +74,25 @@ The audit history is shown on the record itself, which is what ACC-005 asks for:
     <div class="card card-pad">
       <p class="eyebrow">Status</p>
       {# PTY-008: deactivate, never delete. There is no delete action anywhere. #}
-      <form method="post"
-            action="{% url 'parties:customer_deactivate' customer.pk %}" class="mt-3 space-y-3">
-        {% csrf_token %}
-        <input type="text" name="reason" placeholder="Reason (recorded in the audit log)"
-               class="field">
-        <button type="submit" class="{% if customer.is_active %}btn-danger{% else %}btn-accent{% endif %} w-full">
-          {% if customer.is_active %}Deactivate{% else %}Reactivate{% endif %}
-        </button>
-      </form>
-      <p class="help mt-2">
-        Customers referenced by posted transactions are deactivated, never
-        deleted (PTY-008).
-      </p>
+      {% if perms.parties.change_customer %}
+        <form method="post"
+              action="{% url 'parties:customer_deactivate' customer.pk %}" class="mt-3 space-y-3">
+          {% csrf_token %}
+          <label for="customer-status-reason" class="label">Reason</label>
+          <input type="text" id="customer-status-reason" name="reason"
+                 placeholder="Recorded in the audit log"
+                 class="field" required>
+          <button type="submit" class="{% if customer.is_active %}btn-danger{% else %}btn-accent{% endif %} w-full">
+            {% if customer.is_active %}Deactivate{% else %}Reactivate{% endif %}
+          </button>
+        </form>
+        <p class="help mt-2">
+          Customers referenced by posted transactions are deactivated, never
+          deleted (PTY-008).
+        </p>
+      {% else %}
+        <p class="mt-3 text-sm text-muted-fg">You have view-only access.</p>
+      {% endif %}
     </div>
 
     <div class="card card-pad">

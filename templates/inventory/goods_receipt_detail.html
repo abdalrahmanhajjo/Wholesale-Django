@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+{% comment %}
+Goods receipt detail and the post action (INV-006).
+
+Posting is gated server-side by GoodsReceiptPostView (core.post_goods_receipt)
+regardless of which buttons a `{% if perms.* %}` check happens to hide
+(CONTRIBUTING.md §4b, ACC-004).
+{% endcomment %}
+
+{% block header_title %}{{ receipt.number }}{% endblock %}
+
+{% block actions %}
+  {% if can_edit and perms.inventory.change_goodsreceipt %}
+    <a href="{% url 'inventory:gr_edit' receipt.pk %}" class="btn-ghost">Edit</a>
+  {% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="grid gap-4 lg:grid-cols-3">
+
+  <div class="space-y-4 lg:col-span-2">
+    <div class="card card-pad">
+      <div class="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p class="eyebrow">Goods receipt</p>
+          <h2 class="display mt-1 text-2xl">{{ receipt.number }}</h2>
+          <p class="text-sm text-muted-fg">{{ receipt.vendor }}</p>
+        </div>
+        {% include "core/_status_badge.html" with value=receipt.status display=receipt.get_status_display %}
+      </div>
+
+      <dl class="mt-6 grid gap-x-6 gap-y-4 sm:grid-cols-2">
+        <div><dt class="eyebrow">Warehouse</dt><dd class="mt-1 text-sm">{{ receipt.warehouse }}</dd></div>
+        <div><dt class="eyebrow">Receipt date</dt><dd class="mt-1 text-sm">{{ receipt.document_date }}</dd></div>
+        <div><dt class="eyebrow">Purchase order</dt>
+          <dd class="mt-1 text-sm">
+            {% if receipt.purchase_order %}<a href="{{ receipt.purchase_order.get_absolute_url }}" class="font-semibold text-brand-deep hover:underline">{{ receipt.purchase_order.number }}</a>{% else %}Direct receipt{% endif %}
+          </dd>
+        </div>
+        <div><dt class="eyebrow">Vendor delivery note</dt><dd class="mt-1 text-sm">{{ receipt.vendor_delivery_note|default:"—" }}</dd></div>
+        <div><dt class="eyebrow">Received by</dt><dd class="mt-1 text-sm">{{ receipt.received_by|default:"—" }}</dd></div>
+        <div><dt class="eyebrow">Reference</dt><dd class="mt-1 text-sm">{{ receipt.reference|default:"—" }}</dd></div>
+      </dl>
+    </div>
+
+    <div class="card">
+      <p class="card-title border-b border-line p-4 sm:p-5">Lines</p>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-line bg-muted-bg text-[11px] font-bold uppercase tracking-[0.1em] text-muted-fg">
+              <th class="px-4 py-2 text-left">Product</th>
+              <th class="px-4 py-2 text-right">Received</th>
+              <th class="px-4 py-2 text-right">Accepted</th>
+              <th class="px-4 py-2 text-right">Rejected</th>
+              <th class="px-4 py-2 text-right">Unit cost</th>
+              <th class="px-4 py-2 text-right">Total cost</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for line in lines %}
+              <tr class="border-b border-line last:border-0">
+                <td class="px-4 py-2">
+                  <p class="font-medium">{{ line.product|default:line.description }}</p>
+                  {% if line.rejection_reason %}<p class="text-xs text-danger">{{ line.rejection_reason }}</p>{% endif %}
+                </td>
+                <td class="px-4 py-2 text-right tabular-nums">{{ line.quantity_received }}</td>
+                <td class="px-4 py-2 text-right tabular-nums">{{ line.quantity_accepted }}</td>
+                <td class="px-4 py-2 text-right tabular-nums">{{ line.quantity_rejected }}</td>
+                <td class="px-4 py-2 text-right tabular-nums">{{ line.unit_cost|floatformat:4 }}</td>
+                <td class="px-4 py-2 text-right tabular-nums font-medium">{{ line.total_cost|floatformat:2 }}</td>
+              </tr>
+            {% empty %}
+              <tr><td colspan="6" class="px-4 py-8 text-center text-sm text-muted-fg">No lines yet.</td></tr>
+            {% endfor %}
+          </tbody>
+          <tfoot>
+            <tr class="border-t-2 border-line font-semibold">
+              <td colspan="5" class="px-4 py-2 text-right text-xs uppercase tracking-wide text-muted-fg">Total cost</td>
+              <td class="px-4 py-2 text-right tabular-nums">{{ receipt.total_cost_base|floatformat:2 }}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+
+    {% if receipt.notes %}
+      <div class="card card-pad">
+        <p class="eyebrow">Notes</p>
+        <p class="mt-1 whitespace-pre-line text-sm text-muted-fg">{{ receipt.notes }}</p>
+      </div>
+    {% endif %}
+  </div>
+
+  <div class="space-y-4">
+    <div class="card card-pad">
+      <p class="eyebrow">Posting (INV-006)</p>
+      <h2 class="card-title mt-2">{{ receipt.get_status_display }}</h2>
+
+      {% if receipt.status == "DRAFT" %}
+        {% if perms.core.post_goods_receipt %}
+          <form method="post" action="{% url 'inventory:gr_post' receipt.pk %}" class="mt-3">
+            {% csrf_token %}
+            <button type="submit" class="btn-primary w-full">Post receipt</button>
+          </form>
+          <p class="help mt-2">Posting updates stock on hand, the weighted-average cost, and accrues the goods-received-not-invoiced liability until the vendor's bill lands.</p>
+        {% endif %}
+      {% elif receipt.status == "POSTED" %}
+        <p class="mt-2 text-sm text-muted-fg">
+          Posted by {{ receipt.posted_by|default:"—" }} on {{ receipt.posted_at|date:"j M Y, H:i" }}.
+        </p>
+        {% if perms.purchases.add_purchasebill %}
+          <a href="{% url 'purchases:bill_create' %}{% if receipt.purchase_order_id %}?po={{ receipt.purchase_order_id }}{% endif %}" class="btn-ghost mt-3 w-full">Create bill</a>
+        {% endif %}
+      {% endif %}
+    </div>
+
+    <div class="card card-pad">
+      <p class="eyebrow">Audit history</p>
+      <h2 class="card-title mt-2">What changed, and who changed it</h2>
+      <ul class="mt-4 space-y-4">
+        {% for event in audit_events %}
+          <li class="border-l-2 border-line pl-3">
+            <p class="text-xs font-bold uppercase tracking-wide text-brand-deep">{{ event.get_action_display }}</p>
+            <p class="text-sm">{{ event.user|default:"system" }}</p>
+            <p class="text-xs text-muted-fg">{{ event.occurred_at|date:"j M Y, H:i" }}</p>
+          </li>
+        {% empty %}
+          <li class="text-sm text-muted-fg">No changes recorded yet.</li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+</div>
+{% endblock %}

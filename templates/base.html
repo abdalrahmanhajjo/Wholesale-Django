@@ -103,19 +103,40 @@ a click that takes a second looks like a click that did nothing.
                  {% if request.resolver_match.url_name|slice:':8' == 'invoice_' %}aria-current="page"{% endif %}>Invoices</a>
             </li>
           {% endif %}
-          {% comment %}
-          Modules that exist in the data model but have no screens yet. They stay
-          listed so the shape of the product is visible, but the reason is
-          written on the page instead of hidden in a hover-only `title`.
-          {% endcomment %}
-          <li><span class="nav-link-pending">Purchases <span class="nav-pending-tag">Soon</span></span></li>
+          <li>
+            <a href="{% url 'purchases:po_list' %}" class="nav-link {% if request.resolver_match.app_name == 'purchases' and request.resolver_match.url_name|slice:':3' == 'po_' %}nav-link-active{% endif %}"
+               {% if request.resolver_match.app_name == 'purchases' and request.resolver_match.url_name|slice:':3' == 'po_' %}aria-current="page"{% endif %}>Purchase orders</a>
+          </li>
+          <li>
+            <a href="{% url 'purchases:bill_list' %}" class="nav-link {% if request.resolver_match.app_name == 'purchases' and request.resolver_match.url_name|slice:':5' == 'bill_' %}nav-link-active{% endif %}"
+               {% if request.resolver_match.app_name == 'purchases' and request.resolver_match.url_name|slice:':5' == 'bill_' %}aria-current="page"{% endif %}>Purchase bills</a>
+          </li>
           {% if perms.payments.view_payment %}
             <li>
               <a href="{% url 'payments:payment_list' %}" class="nav-link {% if request.resolver_match.app_name == 'payments' %}nav-link-active{% endif %}"
                  {% if request.resolver_match.app_name == 'payments' %}aria-current="page"{% endif %}>Payments</a>
             </li>
           {% endif %}
-          <li><span class="nav-link-pending">Inventory <span class="nav-pending-tag">Soon</span></span></li>
+          <li>
+            <a href="{% url 'inventory:gr_list' %}" class="nav-link {% if request.resolver_match.app_name == 'inventory' and request.resolver_match.url_name|slice:':3' == 'gr_' %}nav-link-active{% endif %}"
+               {% if request.resolver_match.app_name == 'inventory' and request.resolver_match.url_name|slice:':3' == 'gr_' %}aria-current="page"{% endif %}>Goods receipts</a>
+          </li>
+          <li>
+            <a href="{% url 'inventory:st_list' %}" class="nav-link {% if request.resolver_match.app_name == 'inventory' and request.resolver_match.url_name|slice:':3' == 'st_' %}nav-link-active{% endif %}"
+               {% if request.resolver_match.app_name == 'inventory' and request.resolver_match.url_name|slice:':3' == 'st_' %}aria-current="page"{% endif %}>Stock transfers</a>
+          </li>
+          <li>
+            <a href="{% url 'inventory:sa_list' %}" class="nav-link {% if request.resolver_match.app_name == 'inventory' and request.resolver_match.url_name|slice:':3' == 'sa_' %}nav-link-active{% endif %}"
+               {% if request.resolver_match.app_name == 'inventory' and request.resolver_match.url_name|slice:':3' == 'sa_' %}aria-current="page"{% endif %}>Stock adjustments</a>
+          </li>
+          <li>
+            <a href="{% url 'inventory:stock_ledger' %}" class="nav-link {% if request.resolver_match.url_name == 'stock_ledger' %}nav-link-active{% endif %}"
+               {% if request.resolver_match.url_name == 'stock_ledger' %}aria-current="page"{% endif %}>Stock ledger</a>
+          </li>
+          <li>
+            <a href="{% url 'inventory:stock_valuation' %}" class="nav-link {% if request.resolver_match.url_name == 'stock_valuation' %}nav-link-active{% endif %}"
+               {% if request.resolver_match.url_name == 'stock_valuation' %}aria-current="page"{% endif %}>Inventory valuation</a>
+          </li>
         </ul>
 
         <p class="nav-group" id="nav-relationships">Relationships</p>

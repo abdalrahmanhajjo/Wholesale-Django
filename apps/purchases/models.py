@@ -68,6 +68,11 @@ class PurchaseOrder(FinancialDocumentBase):
             models.Index(fields=["status", "-document_date"], name="ix_po_status_date"),
         ]
 
+    def get_absolute_url(self):
+        from django.urls import reverse
+
+        return reverse("purchases:po_detail", args=[self.pk])
+
 
 class PurchaseOrderLine(DocumentLineBase):
     order = models.ForeignKey(PurchaseOrder, on_delete=models.CASCADE, related_name="lines")
@@ -203,6 +208,11 @@ class PurchaseBill(FinancialDocumentBase):
                 name="ix_pb_open_items",
             ),
         ]
+
+    def get_absolute_url(self):
+        from django.urls import reverse
+
+        return reverse("purchases:bill_detail", args=[self.pk])
 
 
 class PurchaseBillLine(DocumentLineBase):

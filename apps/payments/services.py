@@ -136,7 +136,7 @@ def post_payment(payment, *, user) -> PaymentPostingResult:
     producing a second cash movement.
     """
     locked = (
-        Payment.objects.select_for_update()
+        Payment.objects.select_for_update(of=("self",))
         .select_related(
             "currency",
             "customer",

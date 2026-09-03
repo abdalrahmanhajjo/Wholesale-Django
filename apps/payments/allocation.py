@@ -155,9 +155,15 @@ def _existing_batch(
 
 
 def _lock_targets(queryset: QuerySet, target_ids: tuple[int, ...]) -> list:
-    """Lock every target in primary-key order to prevent allocation deadlocks."""
+    """Lock every target row in primary-key order to prevent allocation deadlocks.
+
+    ``of=("self",)`` keeps the lock on the documents themselves. Without it the
+    join would also lock the shared currency row, so two allocations touching
+    unrelated invoices in the same currency would serialise on it — and Postgres
+    refuses ``FOR UPDATE`` against the nullable side of an outer join outright.
+    """
     targets = list(
-        queryset.select_for_update()
+        queryset.select_for_update(of=("self",))
         .select_related("currency")
         .filter(pk__in=target_ids)
         .order_by("pk")
@@ -238,7 +244,7 @@ def allocate_payment(
     lines = _normalise_lines(lines)
     batch_key = _validate_batch_key(batch_key)
     locked = (
-        Payment.objects.select_for_update()
+        Payment.objects.select_for_update(of=("self",))
         .select_related("currency", "customer", "vendor")
         .get(pk=payment.pk)
     )
@@ -402,7 +408,7 @@ def _allocate_credit(
     lines = _normalise_lines(lines)
     batch_key = _validate_batch_key(batch_key)
     locked = (
-        source_model.objects.select_for_update()
+        source_model.objects.select_for_update(of=("self",))
         .select_related("currency", party_field)
         .get(pk=source.pk)
     )

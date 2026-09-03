@@ -100,6 +100,23 @@ def _status_for_open_amount(*, open_txn: Decimal, settled_txn: Decimal) -> str:
     return DocumentStatus.POSTED
 
 
+def _quantize(value: Decimal) -> Decimal:
+    return value.quantize(MONEY_QUANTUM, rounding=ROUND_HALF_UP)
+
+
+def _signed_fx(payment: Payment, difference: Decimal) -> Decimal:
+    """Express a rate difference as a gain (positive) or loss (negative).
+
+    ``difference`` is the money's carrying value minus the document's. Taking
+    in more base currency than the receivable was booked at is a gain; paying
+    out more than the payable was booked at is a loss — so the sign flips with
+    the direction of the payment.
+    """
+    if payment.direction == PaymentDirection.RECEIPT:
+        return difference
+    return -difference
+
+
 def _open_base(document) -> Decimal:
     return (document.open_txn * document.exchange_rate).quantize(
         MONEY_QUANTUM, rounding=ROUND_HALF_UP
@@ -189,14 +206,12 @@ def _validate_target(
     if getattr(target, f"{party_field}_id") != getattr(source, f"{party_field}_id"):
         raise ValidationError(f"{target.number} belongs to a different party.")
     if target.currency_id != source.currency_id:
+        # Settling a USD invoice with EUR cash needs a rate between two
+        # non-base currencies, which nothing in the system holds. A differing
+        # *rate* on the same currency is the ordinary case and is handled.
         raise ValidationError(
-            f"{target.number} uses a different currency. Cross-currency settlement "
-            "belongs to the Day 5 FX workflow."
-        )
-    if target.exchange_rate != source.exchange_rate:
-        raise ValidationError(
-            f"{target.number} uses a different stored exchange rate. Realised FX must "
-            "be calculated by the Day 5 settlement workflow."
+            f"{target.number} is in a different currency from {source.number}. "
+            "Settle it with money in its own currency."
         )
     if allocation_date < target.document_date:
         raise ValidationError(
@@ -210,12 +225,15 @@ def _validate_target(
 
 
 def available_payment_targets(payment: Payment):
-    """Return open, same-rate documents for the server-rendered workspace."""
+    """Return the open documents this payment may settle.
+
+    Same currency, not same rate: a document booked at a different rate settles
+    perfectly well and simply realises an exchange difference.
+    """
     common = {
         "open_txn__gt": ZERO,
         "status__in": ALLOCATABLE_STATUSES,
         "currency_id": payment.currency_id,
-        "exchange_rate": payment.exchange_rate,
         "is_reversed": False,
     }
     if payment.direction == PaymentDirection.RECEIPT:
@@ -304,9 +322,19 @@ def allocate_payment(
             allocation_date=allocation_date,
         )
 
-    amount_base = (total * locked.exchange_rate).quantize(
-        MONEY_QUANTUM, rounding=ROUND_HALF_UP
-    )
+    # Value the settled amount twice: once at the money's rate, once at each
+    # document's own. Where those disagree the difference is realised FX.
+    source_base = _quantize(total * locked.exchange_rate)
+    fx_by_target = {}
+    target_base = ZERO
+    for target in targets:
+        amount = line_by_target[target.pk].amount_txn
+        at_source = _quantize(amount * locked.exchange_rate)
+        at_target = _quantize(amount * target.exchange_rate)
+        target_base += at_target
+        fx_by_target[target.pk] = _signed_fx(locked, at_source - at_target)
+    difference = source_base - target_base
+
     posting_result = posting_engine.post(
         PostingRequest(
             source=locked,
@@ -315,9 +343,12 @@ def allocate_payment(
             build_journal=make_allocation_journal_builder(
                 allocation_date=allocation_date,
                 amount_txn=total,
-                amount_base=amount_base,
+                source_base=source_base,
+                target_base=target_base,
             ),
-            required_mappings=allocation_required_mappings(locked),
+            required_mappings=allocation_required_mappings(
+                locked, fx_difference_base=difference
+            ),
             reason="Payment allocation",
         )
     )
@@ -336,10 +367,14 @@ def allocate_payment(
             "payment": locked,
             "source_amount_txn": amount,
             "target_amount_txn": amount,
-            "amount_base": (amount * locked.exchange_rate).quantize(
-                MONEY_QUANTUM, rounding=ROUND_HALF_UP
-            ),
+            "amount_base": _quantize(amount * locked.exchange_rate),
             "settlement_rate": locked.exchange_rate,
+            "fx_gain_loss_base": fx_by_target[target.pk],
+            # The exchange difference cannot be posted apart from the
+            # reclassification it balances, so both point at the one journal.
+            "fx_journal_entry": (
+                posting_result.journal_entry if fx_by_target[target.pk] else None
+            ),
             "journal_entry": posting_result.journal_entry,
             "created_by": user,
             "updated_by": user,

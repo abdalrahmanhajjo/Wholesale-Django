@@ -5,8 +5,25 @@
 
 {% block actions %}
   <a href="{% url 'payments:payment_list' %}" class="btn-ghost">Back to register</a>
+  <a href="{% url 'payments:payment_voucher' payment.pk %}" class="btn-ghost">Print voucher</a>
   {% if payment.status == "DRAFT" and perms.payments.change_payment %}
     <a href="{% url 'payments:payment_edit' payment.pk %}" class="btn-primary">Edit draft</a>
+  {% endif %}
+  {% if payment.status == "DRAFT" and perms.core.post_payment %}
+    <form method="post" action="{% url 'payments:payment_post' payment.pk %}" class="inline">
+      {% csrf_token %}
+      <button type="submit" class="btn-primary">Post</button>
+    </form>
+  {% endif %}
+  {% comment %}
+  Allocating needs money left to apply; reversing needs the payment posted and
+  not already reversed. Both are also permission-gated in the view.
+  {% endcomment %}
+  {% if payment.unallocated_txn > 0 and not payment.is_reversed and perms.core.allocate_payment %}
+    <a href="{% url 'payments:payment_allocate' payment.pk %}" class="btn-primary">Allocate</a>
+  {% endif %}
+  {% if not payment.is_reversed and payment.journal_entry_id and perms.core.reverse_document %}
+    <a href="{% url 'payments:payment_reverse' payment.pk %}" class="btn-ghost">Reverse</a>
   {% endif %}
 {% endblock %}
 

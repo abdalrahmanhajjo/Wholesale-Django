@@ -11,8 +11,12 @@ from django.test import TestCase
 
 from apps.core.audit import AuditEvent
 from apps.core.models import DocumentStatus
+from apps.inventory.models import StockMovement
 from apps.sales import services
 from apps.sales.tests.factories import (
+    ensure_account_mappings,
+    ensure_open_period_for_today,
+    make_company,
     make_customer,
     make_line,
     make_order,
@@ -20,6 +24,7 @@ from apps.sales.tests.factories import (
     make_sequence,
     make_user,
     make_warehouse,
+    seed_stock,
 )
 
 ZERO = Decimal("0")
@@ -29,11 +34,16 @@ class DeliveryServicesTest(TestCase):
     @classmethod
     def setUpTestData(cls):
         make_sequence("DN", prefix="DN-")
+        ensure_account_mappings()
+        ensure_open_period_for_today()
+        make_company()
         cls.warehouse = make_warehouse("WH-001")
         cls.customer = make_customer("DEL-C1")
         cls.product_a = make_product(sku="DEL-A", price=Decimal("100"))
         cls.product_b = make_product(sku="DEL-B", price=Decimal("250"))
         cls.user = make_user("delivery-user")
+        seed_stock(cls.product_a, cls.warehouse, Decimal("100"), Decimal("50"), cls.user, "SEED-DEL-A")
+        seed_stock(cls.product_b, cls.warehouse, Decimal("100"), Decimal("80"), cls.user, "SEED-DEL-B")
 
     def _make_approved_order(self, **kw):
         order = make_order(customer=self.customer, warehouse=self.warehouse, **kw)
@@ -292,17 +302,22 @@ class DeliveryServicesTest(TestCase):
             services.post_delivery(note, self.user)
 
     # ------------------------------------------------------------------
-    # stock movement seam (documented no-op for now)
+    # stock movement: posting writes through Member 2's costing engine
     # ------------------------------------------------------------------
-    def test_commit_stock_movements_is_noop(self):
-        """Placeholder seam returns None without side effects."""
+    def test_post_writes_stock_movement(self):
         order = self._make_approved_order()
         ln = order.lines.get(line_no=1)
         note = services.draft_delivery_from_order(
             order=order, user=self.user, quantities={ln.pk: Decimal("5")}
         )
-        result = services._commit_stock_movements(note, self.user)
-        self.assertIsNone(result)
+        before = StockMovement.objects.count()
+        services.post_delivery(note, self.user)
+        self.assertEqual(StockMovement.objects.count(), before + 1)
+        movement = StockMovement.objects.get(
+            source_doc_number=note.number, product=self.product_a
+        )
+        self.assertEqual(movement.movement_type, "DELIVERY")
+        self.assertEqual(movement.quantity, Decimal("5"))
 
     # ------------------------------------------------------------------
     # partial delivery: two notes on same order

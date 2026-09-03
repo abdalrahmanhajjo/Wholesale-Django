@@ -174,7 +174,7 @@ Coverage:
 > before asserting the missing-sequence error, so they are resilient to residue
 > between runs.
 
-## Hand-off notes for Member 4
+## Hand-off notes
 
 * The sales module now binds the **real `PostingEngine`** in
   `apps/sales/services.py` (`posting_service = PostingEngine()`). Nothing else
@@ -186,9 +186,16 @@ Coverage:
   The engine validates that every declared key resolves to an active, postable
   account and that no declared key is absent from the journal
   (posting.py `_validate_draft` rule).
-* COGS/INVENTORY legs depend on `DeliveryNoteLine.unit_cost`, which is Member 2's
-  weighted-average costing output (INV-005); until it lands those lines are
-  skipped deliberately rather than posted at zero.
+* **COGS/INVENTORY legs are now live.** The sales delivery-posting path
+  (`post_delivery`) delegates the stock costing to Member 2's engine
+  (`apps.inventory.services.post_delivery`), which costs each delivery line at
+  the warehouse's weighted average (INV-005), sets `unit_cost`/`total_cost`,
+  and posts the COGS-vs-Inventory journal. When an invoice is posted, the
+  invoice journal includes COGS/Inventory legs for every costed line
+  (SAL-010); lines with zero cost are skipped.
+* The sales layer retains the **over-delivery guard** (SAL-005) and
+  **order status sync** (PARTIAL/COMPLETED) which the inventory engine
+  does not implement.
 * `verify_schema.py` already opens an open period and checks
   `AccountMapping.objects.count() == len(MappingKey.choices)` as part of the
   end-to-end posting evidence.

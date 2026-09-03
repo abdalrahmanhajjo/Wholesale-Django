@@ -31,6 +31,7 @@ from apps.ledger.services import PostingError
 from apps.sales import services
 from apps.sales.models import SalesInvoice
 from apps.sales.tests.factories import (
+    make_company,
     make_customer,
     make_line,
     make_order,
@@ -39,6 +40,7 @@ from apps.sales.tests.factories import (
     make_tax,
     make_user,
     make_warehouse,
+    seed_stock,
 )
 
 ZERO = Decimal("0")
@@ -96,11 +98,14 @@ class InvoiceServicesTest(TestCase):
         make_sequence("SI", prefix="INV-")
         _ensure_account_mappings()
         cls._ensure_open_posting_period()
+        make_company()
         cls.warehouse = make_warehouse("WH-INV1")
         cls.customer = make_customer("INV-C1")
         cls.product_a = make_product(sku="INV-A", price=Decimal("100"))
         cls.product_b = make_product(sku="INV-B", price=Decimal("250"))
         cls.user = make_user("invoice-user")
+        seed_stock(cls.product_a, cls.warehouse, Decimal("100"), Decimal("50"), cls.user, "SEED-INV-A")
+        seed_stock(cls.product_b, cls.warehouse, Decimal("100"), Decimal("80"), cls.user, "SEED-INV-B")
 
     @classmethod
     def _ensure_open_posting_period(cls):
@@ -329,23 +334,25 @@ class InvoiceServicesTest(TestCase):
         total_debit = sum(ln.debit_base for ln in draft.lines)
         total_credit = sum(ln.credit_base for ln in draft.lines)
         self.assertEqual(total_debit, total_credit)
-        self.assertEqual(total_debit, invoice.total_base)
+        # AR control line carries the full invoice total; COGS/inventory legs
+        # (SAL-010) add to the debit side when the delivery was costed.
+        ar = next(ln for ln in draft.lines if ln.account.code == "1210")
+        self.assertEqual(ar.debit_base, invoice.total_base)
 
     def test_journal_drives_ar_and_revenue(self):
         note = self._make_posted_delivery()
         invoice = self._make_invoice(note)
         draft = services.build_sales_invoice_journal(invoice, user=self.user)
-        self.assertEqual(len(draft.lines), 2)
-        ar, revenue = draft.lines
+        ar = next(ln for ln in draft.lines if ln.account.code == "1210")
+        revenue = next(ln for ln in draft.lines if ln.account.code == "4100")
         self.assertEqual(ar.debit_base, invoice.total_base)
-        self.assertEqual(ar.account.code, "1210")
         self.assertEqual(ar.customer, invoice.customer)
         self.assertEqual(revenue.credit_base, invoice.taxable_base_base)
-        self.assertEqual(revenue.account.code, "4100")
 
     def test_journal_adds_output_tax_line(self):
         tax = make_tax(code="INV-VAT", rate=Decimal("11.0"))
         product = make_product(sku="INV-TAX", price=Decimal("100"), tax=tax)
+        seed_stock(product, self.warehouse, Decimal("100"), Decimal("50"), self.user, "SEED-INV-TAX")
         order = make_order(customer=self.customer, warehouse=self.warehouse)
         make_line(
             order, product=product, qty=Decimal("10"), price=Decimal("100"), tax=tax, line_no=1
@@ -357,6 +364,10 @@ class InvoiceServicesTest(TestCase):
             order=order, user=self.user, quantities={order.lines.get().pk: Decimal("10")}
         )
         services.post_delivery(note, self.user)
+        dl_post = note.lines.get(line_no=1)
+        dl_post.unit_cost = Decimal("0")
+        dl_post.total_cost = Decimal("0")
+        dl_post.save(update_fields=["unit_cost", "total_cost"])
         invoice = services.create_invoice_from_delivery(
             delivery=note,
             user=self.user,
@@ -381,6 +392,13 @@ class InvoiceServicesTest(TestCase):
         dl.unit_cost = Decimal("80")
         dl.total_cost = Decimal("800")
         dl.save(update_fields=["unit_cost", "total_cost"])
+        # Zero the other costed line so exactly one COGS leg is produced; the
+        # seeded stock would otherwise cost it too and collapse to the last
+        # 5010 line in the account map below.
+        other = note.lines.exclude(pk=dl.pk).first()
+        other.unit_cost = Decimal("0")
+        other.total_cost = Decimal("0")
+        other.save(update_fields=["unit_cost", "total_cost"])
 
         draft = services.build_sales_invoice_journal(invoice, user=self.user)
         accounts = {ln.account.code: ln for ln in draft.lines}
@@ -391,6 +409,10 @@ class InvoiceServicesTest(TestCase):
 
     def test_journal_skips_zero_cost_lines(self):
         note = self._make_posted_delivery()
+        for dl in note.lines.all():
+            dl.unit_cost = Decimal("0")
+            dl.total_cost = Decimal("0")
+            dl.save(update_fields=["unit_cost", "total_cost"])
         invoice = self._make_invoice(note)
         draft = services.build_sales_invoice_journal(invoice, user=self.user)
         self.assertEqual(len(draft.lines), 2)
@@ -408,6 +430,7 @@ class InvoiceServicesTest(TestCase):
     def test_required_mappings_includes_output_tax_when_tax_base(self):
         tax = make_tax(code="RM-VAT", rate=Decimal("11.0"))
         product = make_product(sku="RM-TAX", price=Decimal("100"), tax=tax)
+        seed_stock(product, self.warehouse, Decimal("100"), Decimal("50"), self.user, "SEED-RM-TAX")
         order = make_order(customer=self.customer, warehouse=self.warehouse)
         make_line(order, product=product, qty=Decimal("10"), price=Decimal("100"),
                   tax=tax, line_no=1)
@@ -447,6 +470,10 @@ class InvoiceServicesTest(TestCase):
 
     def test_required_mappings_excludes_cogs_when_no_cost(self):
         note = self._make_posted_delivery()
+        for dl in note.lines.all():
+            dl.unit_cost = Decimal("0")
+            dl.total_cost = Decimal("0")
+            dl.save(update_fields=["unit_cost", "total_cost"])
         invoice = self._make_invoice(note)
         keys = services._posting_required_mappings(invoice)
         self.assertNotIn(MappingKey.COGS, keys)
@@ -488,7 +515,11 @@ class InvoiceServicesTest(TestCase):
         self.assertEqual(entry.entry_date, invoice.posting_date)
         self.assertEqual(entry.source_doc_type, "SI")
         self.assertEqual(entry.source_doc_number, invoice.number)
-        self.assertEqual(entry.total_debit_base, invoice.total_base)
+        # The AR control line carries the full invoice total; the journal also
+        # carries COGS/inventory legs (SAL-010) since the delivery was costed.
+        ar_line = entry.lines.filter(customer=invoice.customer).first()
+        self.assertIsNotNone(ar_line)
+        self.assertEqual(ar_line.debit_base, invoice.total_base)
         self.assertEqual(entry.total_debit_base, entry.total_credit_base)
         # Customer dimension carried to the control-account line.
         self.assertTrue(
@@ -543,6 +574,7 @@ class InvoiceViewTests(TestCase):
         cls.warehouse = make_warehouse("WH-INV2")
         cls.customer = make_customer("INV-C2")
         cls.product = make_product(sku="INV-VIEW", price=Decimal("100"))
+        make_company()
         cls.creator = _make_user(
             "invoice-creator",
             permissions=[
@@ -551,6 +583,7 @@ class InvoiceViewTests(TestCase):
                 "sales.change_salesinvoice",
             ],
         )
+        seed_stock(cls.product, cls.warehouse, Decimal("100"), Decimal("50"), cls.creator, "SEED-INV-VIEW")
         cls.poster = _make_user(
             "invoice-poster",
             permissions=[

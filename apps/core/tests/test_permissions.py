@@ -11,11 +11,10 @@ the URL, not by inspecting group membership — a test that only checks
 
 from django.contrib.auth.models import Group
 from django.core.exceptions import PermissionDenied
-from django.test import RequestFactory, TestCase
+from django.test import Client, RequestFactory, SimpleTestCase, TestCase
 from django.urls import reverse
 from django.views import View
 
-from apps.accounts.models import User
 from apps.core.mixins import ActionPermissionMixin, require_action
 from apps.core.permissions import (
     ACCOUNTANT,
@@ -27,15 +26,7 @@ from apps.core.permissions import (
     POST_SALES_INVOICE,
     SALES,
 )
-
-
-def make_user(username, group_name=None, **kwargs):
-    user = User.objects.create_user(
-        username=username, email=f"{username}@example.com", password="testpass-12345", **kwargs
-    )
-    if group_name:
-        user.groups.add(Group.objects.get(name=group_name))
-    return user
+from apps.core.tests.factories import make_user
 
 
 class RoleMatrixTests(TestCase):
@@ -141,6 +132,12 @@ class AuthenticationTests(TestCase):
         response = self.client.get(reverse("dashboard"))
         self.assertEqual(response.status_code, 200)
 
+    def test_authenticated_user_without_business_role_cannot_see_dashboard(self):
+        make_user("unassigned")
+        self.client.login(username="unassigned", password="testpass-12345")
+        response = self.client.get(reverse("dashboard"))
+        self.assertEqual(response.status_code, 403)
+
     def test_inactive_user_cannot_sign_in(self):
         user = make_user("gone")
         user.is_active = False
@@ -152,3 +149,62 @@ class AuthenticationTests(TestCase):
         response = self.client.get(reverse("login"))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Sign in")
+        self.assertContains(response, 'href="/static/css/app.css"')
+        self.assertNotContains(response, "cdn.tailwindcss.com")
+        self.assertNotContains(response, "fonts.googleapis.com")
+
+    def test_login_post_without_csrf_token_is_rejected(self):
+        csrf_client = Client(enforce_csrf_checks=True)
+        response = csrf_client.post(reverse("login"), {"username": "any", "password": "any"})
+        self.assertEqual(response.status_code, 403)
+
+
+class PermissionAttributeSpellingTests(SimpleTestCase):
+    """
+    A view on ActionPermissionMixin must declare `required_permission`.
+
+    Django's own PermissionRequiredMixin calls the attribute
+    `permission_required`, and this project's mixin does not read that name.
+    Writing it is not an error and produces no warning — the permission is
+    simply never checked, and every signed-in user reaches the screen. It has
+    happened twice: on the settings screens, and again on the sales order and
+    invoice lists.
+
+    This walks the source rather than the URLs so a view is covered the moment
+    it is written, before anyone remembers to add a test for it.
+    """
+
+    MIXINS = {
+        "ActionPermissionMixin",
+        "FilteredListView",
+        "PostingPermissionMixin",
+        "ConfirmationRequiredMixin",
+    }
+
+    def test_no_view_uses_djangos_attribute_name(self):
+        import ast
+        import pathlib
+
+        root = pathlib.Path(__file__).resolve().parents[3] / "apps"
+        offenders = []
+        for path in sorted(root.rglob("*.py")):
+            if "migrations" in str(path):
+                continue
+            for node in ast.walk(ast.parse(path.read_text())):
+                if not isinstance(node, ast.ClassDef):
+                    continue
+                bases = {b.id for b in node.bases if isinstance(b, ast.Name)}
+                if not bases & self.MIXINS:
+                    continue
+                for stmt in node.body:
+                    if isinstance(stmt, ast.Assign) and any(
+                        isinstance(t, ast.Name) and t.id == "permission_required"
+                        for t in stmt.targets
+                    ):
+                        offenders.append(f"{path.name}:{stmt.lineno} {node.name}")
+        self.assertEqual(
+            offenders,
+            [],
+            "these declare permission_required, which this mixin ignores — "
+            "use required_permission: " + ", ".join(offenders),
+        )

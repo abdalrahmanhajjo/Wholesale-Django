@@ -8,8 +8,10 @@ BR-008, BR-009, BR-014, BR-016, FTD-004, FTD-005, RPT-012, RPT-013, RPT-022.
 from decimal import Decimal
 
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.db.models import F, Q
+from django.urls import reverse
 
 from apps.core.expressions import exactly_one
 from apps.core.models import MONEY, RATE, DocumentStatus, TimeStampedModel
@@ -121,7 +123,12 @@ class Payment(TimeStampedModel):
     amount_base = models.DecimalField(**MONEY, default=ZERO)
     allocated_txn = models.DecimalField(**MONEY, default=ZERO)
     unallocated_txn = models.DecimalField(
-        **MONEY, default=ZERO, help_text="Advance / unapplied credit (PAY-004, BR-009)."
+        **MONEY,
+        default=ZERO,
+        help_text=(
+            "Money received but not yet matched to an invoice. It sits as a "
+            "credit on the account until it is allocated."
+        ),
     )
 
     method = models.ForeignKey(
@@ -243,6 +250,44 @@ class Payment(TimeStampedModel):
     def __str__(self):
         return self.number
 
+    @property
+    def party(self):
+        """The customer or vendor on the side selected by ``direction``."""
+        return self.customer if self.direction == PaymentDirection.RECEIPT else self.vendor
+
+    def get_absolute_url(self):
+        return reverse("payments:payment_detail", args=[self.pk])
+
+    def clean(self):
+        """Cross-table rules that cannot be expressed as database CHECKs."""
+        super().clean()
+        errors = {}
+        if self.direction == PaymentDirection.RECEIPT:
+            if not self.customer_id:
+                errors["customer"] = "A customer is required for a receipt."
+            if self.vendor_id:
+                errors["vendor"] = "A receipt cannot be assigned to a vendor."
+        elif self.direction == PaymentDirection.PAYMENT:
+            if not self.vendor_id:
+                errors["vendor"] = "A vendor is required for a vendor payment."
+            if self.customer_id:
+                errors["customer"] = "A vendor payment cannot be assigned to a customer."
+
+        if self.method_id and self.method.requires_reference and not self.reference.strip():
+            errors["reference"] = (
+                f"A reference is required for payment method {self.method.name}."
+            )
+        if self.method_id and not self.method.is_active:
+            errors["method"] = "Select an active payment method."
+        if self.money_account_id and not self.money_account.is_active:
+            errors["money_account"] = "Select an active money account."
+        if self.customer_id and not self.customer.is_active:
+            errors["customer"] = "Select an active customer."
+        if self.vendor_id and not self.vendor.is_active:
+            errors["vendor"] = "Select an active vendor."
+        if errors:
+            raise ValidationError(errors)
+
 
 # ---------------------------------------------------------------------------
 # Allocation (PAY-003, PAY-005, PAY-007, RET-004, RET-007)
@@ -343,7 +388,12 @@ class Allocation(TimeStampedModel):
     amount_base = models.DecimalField(**MONEY, default=ZERO)
     settlement_rate = models.DecimalField(**RATE, default=Decimal("1"))
     fx_gain_loss_base = models.DecimalField(
-        **MONEY, default=ZERO, help_text="Positive = gain, negative = loss (BR-014)."
+        **MONEY,
+        default=ZERO,
+        help_text=(
+            "Exchange difference realised when this payment settled, against "
+            "the rate on the original document. Positive is a gain."
+        ),
     )
     fx_journal_entry = models.ForeignKey(
         "ledger.JournalEntry",

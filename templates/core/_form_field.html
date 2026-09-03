@@ -1,20 +1,44 @@
-{% comment %}
+{% load ui %}{% comment %}
 One form field, rendered consistently. Every module includes this rather than
 styling its own inputs, so validation errors, help text and required markers
 look the same everywhere (UX-002, UX-008, NFR-012).
+
+The input is rendered through `a11y_field` so the help text and any error are
+attached with aria-describedby and the invalid state is announced, not merely
+coloured.
+
+The label sits above its field. A floating label would compete with the
+placeholder for the same pixels, and the placeholder is carrying the expected
+format here — so the label moves out of the way permanently rather than on
+focus.
 {% endcomment %}
-<div class="{{ wrapper_class|default:'' }}">
+<div class="field-wrap {{ wrapper_class|default:'' }}">
   {% if field.field.widget.input_type == "checkbox" %}
-    <label class="flex items-center gap-2.5 pt-6 text-sm font-semibold">
-      {{ field }} {{ field.label }}
-    </label>
+    <div class="flex h-full items-center gap-2.5 pt-5">
+      {% a11y_field field %}
+      <label for="{{ field.id_for_label }}" class="text-sm font-semibold">{{ field.label }}</label>
+    </div>
   {% else %}
     <label for="{{ field.id_for_label }}" class="label">
       {{ field.label }}
-      {% if field.field.required %}<span class="text-danger" aria-hidden="true">*</span>{% endif %}
+      {% comment %}
+      "Optional" is spelled out rather than marking required fields with a bare
+      asterisk: most fields here are required, and an asterisk hidden from
+      assistive technology tells a screen-reader user nothing.
+      {% endcomment %}
+      {% if not field.field.required %}<span class="label-optional">(optional)</span>{% endif %}
     </label>
-    {{ field }}
+    {% a11y_field field %}
   {% endif %}
-  {% if field.help_text %}<p class="help">{{ field.help_text }}</p>{% endif %}
-  {% for error in field.errors %}<p class="error-text">{{ error }}</p>{% endfor %}
+
+  {% if field.help_text %}
+    <p class="help" id="{% help_id field %}">{{ field.help_text }}</p>
+  {% endif %}
+
+  {% if field.errors %}
+    <p class="error-text" id="{% error_id field %}">
+      <span aria-hidden="true">&#9888;</span>
+      <span><span class="sr-only">Error: </span>{{ field.errors|join:" " }}</span>
+    </p>
+  {% endif %}
 </div>

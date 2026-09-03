@@ -36,7 +36,11 @@ class Warehouse(TimeStampedModel):
         "ledger.Account", null=True, blank=True, on_delete=models.PROTECT, related_name="+"
     )
     allow_negative_stock = models.BooleanField(
-        default=False, help_text="Overrides Company policy for this warehouse (BR-017)."
+        default=False,
+        help_text=(
+            "Let stock go below zero at this warehouse, overriding the "
+            "company-wide setting. Use only where stock is counted after the fact."
+        ),
     )
     is_active = models.BooleanField(default=True)
 
@@ -298,7 +302,10 @@ class GoodsReceipt(StockDocumentBase):
         blank=True,
         on_delete=models.PROTECT,
         related_name="receipts",
-        help_text="Null for an authorised direct receipt (INV-006).",
+        help_text=(
+            "The purchase order this receipt fulfils. Leave empty only for an "
+            "authorised direct receipt with no order behind it."
+        ),
     )
     vendor_delivery_note = models.CharField(max_length=64, blank=True)
     received_by = models.ForeignKey(
@@ -405,7 +412,10 @@ class DeliveryNote(StockDocumentBase):
         blank=True,
         on_delete=models.PROTECT,
         related_name="deliveries",
-        help_text="Null for an authorised direct delivery (INV-007).",
+        help_text=(
+            "The sales order this delivery fulfils. Leave empty only for an "
+            "authorised direct delivery with no order behind it."
+        ),
     )
     shipping_address_text = models.TextField(blank=True)  # PTY-003 snapshot
     carrier = models.CharField(max_length=100, blank=True)
@@ -417,6 +427,11 @@ class DeliveryNote(StockDocumentBase):
         on_delete=models.PROTECT,
         related_name="+",
     )
+
+    def get_absolute_url(self):
+        from django.urls import reverse
+
+        return reverse("sales:delivery_detail", args=[self.pk])
 
     class Meta:
         db_table = "delivery_note"

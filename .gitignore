@@ -35,6 +35,7 @@ staticfiles/
 *.sql.gz
 
 # --- Tooling --------------------------------------------------------------
+node_modules/
 .ruff_cache/
 .pytest_cache/
 .coverage

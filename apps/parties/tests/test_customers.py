@@ -10,13 +10,13 @@ UX-002, UX-007.
 
 from decimal import Decimal
 
-from django.contrib.auth.models import Group
+from django.contrib.auth.models import Group, Permission
 from django.test import TestCase
 from django.urls import reverse
 
 from apps.accounts.models import User
 from apps.core.models import AuditAction, AuditEvent, Currency, PaymentTerm
-from apps.parties.models import Customer
+from apps.parties.models import Address, AddressType, Contact, Customer, Vendor
 
 
 class CustomerScreenTests(TestCase):
@@ -105,6 +105,19 @@ class CustomerScreenTests(TestCase):
     def test_export_is_recorded(self):
         self.client.get(reverse("parties:customer_list"), {"export": "csv"})
         self.assertTrue(AuditEvent.objects.filter(action=AuditAction.EXPORT).exists())
+
+    def test_export_neutralizes_spreadsheet_formulas(self):
+        Customer.objects.create(
+            code="CSV-SAFE",
+            name='=HYPERLINK("https://malicious.example", "open")',
+            currency=self.usd,
+        )
+
+        response = self.client.get(
+            reverse("parties:customer_list"), {"q": "CSV-SAFE", "export": "csv"}
+        )
+
+        self.assertContains(response, "'=HYPERLINK", status_code=200)
 
     def test_export_requires_permission(self):
         no_export = User.objects.create_user(
@@ -265,6 +278,15 @@ class CustomerScreenTests(TestCase):
         with self.assertRaises(NoReverseMatch):
             reverse("parties:customer_delete", args=[1])
 
+    def test_status_change_requires_an_audit_reason(self):
+        customer = Customer.objects.get(code="ACME-01")
+        response = self.client.post(
+            reverse("parties:customer_deactivate", args=[customer.pk]), {}
+        )
+        self.assertEqual(response.status_code, 302)
+        customer.refresh_from_db()
+        self.assertTrue(customer.is_active)
+
     # -- permissions -------------------------------------------------------
     def test_read_only_user_cannot_create(self):
         auditor = User.objects.create_user(
@@ -286,6 +308,125 @@ class CustomerScreenTests(TestCase):
         response = self.client.get(reverse("parties:customer_detail", args=[customer.pk]))
         self.assertEqual(response.status_code, 200)
         self.assertGreaterEqual(len(response.context["audit_events"]), 1)
+
+    def test_customer_urls_enforce_their_declared_permissions(self):
+        customer = Customer.objects.get(code="ACME-01")
+        no_access = User.objects.create_user(
+            username="customer-no-access",
+            email="customer-no-access@example.com",
+            password="testpass-12345",
+        )
+        self.client.force_login(no_access)
+
+        requests = [
+            ("get", reverse("parties:customer_list")),
+            ("get", reverse("parties:customer_detail", args=[customer.pk])),
+            ("post", reverse("parties:customer_create")),
+            ("post", reverse("parties:customer_edit", args=[customer.pk])),
+            ("post", reverse("parties:customer_deactivate", args=[customer.pk])),
+        ]
+        for method, url in requests:
+            with self.subTest(method=method, url=url):
+                response = getattr(self.client, method)(url, {})
+                self.assertEqual(response.status_code, 403)
+
+    def test_export_permission_does_not_bypass_customer_view_permission(self):
+        export_only = User.objects.create_user(
+            username="export-only",
+            email="export-only@example.com",
+            password="testpass-12345",
+        )
+        export_only.user_permissions.add(Permission.objects.get(codename="export_data"))
+        self.client.force_login(export_only)
+        response = self.client.get(reverse("parties:customer_list"), {"export": "csv"})
+        self.assertEqual(response.status_code, 403)
+
+    def test_vendor_detail_supports_view_only_users(self):
+        vendor = Vendor.objects.create(
+            code="V-DETAIL",
+            name="Detail Vendor",
+            currency=self.usd,
+            payment_term=self.term,
+        )
+        viewer = User.objects.create_user(
+            username="vendor-viewer",
+            email="vendor-viewer@example.com",
+            password="testpass-12345",
+        )
+        viewer.user_permissions.add(
+            Permission.objects.get(content_type__app_label="parties", codename="view_vendor")
+        )
+        self.client.force_login(viewer)
+
+        response = self.client.get(vendor.get_absolute_url())
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, vendor.name)
+        self.assertNotContains(response, reverse("parties:vendor_edit", args=[vendor.pk]))
+
+
+            # -- addresses and contacts (PTY-003) ----------------------------------
+    def test_a_second_default_address_moves_the_flag(self):
+        """
+        Ticking "default" means "make this the default", so the previous holder
+        loses the flag rather than the save being refused. The database allows
+        only one per customer and type, and checks it on insert.
+        """
+        customer = Customer.objects.get(code="ACME-01")
+        first = Address.objects.create(
+            customer=customer,
+            label="Old depot",
+            address_type=AddressType.SHIPPING,
+            line1="1 Old Road",
+            is_default=True,
+        )
+
+        response = self.client.post(
+            reverse("parties:customer_address_create", args=[customer.pk]),
+            {
+                "label": "New depot",
+                "address_type": AddressType.SHIPPING,
+                "line1": "2 New Road",
+                "line2": "",
+                "city": "",
+                "state": "",
+                "postal_code": "",
+                "country": "",
+                "is_default": "on",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        first.refresh_from_db()
+        self.assertFalse(first.is_default, "the previous default should have been cleared")
+        self.assertEqual(
+            customer.addresses.filter(
+                address_type=AddressType.SHIPPING, is_default=True
+            ).count(),
+            1,
+        )
+
+    def test_a_second_primary_contact_moves_the_flag(self):
+        customer = Customer.objects.get(code="ACME-01")
+        first = Contact.objects.create(
+            customer=customer, name="Old contact", is_primary=True
+        )
+
+        response = self.client.post(
+            reverse("parties:customer_contact_create", args=[customer.pk]),
+            {
+                "name": "New contact",
+                "job_title": "",
+                "email": "",
+                "phone": "",
+                "is_primary": "on",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        first.refresh_from_db()
+        self.assertFalse(first.is_primary)
+        self.assertEqual(customer.contacts.filter(is_primary=True).count(), 1)
 
 
 def _view_customer_permissions():

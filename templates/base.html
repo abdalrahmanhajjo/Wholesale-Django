@@ -34,10 +34,13 @@ Blocks available to child templates:
   {% block extra_head %}{% endblock %}
 </head>
 
-<body class="h-full bg-canvas font-sans text-ink antialiased">
+<body class="h-full bg-canvas font-sans text-ink antialiased"
+      data-base-currency="{{ base_currency }}">
 {% include "core/_icons.html" %}
-{# Perceived performance: server-rendered navigation has no spinner of its own,
-   so a click that takes a second looks like a click that did nothing. #}
+{% comment %}
+Perceived performance: server-rendered navigation has no spinner of its own, so
+a click that takes a second looks like a click that did nothing.
+{% endcomment %}
 <div id="nav-progress" class="nav-progress" hidden></div>
 <a href="#main-content" class="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-lg focus:bg-brand focus:px-4 focus:py-2 focus:font-semibold focus:text-ink">Skip to content</a>
 <div class="flex min-h-full">
@@ -80,8 +83,24 @@ Blocks available to child templates:
         <ul aria-labelledby="nav-operations">
           {% if perms.sales.view_salesorder %}
             <li>
-              <a href="{% url 'sales:so_list' %}" class="nav-link {% if request.resolver_match.app_name == 'sales' %}nav-link-active{% endif %}"
-                 {% if request.resolver_match.app_name == 'sales' %}aria-current="page"{% endif %}>Sales</a>
+              <a href="{% url 'sales:so_list' %}" class="nav-link {% if request.resolver_match.url_name|slice:':3' == 'so_' %}nav-link-active{% endif %}"
+                 {% if request.resolver_match.url_name|slice:':3' == 'so_' %}aria-current="page"{% endif %}>Sales orders</a>
+            </li>
+          {% endif %}
+          {% comment %}
+          Deliveries and invoices arrived with the sales-invoice work and belong
+          beside the orders they come from.
+          {% endcomment %}
+          {% if perms.inventory.view_deliverynote %}
+            <li>
+              <a href="{% url 'sales:delivery_list' %}" class="nav-link {% if request.resolver_match.url_name|slice:':9' == 'delivery_' %}nav-link-active{% endif %}"
+                 {% if request.resolver_match.url_name|slice:':9' == 'delivery_' %}aria-current="page"{% endif %}>Deliveries</a>
+            </li>
+          {% endif %}
+          {% if perms.sales.view_salesinvoice %}
+            <li>
+              <a href="{% url 'sales:invoice_list' %}" class="nav-link {% if request.resolver_match.url_name|slice:':8' == 'invoice_' %}nav-link-active{% endif %}"
+                 {% if request.resolver_match.url_name|slice:':8' == 'invoice_' %}aria-current="page"{% endif %}>Invoices</a>
             </li>
           {% endif %}
           {% comment %}
@@ -199,8 +218,10 @@ Blocks available to child templates:
                 <p class="alert-body text-amber-900"><span class="font-bold">Check this: </span>{{ message }}</p>
               </div>
             {% elif message.tags == 'success' %}
-              {# Success fades on its own; a failure never does, because the
-                 person may still need to act on it. #}
+              {% comment %}
+              Success fades on its own; a failure never does, because the person
+              may still need to act on it.
+              {% endcomment %}
               <div class="alert-success" role="status" data-dismissible data-autodismiss="7000">
                 <svg class="icon shrink-0 text-brand-deep" aria-hidden="true"><use href="#i-check"></use></svg>
                 <p class="alert-body"><span class="font-bold text-brand-deep">Done: </span>{{ message }}</p>
@@ -250,6 +271,7 @@ Blocks available to child templates:
 </div>
 <script src="{% static 'js/app.js' %}" defer></script>
 <script src="{% static 'js/forms.js' %}" defer></script>
+<script src="{% static 'js/steps.js' %}" defer></script>
 {% block extra_scripts %}{% endblock %}
 </body>
 </html>

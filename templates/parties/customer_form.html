@@ -2,53 +2,74 @@
 {% comment %}
 Create / edit a party (PTY-001, PTY-002, PTY-004, PTY-007).
 Used for both customers and vendors — `party_kind` switches the copy.
+
+Built on the shared form shell: sections with real headings, a two-column grid
+that collapses on small screens, and a sticky action bar. The code and name
+fields ask the server as you type whether the code is taken and whether an
+existing party looks like this one.
 {% endcomment %}
 
 {% block header_title %}{{ page_title }}{% endblock %}
 
 {% block content %}
-<form method="post" novalidate class="max-w-4xl">
+<form method="post" novalidate class="form-shell max-w-4xl"
+      data-draft-key="party-{{ party_kind|default:'customer' }}-{{ object.pk|default:'new' }}">
   {% csrf_token %}
 
   {% include "core/_form_errors.html" with form=form %}
 
+  {# Restored drafts and anything a chosen record implies land here. #}
+  <div data-notice-slot data-draft-slot class="space-y-2 empty:hidden"></div>
+
   {% if duplicate_warnings %}
     {# PTY-007: a warning for review, not a block — two real companies can share a name. #}
-    <div class="mb-5 rounded-xl2 border border-amber-200 bg-amber-50 p-5">
-      <p class="text-sm font-bold text-amber-900">Possible duplicate — please review</p>
-      <ul class="mt-2 space-y-1">
-        {% for warning in duplicate_warnings %}
-          <li class="text-sm text-amber-800">{{ warning }}</li>
-        {% endfor %}
-      </ul>
-      <p class="mt-3 text-xs text-amber-700">
-        Save again to continue anyway, or change the details above.
-      </p>
+    <div class="alert-warning" role="alert">
+      <svg class="icon shrink-0" aria-hidden="true"><use href="#i-alert"></use></svg>
+      <div>
+        <p class="alert-title text-amber-900">Possible duplicate — please review</p>
+        <ul class="mt-1 space-y-0.5">
+          {% for warning in duplicate_warnings %}
+            <li class="alert-body text-amber-900">{{ warning }}</li>
+          {% endfor %}
+        </ul>
+        <p class="mt-2 text-[13px] text-amber-900">
+          Save again to continue anyway, or change the details above.
+        </p>
+      </div>
     </div>
   {% endif %}
 
-  <div class="card card-pad">
-    <h2 class="section-heading" id="party-identity">Identity</h2>
-    <div class="mt-4 grid gap-4 sm:grid-cols-2">
+  <section class="form-section" aria-labelledby="s-identity">
+    <div class="form-section-head">
+      <h2 class="form-section-title" id="s-identity">Identity</h2>
+      <p class="form-section-hint">How this {{ party_kind|default:"customer" }} is referred to on documents and in search.</p>
+    </div>
+    <div class="form-section-body">
       {% include "core/_form_field.html" with field=form.code %}
       {% include "core/_form_field.html" with field=form.name %}
       {% include "core/_form_field.html" with field=form.legal_name %}
       {% include "core/_form_field.html" with field=form.tax_id %}
     </div>
-  </div>
+  </section>
 
-  <div class="card card-pad mt-4">
-    <h2 class="section-heading" id="party-contact">Contact</h2>
-    <div class="mt-4 grid gap-4 sm:grid-cols-3">
+  <section class="form-section" aria-labelledby="s-contact">
+    <div class="form-section-head">
+      <h2 class="form-section-title" id="s-contact">Contact</h2>
+      <p class="form-section-hint">Where statements and remittance advice are sent.</p>
+    </div>
+    <div class="form-section-body form-section-body-3">
       {% include "core/_form_field.html" with field=form.email %}
       {% include "core/_form_field.html" with field=form.phone %}
       {% include "core/_form_field.html" with field=form.website %}
     </div>
-  </div>
+  </section>
 
-  <div class="card card-pad mt-4">
-    <h2 class="section-heading" id="party-commercial">Commercial</h2>
-    <div class="mt-4 grid gap-4 sm:grid-cols-2">
+  <section class="form-section" aria-labelledby="s-commercial">
+    <div class="form-section-head">
+      <h2 class="form-section-title" id="s-commercial">Commercial terms</h2>
+      <p class="form-section-hint">Carried onto every new document for this party, and editable there.</p>
+    </div>
+    <div class="form-section-body">
       {% include "core/_form_field.html" with field=form.currency %}
       {% include "core/_form_field.html" with field=form.payment_term %}
       {% include "core/_form_field.html" with field=form.default_tax_code %}
@@ -56,31 +77,42 @@ Used for both customers and vendors — `party_kind` switches the copy.
       {% if form.salesperson %}{% include "core/_form_field.html" with field=form.salesperson %}{% endif %}
       {% if form.default_expense_account %}{% include "core/_form_field.html" with field=form.default_expense_account %}{% endif %}
     </div>
-  </div>
+  </section>
 
   {% if form.credit_limit %}
-  <div class="card card-pad mt-4">
-    <h2 class="section-heading" id="party-credit">Credit control</h2>
-    <div class="mt-4 grid gap-4 sm:grid-cols-3">
-      {% include "core/_form_field.html" with field=form.credit_limit %}
-      {% include "core/_form_field.html" with field=form.credit_hold %}
-      {% include "core/_form_field.html" with field=form.credit_hold_reason %}
-    </div>
-  </div>
+    <section class="form-section" aria-labelledby="s-credit">
+      <div class="form-section-head">
+        <h2 class="form-section-title" id="s-credit">Credit control</h2>
+        <p class="form-section-hint">A hold stops new documents posting until it is lifted, and needs a reason for the audit trail.</p>
+      </div>
+      <div class="form-section-body form-section-body-3">
+        {% include "core/_form_field.html" with field=form.credit_limit %}
+        {% include "core/_form_field.html" with field=form.credit_hold %}
+        {% include "core/_form_field.html" with field=form.credit_hold_reason wrapper_class="field-wide sm:col-span-1" %}
+      </div>
+    </section>
   {% endif %}
 
-  <div class="card card-pad mt-4">
-    <h2 class="section-heading" id="party-other">Other</h2>
-    <div class="mt-4 grid gap-4">
+  <section class="form-section" aria-labelledby="s-other">
+    <div class="form-section-head">
+      <h2 class="form-section-title" id="s-other">Notes and status</h2>
+    </div>
+    <div class="form-section-body form-section-body-1">
       {% include "core/_form_field.html" with field=form.notes %}
       {% include "core/_form_field.html" with field=form.is_active %}
     </div>
-  </div>
+  </section>
 
-  <div class="mt-5 flex items-center gap-2">
-    <button type="submit" class="btn-primary" data-busy-label="Saving…">{% if object %}Save changes{% elif party_kind == 'vendor' %}Create vendor{% else %}Create customer{% endif %}</button>
+  <div class="form-actions">
+    <button type="submit" class="btn-primary"
+            data-busy-label="{% if object %}Saving changes…{% else %}Creating…{% endif %}">
+      {% if object %}Save changes{% elif party_kind == 'vendor' %}Create vendor{% else %}Create customer{% endif %}
+    </button>
     <a href="{% if object %}{{ object.get_absolute_url }}{% elif party_kind == 'vendor' %}{% url 'parties:vendor_list' %}{% else %}{% url 'parties:customer_list' %}{% endif %}"
        class="btn-ghost">Cancel</a>
+    <p class="form-actions-hint">
+      {% if object %}Every change is recorded in the audit trail.{% else %}Nothing is saved until you create it.{% endif %}
+    </p>
   </div>
 </form>
 {% endblock %}

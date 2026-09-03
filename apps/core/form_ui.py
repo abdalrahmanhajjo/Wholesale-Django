@@ -23,6 +23,7 @@ attributes only let the browser say the same thing sooner and more kindly.
 """
 
 from django import forms
+from django.forms import ModelChoiceField
 
 #: Selects longer than this get a type-to-filter combobox. Below it, the native
 #: control is faster and already accessible, so it is left alone.
@@ -35,7 +36,7 @@ CHECKBOX_CLASS = (
 )
 TEXTAREA_CLASS = (
     "block w-full rounded-xl2 border border-input-line bg-white px-3 py-2 "
-    "text-sm text-ink placeholder:text-muted-fg focus:border-ink"
+    "text-sm leading-6 text-ink placeholder:text-muted-fg focus:border-ink"
 )
 
 #: Autofill hints keyed by the field names this domain actually uses. Getting
@@ -51,6 +52,23 @@ AUTOCOMPLETE_BY_NAME = {
     "code": "off",
     "reference": "off",
     "customer_reference": "off",
+}
+
+#: Which suggester backs a field, by field name. A select listed here searches
+#: the server as you type and shows a second line of context per result, instead
+#: of filtering the options already in the page.
+SUGGEST_BY_NAME = {
+    "customer": "customer",
+    "vendor": "vendor",
+    "product": "product",
+    "warehouse": "warehouse",
+    "default_warehouse": "warehouse",
+    "money_account": "money_account",
+    "currency": "currency",
+    "payment_term": "payment_term",
+    "tax_code": "tax_code",
+    "default_tax_code": "tax_code",
+    "sales_order": "sales_order",
 }
 
 #: Placeholders that apply wherever the field name appears. A form's own
@@ -70,8 +88,28 @@ PLACEHOLDER_BY_NAME = {
 }
 
 
-def _is_money(field):
-    return isinstance(field, forms.DecimalField) and (field.decimal_places or 0) >= 2
+#: MONEY, QTY and PCT are all four decimal places in this schema, so the number
+#: of decimals cannot tell an amount from a quantity or a percentage. The name
+#: can. Getting it wrong is visible: an exchange rate was being shown with a
+#: currency symbol beside it and grouped like a sum of money.
+NOT_MONEY_WORDS = ("rate", "percent", "quantity", "qty", "days", "decimal", "level")
+MONEY_WORDS = ("amount", "price", "total", "subtotal", "limit", "balance", "cost", "credit")
+
+
+def _is_money(field, name=""):
+    """
+    Whether this field holds an amount of money.
+
+    Only an amount gets thousands grouping and a currency beside the box. A
+    quantity, a percentage and a rate are all numbers, and none of them are
+    money.
+    """
+    if not isinstance(field, forms.DecimalField):
+        return False
+    lowered = name.lower()
+    if any(word in lowered for word in NOT_MONEY_WORDS):
+        return False
+    return any(word in lowered for word in MONEY_WORDS)
 
 
 class UIFormMixin:
@@ -89,11 +127,20 @@ class UIFormMixin:
         many options they hold.
     ``plain_selects``
         Select fields to leave as native controls regardless of size.
+    ``checks``
+        ``{field_name: rule}``. The rule is asked of /settings/check/ while the
+        user types — a code already taken, a name close to an existing one.
+        Only the database can answer these, and only the server enforces them;
+        this just says it sooner.
+    ``suggest_kinds``
+        Override or extend SUGGEST_BY_NAME for this form.
     """
 
     placeholders = {}
     autocomplete_fields = ()
     plain_selects = ()
+    checks = {}
+    suggest_kinds = {}
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -123,6 +170,7 @@ class UIFormMixin:
         self._placeholder(name, attrs)
         self._keyboard(name, field, attrs)
         self._validation(name, field, attrs)
+        self._check(name, attrs)
 
         autocomplete = AUTOCOMPLETE_BY_NAME.get(name)
         if autocomplete:
@@ -168,7 +216,7 @@ class UIFormMixin:
             rule = "phone"
         elif isinstance(field, forms.DateField):
             rule = "date"
-        elif _is_money(field):
+        elif _is_money(field, name):
             rule = "money"
         elif isinstance(field, forms.DecimalField):
             rule = "decimal"
@@ -187,6 +235,17 @@ class UIFormMixin:
         if getattr(field, "max_length", None):
             attrs.setdefault("maxlength", str(field.max_length))
 
+    # -- server-side checks -------------------------------------------------
+    def _check(self, name, attrs):
+        rule = self.checks.get(name)
+        if not rule:
+            return
+        attrs.setdefault("data-check", rule)
+        # Editing a record must not report that record as its own duplicate.
+        instance_pk = getattr(getattr(self, "instance", None), "pk", None)
+        if instance_pk:
+            attrs.setdefault("data-check-exclude", str(instance_pk))
+
     # -- selects -----------------------------------------------------------
     def _select(self, name, field, attrs):
         """
@@ -199,13 +258,30 @@ class UIFormMixin:
         """
         if name in self.plain_selects:
             return
-        try:
-            option_count = len(field.choices)
-        except TypeError:  # a queryset that is not sized without evaluating
-            option_count = COMBOBOX_THRESHOLD + 1
-        if name in self.autocomplete_fields or option_count > COMBOBOX_THRESHOLD:
+
+        kind = self.suggest_kinds.get(name, SUGGEST_BY_NAME.get(name))
+
+        if isinstance(field, ModelChoiceField):
+            # A field backed by a table is always worth searching, and asking
+            # how many rows it holds costs a COUNT query per select per render —
+            # eight of them on the sales order form alone, for a decision that
+            # is the same every time.
+            searchable = True
+        else:
+            # Static choices are cheap to count, but Django hands some of them
+            # over as a lazy iterator with no length — a model field with
+            # `choices` yields a BlankChoiceIterator. Materialise it; these are
+            # in-memory tuples, never a query.
+            try:
+                searchable = len(field.choices) > COMBOBOX_THRESHOLD
+            except TypeError:
+                searchable = sum(1 for _ in field.choices) > COMBOBOX_THRESHOLD
+
+        if name in self.autocomplete_fields or searchable or kind:
             attrs.setdefault("data-combobox", "")
             attrs.setdefault(
                 "data-combobox-placeholder",
                 self.placeholders.get(name, f"Search {field.label or name}…".lower()),
             )
+            if kind:
+                attrs.setdefault("data-suggest", kind)

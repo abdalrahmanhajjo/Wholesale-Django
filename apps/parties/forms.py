@@ -81,6 +81,7 @@ class CustomerForm(PartyFormMixin, UIFormMixin, forms.ModelForm):
         "credit_limit": "0.00 for no limit",
     }
     autocomplete_fields = ["currency", "payment_term", "default_tax_code"]
+    checks = {"code": "customer-code", "name": "similar-customer-name"}
 
     class Meta:
         model = Customer
@@ -137,6 +138,7 @@ class VendorForm(PartyFormMixin, UIFormMixin, forms.ModelForm):
         "legal_name": "Registered name, if it differs",
     }
     autocomplete_fields = ["currency", "payment_term", "default_tax_code"]
+    checks = {"code": "vendor-code", "name": "similar-vendor-name"}
 
     class Meta:
         model = Vendor

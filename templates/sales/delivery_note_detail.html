@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load ui %}
 {% comment %}
 Delivery note detail (SAL-005, INV-007).
 
@@ -27,8 +28,7 @@ post action, and audit history.
     <div class="card card-pad">
       <div class="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p class="eyebrow">Delivery note</p>
-          <h2 class="display mt-1 text-2xl">{{ note.number }}</h2>
+          <h2 class="eyebrow">Delivery note</h2>
           <p class="font-mono text-xs text-muted-fg">posted {{ note.posted_at|date:"j M Y, H:i"|default:"not yet" }}</p>
         </div>
         <div class="flex gap-2">
@@ -66,26 +66,27 @@ post action, and audit history.
 
     {# ---- Lines ---- #}
     <div class="card card-pad">
-      <p class="eyebrow">Lines</p>
-      <div class="mt-3 overflow-x-auto">
-        <table class="w-full text-sm">
+      <h2 class="section-heading">Lines</h2>
+      <div class="scroll-region mt-3" tabindex="0" role="region" aria-label="Delivery lines">
+        <table class="table-stack w-full text-sm">
+          <caption class="sr-only">The products and quantities on this delivery note.</caption>
           <thead>
             <tr class="border-b border-line bg-muted-bg text-[11px] font-bold uppercase tracking-[0.1em] text-muted-fg">
-              <th class="px-4 py-2 text-right">#</th>
-              <th class="px-4 py-2 text-left">Product</th>
-              <th class="px-4 py-2 text-right">Qty</th>
-              <th class="px-4 py-2 text-right">Unit cost</th>
-              <th class="px-4 py-2 text-right">Total cost</th>
+              <th scope="col" class="px-4 py-2 text-right">#</th>
+              <th scope="col" class="px-4 py-2 text-left">Product</th>
+              <th scope="col" class="px-4 py-2 text-right">Qty</th>
+              <th scope="col" class="px-4 py-2 text-right">Unit cost</th>
+              <th scope="col" class="px-4 py-2 text-right">Total cost</th>
             </tr>
           </thead>
           <tbody>
             {% for line in note.lines.all %}
               <tr class="border-b border-line last:border-0">
-                <td class="px-4 py-2 text-right tabular-nums">{{ line.line_no }}</td>
-                <td class="px-4 py-2">{{ line.product }}</td>
-                <td class="px-4 py-2 text-right tabular-nums">{{ line.quantity }}</td>
-                <td class="px-4 py-2 text-right tabular-nums">{{ line.unit_cost|floatformat:2 }}</td>
-                <td class="px-4 py-2 text-right tabular-nums font-semibold">{{ line.total_cost|floatformat:2 }}</td>
+                <td data-label="Line" class="px-4 py-2 text-right tabular-nums">{{ line.line_no }}</td>
+                <td data-label="Product" class="px-4 py-2">{{ line.product }}</td>
+                <td data-label="Qty" class="px-4 py-2 text-right tabular-nums">{{ line.quantity|quantity }}</td>
+                <td data-label="Unit cost" class="px-4 py-2 text-right tabular-nums">{{ line.unit_cost|money:base_currency }}</td>
+                <td data-label="Total cost" class="px-4 py-2 text-right tabular-nums font-semibold">{{ line.total_cost|money:base_currency }}</td>
               </tr>
             {% empty %}
               <tr>
@@ -102,7 +103,7 @@ post action, and audit history.
   <div class="space-y-4">
 
     <div class="card card-pad">
-      <p class="eyebrow">Status</p>
+      <h2 class="section-heading">Status</h2>
       <div class="mt-3">
         {% include "core/_status_badge.html" with value=note.status display=note.get_status_display %}
       </div>
@@ -120,8 +121,8 @@ post action, and audit history.
 
     {# ---- Audit history (ACC-005) ---- #}
     <div class="card card-pad">
-      <p class="eyebrow">Audit history</p>
-      <h2 class="card-title mt-2">What happened, and who did it</h2>
+      <h2 class="section-heading">Audit history</h2>
+      <p class="card-title mt-2">What happened, and who did it</p>
       <ul class="mt-4 space-y-4">
         {% for event in audit_events %}
           <li class="border-l-2 border-line pl-3">

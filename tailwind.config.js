@@ -1,6 +1,11 @@
 /** @type {import('tailwindcss').Config} */
 module.exports = {
-  content: ["./templates/**/*.html", "./apps/**/*.py"],
+  // static/js is scanned too. Tailwind removes any component class it cannot
+  // find in the content files, so every class the scripts add at runtime —
+  // .combo-native, .field-live-error, .step-index — was being compiled away.
+  // That is why a searchable field rendered as two boxes: the rule that hides
+  // the native <select> did not exist in the stylesheet.
+  content: ["./templates/**/*.html", "./apps/**/*.py", "./static/js/**/*.js"],
   theme: {
     extend: {
       colors: {

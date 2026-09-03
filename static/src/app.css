@@ -631,6 +631,12 @@
      Anchoring them to the field-wrap instead put them at the bottom of
      everything below the input too — help text, the strength meter, the rules
      list — which is where they drifted to as those were added. */
+  /* Both are positioning contexts. .auth-control is the one the button wants —
+     it wraps the input alone. .auth-field is kept positioned as a backstop:
+     it still exists on every field group, and an absolutely positioned control
+     that lands on it must not escape to .auth-panel, which is also relative and
+     would stretch the button down the whole side of the card. */
+  .auth-field { @apply relative; }
   .auth-control { @apply relative; }
   .auth-field .field { @apply h-11 pl-11; }
   .auth-field-icon {

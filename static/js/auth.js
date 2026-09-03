@@ -14,9 +14,11 @@
   // The button is added here rather than in the template so a page that never
   // loads this script does not show a control that does nothing.
   document.querySelectorAll('input[type="password"]').forEach(function (field) {
-    // The control wraps the input alone, so the button lands on the box
-    // rather than below whatever the field-wrap also contains.
-    var wrap = field.closest(".auth-control");
+    // The control wraps the input alone, so the button lands on the box rather
+    // than below whatever the field-wrap also contains. Falling back to
+    // .auth-field keeps an older cached copy of this script from placing the
+    // button somewhere absurd if it meets newer markup.
+    var wrap = field.closest(".auth-control") || field.closest(".auth-field");
     if (!wrap) return;
 
     var button = document.createElement("button");

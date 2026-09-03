@@ -42,8 +42,12 @@ class DeliveryServicesTest(TestCase):
         cls.product_a = make_product(sku="DEL-A", price=Decimal("100"))
         cls.product_b = make_product(sku="DEL-B", price=Decimal("250"))
         cls.user = make_user("delivery-user")
-        seed_stock(cls.product_a, cls.warehouse, Decimal("100"), Decimal("50"), cls.user, "SEED-DEL-A")
-        seed_stock(cls.product_b, cls.warehouse, Decimal("100"), Decimal("80"), cls.user, "SEED-DEL-B")
+        seed_stock(
+            cls.product_a, cls.warehouse, Decimal("100"), Decimal("50"), cls.user, "SEED-DEL-A"
+        )
+        seed_stock(
+            cls.product_b, cls.warehouse, Decimal("100"), Decimal("80"), cls.user, "SEED-DEL-B"
+        )
 
     def _make_approved_order(self, **kw):
         order = make_order(customer=self.customer, warehouse=self.warehouse, **kw)

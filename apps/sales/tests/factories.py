@@ -186,7 +186,9 @@ def ensure_open_period_for_today():
     if fiscal_year is None:
         fiscal_year, _ = FiscalYear.objects.get_or_create(
             code=f"FY-{today.year}",
-            defaults=dict(start_date=date(today.year, 1, 1), end_date=date(today.year, 12, 31)),
+            defaults=dict(
+                start_date=date(today.year, 1, 1), end_date=date(today.year, 12, 31)
+            ),
         )
     FiscalPeriod.objects.get_or_create(
         fiscal_year=fiscal_year,

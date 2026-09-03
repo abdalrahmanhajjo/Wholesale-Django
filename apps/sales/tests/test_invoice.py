@@ -104,8 +104,12 @@ class InvoiceServicesTest(TestCase):
         cls.product_a = make_product(sku="INV-A", price=Decimal("100"))
         cls.product_b = make_product(sku="INV-B", price=Decimal("250"))
         cls.user = make_user("invoice-user")
-        seed_stock(cls.product_a, cls.warehouse, Decimal("100"), Decimal("50"), cls.user, "SEED-INV-A")
-        seed_stock(cls.product_b, cls.warehouse, Decimal("100"), Decimal("80"), cls.user, "SEED-INV-B")
+        seed_stock(
+            cls.product_a, cls.warehouse, Decimal("100"), Decimal("50"), cls.user, "SEED-INV-A"
+        )
+        seed_stock(
+            cls.product_b, cls.warehouse, Decimal("100"), Decimal("80"), cls.user, "SEED-INV-B"
+        )
 
     @classmethod
     def _ensure_open_posting_period(cls):
@@ -352,7 +356,9 @@ class InvoiceServicesTest(TestCase):
     def test_journal_adds_output_tax_line(self):
         tax = make_tax(code="INV-VAT", rate=Decimal("11.0"))
         product = make_product(sku="INV-TAX", price=Decimal("100"), tax=tax)
-        seed_stock(product, self.warehouse, Decimal("100"), Decimal("50"), self.user, "SEED-INV-TAX")
+        seed_stock(
+            product, self.warehouse, Decimal("100"), Decimal("50"), self.user, "SEED-INV-TAX"
+        )
         order = make_order(customer=self.customer, warehouse=self.warehouse)
         make_line(
             order, product=product, qty=Decimal("10"), price=Decimal("100"), tax=tax, line_no=1
@@ -430,20 +436,23 @@ class InvoiceServicesTest(TestCase):
     def test_required_mappings_includes_output_tax_when_tax_base(self):
         tax = make_tax(code="RM-VAT", rate=Decimal("11.0"))
         product = make_product(sku="RM-TAX", price=Decimal("100"), tax=tax)
-        seed_stock(product, self.warehouse, Decimal("100"), Decimal("50"), self.user, "SEED-RM-TAX")
+        seed_stock(
+            product, self.warehouse, Decimal("100"), Decimal("50"), self.user, "SEED-RM-TAX"
+        )
         order = make_order(customer=self.customer, warehouse=self.warehouse)
-        make_line(order, product=product, qty=Decimal("10"), price=Decimal("100"),
-                  tax=tax, line_no=1)
+        make_line(
+            order, product=product, qty=Decimal("10"), price=Decimal("100"), tax=tax, line_no=1
+        )
         order.status = DocumentStatus.APPROVED
         order.approved_at = "2026-08-15T10:00:00Z"
         order.save(update_fields=["status", "approved_at"])
         note = services.draft_delivery_from_order(
-            order=order, user=self.user,
-            quantities={order.lines.get().pk: Decimal("10")}
+            order=order, user=self.user, quantities={order.lines.get().pk: Decimal("10")}
         )
         services.post_delivery(note, self.user)
         invoice = services.create_invoice_from_delivery(
-            delivery=note, user=self.user,
+            delivery=note,
+            user=self.user,
             quantities={note.lines.get().pk: Decimal("10")},
         )
         self.assertGreater(invoice.tax_base, ZERO)
@@ -522,9 +531,7 @@ class InvoiceServicesTest(TestCase):
         self.assertEqual(ar_line.debit_base, invoice.total_base)
         self.assertEqual(entry.total_debit_base, entry.total_credit_base)
         # Customer dimension carried to the control-account line.
-        self.assertTrue(
-            entry.lines.filter(customer=invoice.customer).exists()
-        )
+        self.assertTrue(entry.lines.filter(customer=invoice.customer).exists())
 
     def test_post_is_idempotent_across_retry(self):
         note = self._make_posted_delivery()
@@ -537,7 +544,12 @@ class InvoiceServicesTest(TestCase):
         with self.assertRaises(ValueError):
             services.post_invoice(invoice, self.user)
         # The engine idempotency key would also dedupe on the exact retry.
-        self.assertEqual(JournalEntry.objects.filter(idempotency_key=f"sales-invoice:{invoice.pk}:post:v1").count(), 1)
+        self.assertEqual(
+            JournalEntry.objects.filter(
+                idempotency_key=f"sales-invoice:{invoice.pk}:post:v1"
+            ).count(),
+            1,
+        )
         self.assertEqual(first_entry.pk, invoice.journal_entry_id)
 
     def test_post_failure_rolls_back_fully(self):
@@ -556,7 +568,9 @@ class InvoiceServicesTest(TestCase):
         self.assertEqual(invoice.status, DocumentStatus.SUBMITTED)
         self.assertIsNone(invoice.journal_entry_id)
         self.assertFalse(
-            JournalEntry.objects.filter(idempotency_key=f"sales-invoice:{invoice.pk}:post:v1").exists()
+            JournalEntry.objects.filter(
+                idempotency_key=f"sales-invoice:{invoice.pk}:post:v1"
+            ).exists()
         )
         for dl in note.lines.all():
             dl.refresh_from_db()
@@ -583,7 +597,14 @@ class InvoiceViewTests(TestCase):
                 "sales.change_salesinvoice",
             ],
         )
-        seed_stock(cls.product, cls.warehouse, Decimal("100"), Decimal("50"), cls.creator, "SEED-INV-VIEW")
+        seed_stock(
+            cls.product,
+            cls.warehouse,
+            Decimal("100"),
+            Decimal("50"),
+            cls.creator,
+            "SEED-INV-VIEW",
+        )
         cls.poster = _make_user(
             "invoice-poster",
             permissions=[

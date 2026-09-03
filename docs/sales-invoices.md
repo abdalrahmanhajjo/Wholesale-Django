@@ -1,4 +1,4 @@
-# Sales Invoices — Day 4 feature (SAL-006..SAL-011)
+# Sales Invoices — Day 4 + Day 5 feature (SAL-006..SAL-012)
 
 Sales-invoice **drafting** from a posted delivery note, with the **submit →
 post** lifecycle and the **journal draft** handed to the ledger posting engine.
@@ -7,9 +7,8 @@ Delivered by Member 3.
 Scope: the `SalesInvoice` / `SalesInvoiceLine` screens — list, create (posted
 delivery picker + remaining quantities), detail, submit, post, and print. The
 **journal persistence** (writing `JournalEntry` / `JournalLine` rows, balance
-and idempotency enforcement) belongs to Member 4's posting engine and is
-deliberately **out of scope** here; Member 3 ships the fail-fast contract call
-so the flow is complete and testable without it.
+and idempotency enforcement) lives in Member 4's `PostingEngine`, which the
+sales module now binds directly, so posting works **end-to-end**.
 
 ---
 
@@ -98,13 +97,37 @@ post fails loudly instead of writing to the wrong account (CFG-007).
 ### Posting (`post_invoice`, SAL-009)
 Inside one `transaction.atomic()`:
 1. Validates the invoice is **SUBMITTED** (SAL-007).
-2. Calls `posting_service.post(PostingRequest(…))` — the one binding in the
-   module that Member 4 swaps for the real engine. Today it is the Day-1
-   `PostingEngineStub`, which **raises `PostingEngineUnavailable`**
-   (a `PostingError`) — never a silent no-op.
+2. Calls `posting_service.post(PostingRequest(…))`. The service binds the
+   **real `PostingEngine`** (Member 4's Day-2 engine), which validates required
+   account mappings, enforces a balanced journal, allocates a journal number,
+   persists `JournalEntry` / `JournalLine` / `PostingLink`, and honors the
+   idempotency key. A missing or invalid mapping raises `PostingError` and the
+   whole post rolls back — never a silent no-op.
 3. On success: flips to POSTED, attaches `journal_entry`, records
    `posted_at`/`posted_by`, bumps `DeliveryNoteLine.quantity_invoiced`
    (SAL-006), and records the POST audit event (BR-005, ACC-005).
+
+#### Required mappings (`_posting_required_mappings`, Day 5)
+The production engine (`posting.py _validate_draft`) rejects any mapping declared
+in `required_mappings` whose account does **not** appear in the journal.
+Since the invoice journal has **conditional** lines (output tax only when taxed,
+rounding only when nonzero, COGS/inventory only for stocked lines with cost),
+`required_mappings` must be derived from the same predicates as the builder.
+
+`_posting_required_mappings(invoice)` returns a **tuple** of mapping keys that
+mirrors exactly what `build_sales_invoice_journal` will emit:
+
+| Condition | Keys added |
+|---|---|
+| Always | `ACCOUNTS_RECEIVABLE`, `SALES_REVENUE` |
+| `invoice.tax_base > 0` | `OUTPUT_TAX` |
+| `invoice.rounding_base != 0` | `ROUNDING_LOSS` or `ROUNDING_GAIN` |
+| Any `delivery_line.unit_cost > 0` | `COGS`, `INVENTORY` |
+
+This is called inside `post_invoice` and passed to `PostingRequest(required_mappings=…)`.
+A mismatch between the builder and required_mappings causes the production engine to
+reject the post before the builder runs (missing mapping) or after (unused mapping)
+— both fail loudly by design (BR-005).
 
 ### Print (`invoice_print.html`, PTY-003)
 Standalone HTML with print CSS; all values come from persisted snapshots, so a
@@ -131,9 +154,16 @@ Coverage:
 * **Journal draft** — typed/balanced (DR = CR = `total_base`); AR + revenue
   legs; output-tax leg when taxed; COGS/INVENTORY legs when `unit_cost > 0`;
   zero-cost lines skipped.
-* **Posting contract** — requires SUBMITTED; the stub **fails loudly**, leaving
-  the invoice SUBMITTED with no journal attached and `quantity_invoiced` at
-  zero (BR-005: nothing is half-posted).
+* **Posting contract** — requires SUBMITTED; end-to-end post against the real
+  engine persists a balanced `JournalEntry` (DR = CR), flips the invoice to
+  POSTED, and records `posted_by`; a re-post of an already-POSTED invoice is
+  rejected and the idempotency key dedupes; a missing account mapping rolls the
+  whole post back leaving the invoice SUBMITTED with no journal and
+  `quantity_invoiced` at zero (BR-005: nothing is half-posted).
+* **Required mappings** (Day 5) — AR + revenue always present; OUTPUT_TAX
+  excluded on tax-free invoices; COGS/INVENTORY excluded when no delivery line
+  has `unit_cost > 0`; every declared key maps to an account actually present
+  in the journal.
 * **Views** — list, picker, create, over-invoice rejection, submit,
   permission denial on post without `core.post_sales_invoice`, graceful
   redirect when the engine is unavailable, detail, and print.
@@ -146,12 +176,16 @@ Coverage:
 
 ## Hand-off notes for Member 4
 
-* Swap the single binding in `apps/sales/services.py` — replace
-  `posting_service = PostingEngineStub()` with the concrete engine. Nothing
-  else in the module changes: the call site already uses the real
-  `PostingRequest` / `JournalDraft` contract and surfaces `PostingError`.
-* The engine must honor the SAL-009 idempotency key
+* The sales module now binds the **real `PostingEngine`** in
+  `apps/sales/services.py` (`posting_service = PostingEngine()`). Nothing else
+  in the module changes: the call site uses the real `PostingRequest` /
+  `JournalDraft` contract and surfaces `PostingError`.
+* The engine honors the SAL-009 idempotency key
   `sales-invoice:{invoice.pk}:post:v1` (GL-002) so a retry never double-posts.
+* `required_mappings` is already supplied by `_posting_required_mappings()`.
+  The engine validates that every declared key resolves to an active, postable
+  account and that no declared key is absent from the journal
+  (posting.py `_validate_draft` rule).
 * COGS/INVENTORY legs depend on `DeliveryNoteLine.unit_cost`, which is Member 2's
   weighted-average costing output (INV-005); until it lands those lines are
   skipped deliberately rather than posted at zero.

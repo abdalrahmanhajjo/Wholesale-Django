@@ -23,7 +23,7 @@ from apps.ledger.models import AccountMapping, JournalType, MappingKey
 from apps.ledger.services import (
     JournalDraft,
     JournalLineDraft,
-    PostingEngineStub,
+    PostingEngine,
     PostingError,
     PostingErrorCode,
     PostingRequest,
@@ -995,9 +995,37 @@ def build_sales_invoice_journal(invoice, *, user):
 # Posting (SAL-009) — the real engine, no silent no-op
 # ---------------------------------------------------------------------------
 
-# The one binding to swap when Member 4's concrete engine lands. The contract
-# interface is identical, so nothing else in this module changes.
-posting_service = PostingEngineStub()
+# Real production engine (Member 4's Day-2 deliverable). The contract
+# interface is identical to the stub, so nothing else in this module changes.
+posting_service = PostingEngine()
+
+
+def _posting_required_mappings(invoice):
+    """Mappings the journal will reference for this invoice (SAL-009/010).
+
+    Must mirror build_sales_invoice_journal's conditional lines exactly:
+    the engine rejects a declared mapping whose account is absent from the
+    journal (posting.py _validate_draft), so only declare the keys that will
+    actually appear for this invoice.
+    """
+    keys = [
+        MappingKey.ACCOUNTS_RECEIVABLE,
+        MappingKey.SALES_REVENUE,
+    ]
+    if invoice.tax_base:
+        keys.append(MappingKey.OUTPUT_TAX)
+    if invoice.rounding_base:
+        keys.append(
+            MappingKey.ROUNDING_LOSS if invoice.rounding_base < 0
+            else MappingKey.ROUNDING_GAIN
+        )
+    has_cogs = any(
+        (sl.delivery_line is not None and (sl.delivery_line.unit_cost or ZERO) > ZERO)
+        for sl in invoice.lines.select_related("delivery_line").iterator()
+    )
+    if has_cogs:
+        keys.extend([MappingKey.COGS, MappingKey.INVENTORY])
+    return tuple(keys)
 
 
 def post_invoice(invoice, user):
@@ -1008,15 +1036,14 @@ def post_invoice(invoice, user):
             "expected SUBMITTED (SAL-007)."
         )
     with transaction.atomic():
-        result = posting_service.post(
-            PostingRequest(
-                source=invoice,
-                user=user,
-                idempotency_key=f"sales-invoice:{invoice.pk}:post:v1",
-                build_journal=build_sales_invoice_journal,
-                reason="Invoice posting",
-            )
-        )
+        result = posting_service.post(PostingRequest(
+            source=invoice,
+            user=user,
+            idempotency_key=f"sales-invoice:{invoice.pk}:post:v1",
+            build_journal=build_sales_invoice_journal,
+            required_mappings=_posting_required_mappings(invoice),
+            reason="Invoice posting",
+        ))
 
         invoice.status = DocumentStatus.POSTED
         invoice.journal_entry = result.journal_entry

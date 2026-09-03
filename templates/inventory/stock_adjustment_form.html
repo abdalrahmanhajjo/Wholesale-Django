@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+{% comment %}
+Create / edit a stock adjustment (INV-009).
+
+`quantity_delta` is signed: positive increases stock, negative decreases it.
+The reason picked in the header decides which direction is allowed — the
+server checks this after both the form and formset validate (a mismatch
+can't be caught per-line, since the reason isn't attached to a new line's
+instance until the header is saved) and redisplays with a message rather
+than letting it reach the costing engine.
+{% endcomment %}
+
+{% block header_title %}{{ page_title }}{% endblock %}
+
+{% block content %}
+<form method="post" novalidate id="sa-form" class="max-w-5xl">
+  {% csrf_token %}
+
+  {% if form.non_field_errors %}
+    <div class="card card-pad mb-5 border-l-4 border-l-danger">
+      {% for error in form.non_field_errors %}<p class="text-sm text-danger">{{ error }}</p>{% endfor %}
+    </div>
+  {% endif %}
+  {% if formset.non_form_errors %}
+    <div class="card card-pad mb-5 border-l-4 border-l-danger">
+      {% for error in formset.non_form_errors %}<p class="text-sm text-danger">{{ error }}</p>{% endfor %}
+    </div>
+  {% endif %}
+
+  <div class="card card-pad">
+    <p class="eyebrow">Adjustment</p>
+    <div class="mt-4 grid gap-4 sm:grid-cols-3">
+      {% include "core/_form_field.html" with field=form.warehouse %}
+      {% include "core/_form_field.html" with field=form.reason %}
+      {% include "core/_form_field.html" with field=form.document_date %}
+      {% include "core/_form_field.html" with field=form.attachment_reference %}
+    </div>
+  </div>
+
+  <div class="card mt-4">
+    <div class="flex items-center justify-between border-b border-line p-4 sm:p-5">
+      <p class="card-title">Lines</p>
+      <button type="button" id="sa-add-line" class="btn-ghost btn-sm">Add line</button>
+    </div>
+
+    {{ formset.management_form }}
+
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="border-b border-line bg-muted-bg text-[11px] font-bold uppercase tracking-[0.1em] text-muted-fg">
+            <th class="px-3 py-2 text-left">Product</th>
+            <th class="px-3 py-2 text-left">Quantity change</th>
+            <th class="px-3 py-2 text-left">Unit cost (increases only)</th>
+            <th class="px-3 py-2 text-left">Note</th>
+            <th class="w-px px-3 py-2"></th>
+          </tr>
+        </thead>
+        <tbody id="sa-line-rows">
+          {% for line_form in formset %}
+            {% include "inventory/_sa_line_row.html" with form=line_form %}
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card card-pad mt-4">
+    <p class="eyebrow">Narration</p>
+    <div class="mt-4">{% include "core/_form_field.html" with field=form.narration %}</div>
+  </div>
+
+  <div class="mt-5 flex items-center gap-2">
+    <button type="submit" class="btn-primary">Save draft</button>
+    <a href="{% if object %}{{ object.get_absolute_url }}{% else %}{% url 'inventory:sa_list' %}{% endif %}"
+       class="btn-ghost">Cancel</a>
+  </div>
+</form>
+
+<template id="sa-empty-row">
+  {% include "inventory/_sa_line_row.html" with form=empty_form %}
+</template>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+(function () {
+  const totalForms = document.querySelector('input[name="lines-TOTAL_FORMS"]');
+  const rowsBody = document.getElementById("sa-line-rows");
+  const rowTemplate = document.getElementById("sa-empty-row");
+
+  function rowsOf() {
+    return Array.from(rowsBody.querySelectorAll("tr[data-sa-row]"));
+  }
+
+  function wireRow(row) {
+    const removeBtn = row.querySelector('[data-role="remove-line"]');
+    if (removeBtn) {
+      removeBtn.addEventListener("click", function () {
+        const deleteBox = row.querySelector('input[type="checkbox"][name$="-DELETE"]');
+        if (deleteBox) {
+          deleteBox.checked = true;
+          row.classList.add("hidden");
+        } else {
+          row.remove();
+        }
+      });
+    }
+  }
+
+  document.getElementById("sa-add-line").addEventListener("click", function () {
+    const index = parseInt(totalForms.value, 10);
+    const html = rowTemplate.innerHTML.replaceAll("__prefix__", index);
+    const wrapper = document.createElement("tbody");
+    wrapper.innerHTML = html;
+    const newRow = wrapper.querySelector("tr");
+    rowsBody.appendChild(newRow);
+    totalForms.value = index + 1;
+    wireRow(newRow);
+  });
+
+  rowsOf().forEach(wireRow);
+})();
+</script>
+{% endblock %}

@@ -97,6 +97,11 @@ class StockBalance(models.Model):
     def __str__(self):
         return f"{self.product_id}@{self.warehouse_id}: {self.quantity_on_hand}"
 
+    def get_absolute_url(self):
+        from django.urls import reverse
+
+        return f"{reverse('inventory:stock_ledger')}?q={self.product.sku}&warehouse={self.warehouse_id}"
+
 
 class MovementType(models.TextChoices):
     GOODS_RECEIPT = "GOODS_RECEIPT", "Goods receipt"
@@ -251,6 +256,19 @@ class StockMovement(models.Model):
     def __str__(self):
         return f"{self.movement_type} {self.product_id} {self.direction * self.quantity}"
 
+    def get_absolute_url(self):
+        from django.urls import reverse
+
+        source = self.source
+        if source is not None and hasattr(source, "get_absolute_url"):
+            return source.get_absolute_url()
+        return f"{reverse('inventory:stock_ledger')}?q={self.product.sku}&warehouse={self.warehouse_id}"
+
+    @property
+    def signed_quantity(self):
+        """Positive for an inbound movement, negative for an outbound one."""
+        return self.direction * self.quantity
+
 
 # ---------------------------------------------------------------------------
 # Shared behaviour for stock documents
@@ -334,6 +352,11 @@ class GoodsReceipt(StockDocumentBase):
             models.Index(fields=["vendor", "-document_date"], name="ix_gr_vendor_date"),
             models.Index(fields=["status", "-document_date"], name="ix_gr_status_date"),
         ]
+
+    def get_absolute_url(self):
+        from django.urls import reverse
+
+        return reverse("inventory:gr_detail", args=[self.pk])
 
 
 class GoodsReceiptLine(models.Model):
@@ -540,6 +563,11 @@ class StockTransfer(TimeStampedModel):
     def __str__(self):
         return self.number
 
+    def get_absolute_url(self):
+        from django.urls import reverse
+
+        return reverse("inventory:st_detail", args=[self.pk])
+
 
 class StockTransferLine(models.Model):
     transfer = models.ForeignKey(StockTransfer, on_delete=models.CASCADE, related_name="lines")
@@ -634,6 +662,11 @@ class StockAdjustment(TimeStampedModel):
 
     def __str__(self):
         return self.number
+
+    def get_absolute_url(self):
+        from django.urls import reverse
+
+        return reverse("inventory:sa_detail", args=[self.pk])
 
 
 class StockAdjustmentLine(models.Model):

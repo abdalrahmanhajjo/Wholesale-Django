@@ -38,9 +38,11 @@ from apps.core.models import (
 )
 from apps.core.permissions import (
     APPROVE_SALES_ORDER,
+    APPROVE_SALES_RETURN,
     EXPORT_DATA,
     POST_DELIVERY,
     POST_SALES_INVOICE,
+    POST_SALES_RETURN,
 )
 from apps.inventory.models import DeliveryNote
 from apps.ledger.services import PostingError
@@ -51,7 +53,7 @@ from apps.sales.forms import (
     SalesOrderForm,
     SalesOrderLineFormSet,
 )
-from apps.sales.models import SalesInvoice, SalesOrder
+from apps.sales.models import SalesInvoice, SalesOrder, SalesReturn
 
 
 def _tax_rate_map():
@@ -916,3 +918,238 @@ class SalesInvoicePrintView(BackLinkMixin, ActionPermissionMixin, TemplateView):
         )
         ctx["company"] = Company.objects.select_related("base_currency").first()
         return ctx
+
+
+# ---------------------------------------------------------------------------
+# Sales returns (RET-001..RET-009)
+# ---------------------------------------------------------------------------
+class SalesReturnListView(FilteredListView):
+    model = SalesReturn
+    required_permission = "sales.view_salesreturn"
+    page_title = "Sales returns"
+    page_subtitle = "Customer returns and credit notes."
+    create_url_name = "sales:return_create"
+    create_label = "New return"
+    export_permission = EXPORT_DATA
+    export_filename = "sales_returns"
+    default_ordering = "-document_date"
+    paginate_by = 25
+
+    columns = [
+        Column("number", "Number", sortable=True, link=True, css="font-mono text-xs"),
+        Column("customer", "Customer", sortable=True, order_by="customer__name"),
+        Column("original_invoice", "Invoice", order_by="original_invoice__number"),
+        Column("document_date", "Date", sortable=True),
+        Column("status", "Status", badge=True, align="center"),
+        Column("total_cost_base", "Cost", align="right", money=True, sortable=True),
+    ]
+
+    search_fields = [
+        "number",
+        "customer__name",
+        "customer__code",
+        "original_invoice__number",
+    ]
+    trigram_search_fields = ["customer__name"]
+
+    filters = [
+        ChoiceFilter("status", "Status", list(DocumentStatus.choices)),
+        DateRangeFilter("document_date", "Date range"),
+    ]
+
+    def get_queryset(self):
+        return super().get_queryset().select_related("customer", "original_invoice")
+
+    def get_summary(self):
+        agg = SalesReturn.objects.aggregate(
+            draft=Count("id", filter=Q(status="DRAFT")),
+            submitted=Count("id", filter=Q(status="SUBMITTED")),
+            posted=Count("id", filter=Q(status="POSTED")),
+        )
+        return [
+            ("Draft", agg["draft"] or 0),
+            ("Submitted", agg["submitted"] or 0),
+            ("Posted", agg["posted"] or 0),
+        ]
+
+
+class ReturnInvoiceSelectForm(forms.Form):
+    invoice = forms.ModelChoiceField(
+        queryset=SalesInvoice.objects.none(),
+        label="Posted sales invoice",
+        empty_label="Select an invoice…",
+        widget=forms.Select(attrs={"class": "field"}),
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["invoice"].queryset = (
+            SalesInvoice.objects.filter(
+                status__in=[
+                    DocumentStatus.POSTED,
+                    DocumentStatus.PARTIAL,
+                    DocumentStatus.COMPLETED,
+                ]
+            )
+            .select_related("customer")
+            .order_by("-document_date")
+        )
+
+
+class SalesReturnCreateView(BackLinkMixin, ActionPermissionMixin, TemplateView):
+    back_url_name = "sales:return_list"
+    back_label = "Back to returns"
+    template_name = "sales/return_form.html"
+    required_permission = "sales.add_salesreturn"
+
+    def get_invoice(self):
+        pk = self.request.GET.get("invoice") or self.request.POST.get("invoice")
+        if not pk:
+            return None
+        invoice = get_object_or_404(SalesInvoice, pk=pk)
+        if invoice.status not in (
+            DocumentStatus.POSTED,
+            DocumentStatus.PARTIAL,
+            DocumentStatus.COMPLETED,
+        ):
+            return None
+        return invoice
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        invoice = self.get_invoice()
+        if invoice is None:
+            ctx["invoice_picker"] = ReturnInvoiceSelectForm()
+            ctx["step"] = "pick"
+            ctx["page_title"] = "New sales return"
+            ctx["page_subtitle"] = "Choose the invoice to return from."
+            return ctx
+        rows = kwargs.get("rows")
+        if rows is None:
+            rows = services.build_return_lines_from_invoice(invoice)
+        ctx["invoice"] = invoice
+        ctx["rows"] = rows
+        ctx["page_title"] = f"Return from {invoice.number}"
+        ctx["page_subtitle"] = f"{invoice.customer} · {invoice.document_date}"
+        return ctx
+
+    def get(self, request, *args, **kwargs):
+        if request.GET.get("invoice") and self.get_invoice() is not None:
+            return self.render_to_response(self.get_context_data())
+        return super().get(request, *args, **kwargs)
+
+    def post(self, request, *args, **kwargs):
+        invoice = self.get_invoice()
+        if invoice is None:
+            messages.error(request, "Choose a posted sales invoice to return from.")
+            return redirect("sales:return_create")
+
+        rows = services.build_return_lines_from_invoice(invoice)
+        quantities = {}
+        for il, _remaining in rows:
+            raw = request.POST.get(f"qty_{il.pk}")
+            if raw:
+                try:
+                    qty = Decimal(raw)
+                except InvalidOperation:
+                    qty = ZERO
+                if qty > ZERO:
+                    quantities[il.pk] = qty
+
+        reason = (request.POST.get("reason") or "").strip()
+        disposition = request.POST.get("disposition", "RESTOCK")
+
+        if not quantities:
+            messages.error(request, "Choose at least one quantity to return.")
+            return self.render_to_response(self.get_context_data(rows=rows))
+        if not reason:
+            messages.error(request, "A reason is required for the return (RET-008).")
+            return self.render_to_response(self.get_context_data(rows=rows))
+
+        try:
+            ret = services.draft_return_from_invoice(
+                invoice=invoice,
+                user=request.user,
+                quantities=quantities,
+                reason=reason,
+                disposition=disposition,
+            )
+            messages.success(request, f"Return {ret.number} drafted.")
+            return redirect("sales:return_detail", pk=ret.pk)
+        except ValueError as exc:
+            messages.error(request, str(exc))
+            return self.render_to_response(self.get_context_data(rows=rows))
+
+
+class SalesReturnDetailView(BackLinkMixin, ActionPermissionMixin, DetailView):
+    back_url_name = "sales:return_list"
+    back_label = "Back to returns"
+    model = SalesReturn
+    template_name = "sales/return_detail.html"
+    context_object_name = "return_obj"
+    required_permission = "sales.view_salesreturn"
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        ctx["page_title"] = self.object.number
+        ctx["page_subtitle"] = f"Return for {self.object.customer}"
+        ctx["audit_events"] = AuditEvent.objects.filter(
+            content_type__app_label="sales",
+            content_type__model="salesreturn",
+            object_id=self.object.pk,
+        ).select_related("user")[:20]
+        return ctx
+
+
+class SalesReturnSubmitView(ActionPermissionMixin, View):
+    required_permission = "sales.change_salesreturn"
+
+    def post(self, request, pk):
+        ret = get_object_or_404(SalesReturn, pk=pk)
+        try:
+            services.submit_return(ret, request.user)
+            messages.success(request, f"Return {ret.number} submitted.")
+        except ValueError as exc:
+            messages.error(request, str(exc))
+        return redirect("sales:return_detail", pk=pk)
+
+
+class SalesReturnApproveView(ConfirmationRequiredMixin, View):
+    required_permission = APPROVE_SALES_RETURN
+
+    def post(self, request, pk):
+        ret = get_object_or_404(SalesReturn, pk=pk)
+        reason = self.get_confirmation_reason(request)
+        try:
+            services.approve_return(ret, request.user, reason=reason)
+            messages.success(request, f"Return {ret.number} approved.")
+        except ValueError as exc:
+            messages.error(request, str(exc))
+        return redirect("sales:return_detail", pk=pk)
+
+
+class SalesReturnRejectView(ConfirmationRequiredMixin, View):
+    required_permission = APPROVE_SALES_RETURN
+
+    def post(self, request, pk):
+        ret = get_object_or_404(SalesReturn, pk=pk)
+        reason = self.get_confirmation_reason(request)
+        try:
+            services.reject_return(ret, request.user, reason=reason)
+            messages.success(request, f"Return {ret.number} rejected.")
+        except ValueError as exc:
+            messages.error(request, str(exc))
+        return redirect("sales:return_detail", pk=pk)
+
+
+class SalesReturnPostView(ActionPermissionMixin, View):
+    required_permission = POST_SALES_RETURN
+
+    def post(self, request, pk):
+        ret = get_object_or_404(SalesReturn, pk=pk)
+        try:
+            services.post_return(ret, request.user, request)
+            messages.success(request, f"Return {ret.number} posted to the ledger.")
+        except (ValueError, PostingError) as exc:
+            messages.error(request, str(exc))
+        return redirect("sales:return_detail", pk=pk)

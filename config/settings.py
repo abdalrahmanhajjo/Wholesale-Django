@@ -208,6 +208,12 @@ DASHBOARD_CACHE_SECONDS = env_int("DASHBOARD_CACHE_SECONDS", 30)
 
 AUTH_USER_MODEL = "accounts.User"
 
+# Usernames are what administrators issue, but the email address is what people
+# remember about a work account — and it is already unique on the model. The
+# backend subclasses ModelBackend, so permissions and the is_active rule are
+# Django's own; only the identifier lookup is widened.
+AUTHENTICATION_BACKENDS = ["apps.accounts.backends.EmailOrUsernameModelBackend"]
+
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
     {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},

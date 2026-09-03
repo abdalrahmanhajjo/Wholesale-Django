@@ -12,12 +12,17 @@ The failure message never says whether the username exists. Telling someone
 {% block intro %}<p class="auth-intro">Use the work account your administrator set up.</p>{% endblock %}
 
 {% block body %}
-  {% if form.errors %}
+  {% comment %}
+  Rendered from the form rather than written here, so there is one wording for
+  a failed sign-in and the template cannot drift from it. A pending account
+  gets its own message; every other failure gets the same one whether or not
+  the account exists (UX-008).
+  {% endcomment %}
+  {% if form.non_field_errors %}
     <div class="alert-error mt-5" role="alert" id="auth-error" tabindex="-1">
       <svg class="icon shrink-0" aria-hidden="true"><use href="#i-alert"></use></svg>
       <p class="alert-body text-danger-strong">
-        <span class="font-bold">Sign-in failed: </span>that username and password don't
-        match an active account. Check both, then try again.
+        {% for error in form.non_field_errors %}{{ error }}{% endfor %}
       </p>
     </div>
   {% endif %}
@@ -35,11 +40,14 @@ The failure message never says whether the username exists. Telling someone
     {% csrf_token %}
 
     <div class="field-wrap auth-field">
-      <label for="{{ form.username.id_for_label }}" class="label">Username</label>
-      <span class="auth-field-icon"><svg class="icon" aria-hidden="true"><use href="#i-user"></use></svg></span>
-      <input type="text" name="username" id="{{ form.username.id_for_label }}"
-             value="{{ form.username.value|default:'' }}"
-             autocomplete="username" autofocus required class="field">
+      <label for="{{ form.username.id_for_label }}" class="label">Username or email</label>
+      <div class="auth-control">
+        <span class="auth-field-icon"><svg class="icon" aria-hidden="true"><use href="#i-user"></use></svg></span>
+        <input type="text" name="username" id="{{ form.username.id_for_label }}"
+               value="{{ form.username.value|default:'' }}"
+               autocomplete="username" autocapitalize="none" spellcheck="false"
+               autofocus required class="field">
+      </div>
     </div>
 
     {% comment %}
@@ -52,9 +60,25 @@ The failure message never says whether the username exists. Telling someone
         <label for="{{ form.password.id_for_label }}" class="label">Password</label>
         <a href="{% url 'password_reset' %}">Forgotten?</a>
       </div>
-      <span class="auth-field-icon"><svg class="icon" aria-hidden="true"><use href="#i-lock"></use></svg></span>
-      <input type="password" name="password" id="{{ form.password.id_for_label }}"
-             autocomplete="current-password" required class="field">
+      <div class="auth-control">
+        <span class="auth-field-icon"><svg class="icon" aria-hidden="true"><use href="#i-lock"></use></svg></span>
+        <input type="password" name="password" id="{{ form.password.id_for_label }}"
+               autocomplete="current-password" required class="field">
+      </div>
+    </div>
+
+    {% comment %}
+    Off means the session ends with the browser. Checked by default because the
+    common case is a personal work machine; the help text names the case where
+    it should not be.
+    {% endcomment %}
+    <div class="auth-remember">
+      <input type="checkbox" name="remember_me" id="{{ form.remember_me.id_for_label }}"
+             {% if form.remember_me.value %}checked{% endif %}>
+      <span>
+        <label for="{{ form.remember_me.id_for_label }}">Keep me signed in</label>
+        <p class="help">Leave this off on a shared computer.</p>
+      </span>
     </div>
 
     <input type="hidden" name="next" value="{{ next }}">

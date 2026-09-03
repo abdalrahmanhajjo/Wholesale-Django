@@ -11,10 +11,10 @@ to the receivable or payable control account and never touches cash again. A
 credit note has no cash leg at all, so applying one writes allocation rows and
 updates balances without producing a journal.
 
-Cross-currency settlement is **deliberately out of scope**. A target whose
-currency or stored exchange rate differs from the source is refused rather than
-converted, because realised FX is the Day 5 settlement workflow and guessing at
-it here would quietly manufacture gains and losses.
+Cross-currency settlement was out of scope here. **Superseded:** a target
+booked at a different *rate* now settles and realises an exchange difference —
+see [FX settlement, reversal, and vouchers](fx-and-reversal.md). A target in a
+different *currency* is still refused.
 
 ---
 
@@ -97,7 +97,7 @@ is an empty batch.
   not merely line by line
 - more than a target has open
 - a document belonging to a different party
-- a different currency, or a different stored exchange rate
+- a different currency (a different *rate* is now allowed, and realises FX)
 - an unposted payment, or a target that is draft, reversed, or has no journal
 - an allocation date earlier than the payment or than the target's document date
 - the same target twice in one batch
@@ -158,18 +158,15 @@ python manage.py test apps.payments.tests.test_allocation
 
 ## Hand-off notes
 
-- **Reversal is not built.** `Allocation.is_reversed` exists and every query
-  respects it, but nothing sets it yet. Un-applying an allocation needs to
-  reverse the reclassification journal, restore both balances, and recompute
-  both statuses — all under the same locks, and all inside the same guarantee
-  that BR-008 still holds at commit.
+- **Reversal is now built** — see [fx-and-reversal.md](fx-and-reversal.md).
+  `reverse_allocation_batch` un-applies a batch and `reverse_payment` reverses
+  the cash, with a dependency check between them.
 - **Credit allocation has no screen.** `allocate_sales_credit` and
   `allocate_vendor_credit` are complete and tested, but only the payment
   workspace is wired to a route. A credit-application screen can call straight
   into them.
-- **Cross-currency belongs to Day 5.** The refusals are placeholders for the
-  realised-FX workflow, not permanent policy. When it lands, the two rate checks
-  in `_validate_target` are where it hooks in.
+- **Realised FX has landed.** The rate check in `_validate_target` is gone;
+  only the currency check remains. True cross-currency settlement is still open.
 - **`available_payment_targets` is the one source of truth** for what may be
   settled. A future ageing or statement screen should call it rather than
   rebuilding the filter, or the two will drift.

@@ -433,3 +433,49 @@ def _view_customer_permissions():
     return Permission.objects.filter(
         content_type__app_label="parties", codename="view_customer"
     )
+
+
+def test_a_second_default_vendor_address_moves_the_flag(self):
+        vendor = Vendor.objects.create(code="V-001", name="Test Supplier", currency=self.usd)
+        first = Address.objects.create(
+            vendor=vendor,
+            label="Depot A",
+            address_type=AddressType.SHIPPING,
+            line1="1 Old Road",
+            is_default=True,
+        )
+
+        response = self.client.post(
+            reverse("parties:vendor_address_create", args=[vendor.pk]),
+            {
+                "label": "Depot B",
+                "address_type": AddressType.SHIPPING,
+                "line1": "2 New Road",
+                "line2": "",
+                "city": "",
+                "state": "",
+                "postal_code": "",
+                "country": "",
+                "is_default": "on",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, reverse("parties:vendor_detail", args=[vendor.pk]))
+        first.refresh_from_db()
+        self.assertFalse(first.is_default)
+
+def test_vendor_deactivate_requires_a_reason(self):
+        vendor = Vendor.objects.create(code="V-002", name="Another Supplier", currency=self.usd)
+
+        self.client.post(reverse("parties:vendor_deactivate", args=[vendor.pk]), {"reason": ""})
+        vendor.refresh_from_db()
+        self.assertTrue(vendor.is_active, "no reason means no status change")
+
+        self.client.post(
+            reverse("parties:vendor_deactivate", args=[vendor.pk]),
+            {"reason": "Stopped trading"},
+        )
+        vendor.refresh_from_db()
+        self.assertFalse(vendor.is_active)
+        self.assertIsNotNone(vendor.deactivated_at)

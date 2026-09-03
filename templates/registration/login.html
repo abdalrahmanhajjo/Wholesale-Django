@@ -1,99 +1,62 @@
+{% extends "registration/_auth_base.html" %}
 {% comment %}
-Sign-in page (ACC-001). Deliberately does not extend base.html: there is no
-navigation to show before authentication, and the split layout is its own thing.
+Sign in (ACC-001).
+
+The failure message never says whether the username exists. Telling someone
+"no such user" turns the sign-in form into a way to discover who has an account
+(UX-008).
 {% endcomment %}
-<!doctype html>
-<html lang="en" class="h-full">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Sign in · Atlas Wholesale</title>
-  {% include "_theme.html" %}
-</head>
-<body class="h-full bg-canvas font-sans text-ink antialiased">
-<div class="flex min-h-full">
 
-  <!-- Brand panel: hidden on small screens, where it would just push the form down. -->
-  <div class="hidden w-1/2 flex-col justify-between bg-navy p-12 lg:flex" aria-hidden="true">
-    <div class="flex items-center gap-2.5">
-      <span class="logo-mark"><i></i><i></i><i></i></span>
-      <span><strong class="block text-[15px] text-white">ledgerwise</strong><small class="text-[10px] uppercase tracking-[.16em] text-nav-muted">Wholesale finance</small></span>
-    </div>
-    <div>
-      <p class="display-xl max-w-lg text-4xl text-white">
-        Every figure traces back to the document that produced it.
-      </p>
-      <p class="mt-4 max-w-md text-sm leading-relaxed text-slate-400">
-        Purchasing, inventory, sales and payments on one accrual-basis
-        double-entry ledger. Posted entries balance or they do not post.
+{% block title %}Sign in{% endblock %}
+{% block heading %}Sign in{% endblock %}
+{% block intro %}<p class="auth-intro">Use the work account your administrator set up.</p>{% endblock %}
+
+{% block body %}
+  {% if form.errors %}
+    <div class="alert-error mt-6" role="alert" id="auth-error" tabindex="-1">
+      <svg class="icon shrink-0" aria-hidden="true"><use href="#i-alert"></use></svg>
+      <p class="alert-body text-danger-strong">
+        <span class="font-bold">Sign-in failed: </span>that username and password don't
+        match an active account. Check both, then try again.
       </p>
     </div>
-    <p class="text-xs text-nav-muted">Accrual basis · double entry · audited</p>
-  </div>
+  {% endif %}
 
-  <!-- Form -->
-  <main id="main-content" class="flex w-full items-center justify-center px-6 py-12 lg:w-1/2">
-    <div class="w-full max-w-sm">
-      <div class="mb-8 flex items-center gap-2.5 lg:hidden">
-        <span class="logo-mark"><i></i><i></i><i></i></span>
-        <span class="text-[15px] font-black">ledgerwise</span>
-      </div>
-
-      <h1 class="display text-2xl">Sign in</h1>
-      <p class="mt-1 text-sm text-muted-fg">Use your work account.</p>
-
-      {% if form.errors %}
-        {# UX-008: say what failed, without revealing whether the username exists. #}
-        <div class="alert-error mt-6" role="alert" id="login-error" tabindex="-1">
-          <span aria-hidden="true">&#9888;</span>
-          <p class="alert-body text-danger-strong">
-            <span class="font-bold">Sign-in failed: </span>that username and password
-            don't match an active account. Check both, then try again.
-          </p>
-        </div>
-      {% endif %}
-
-      {% if next and user.is_authenticated %}
-        <div class="alert-warning mt-6" role="alert">
-          <span aria-hidden="true">&#9888;</span>
-          <p class="alert-body text-amber-900">
-            Your account doesn't have access to that page. Sign in with an account that does.
-          </p>
-        </div>
-      {% endif %}
-
-      <form method="post" class="mt-6 space-y-4">
-        {% csrf_token %}
-        <div>
-          <label for="{{ form.username.id_for_label }}" class="label">Username</label>
-          <input type="text" name="username" id="{{ form.username.id_for_label }}"
-                 autocomplete="username" autofocus required
-                 class="field h-11">
-        </div>
-        <div>
-          <label for="{{ form.password.id_for_label }}" class="label">Password</label>
-          <input type="password" name="password" id="{{ form.password.id_for_label }}"
-                 autocomplete="current-password" required
-                 class="field h-11">
-        </div>
-        <input type="hidden" name="next" value="{{ next }}">
-        <button type="submit"
-                class="btn-primary h-11 w-full">
-          Sign in
-        </button>
-      </form>
-
-      <p class="mt-8 text-sm text-muted-fg">
-        Trouble signing in? Contact your system administrator.
+  {% if next and user.is_authenticated %}
+    <div class="alert-warning mt-6" role="alert">
+      <svg class="icon shrink-0" aria-hidden="true"><use href="#i-alert"></use></svg>
+      <p class="alert-body text-amber-900">
+        Your account doesn't have access to that page. Sign in with one that does.
       </p>
     </div>
-  </main>
-</div>
-<script>
-  // A failed sign-in reloads the page; land on the reason rather than leaving
-  // the user to spot it.
-  var loginError = document.getElementById("login-error");
-  if (loginError) loginError.focus({ preventScroll: true });
-</script>
-</body>
-</html>
+  {% endif %}
+
+  <form method="post" class="auth-form">
+    {% csrf_token %}
+
+    <div class="field-wrap auth-field">
+      <label for="{{ form.username.id_for_label }}" class="label">Username</label>
+      <span class="auth-field-icon"><svg class="icon" aria-hidden="true"><use href="#i-user"></use></svg></span>
+      <input type="text" name="username" id="{{ form.username.id_for_label }}"
+             value="{{ form.username.value|default:'' }}"
+             autocomplete="username" autofocus required class="field">
+    </div>
+
+    <div class="field-wrap auth-field">
+      <label for="{{ form.password.id_for_label }}" class="label">Password</label>
+      <span class="auth-field-icon"><svg class="icon" aria-hidden="true"><use href="#i-lock"></use></svg></span>
+      <input type="password" name="password" id="{{ form.password.id_for_label }}"
+             autocomplete="current-password" required class="field">
+    </div>
+
+    <input type="hidden" name="next" value="{{ next }}">
+    <button type="submit" class="btn-primary h-11 w-full" data-busy-label="Signing in…">
+      Sign in
+    </button>
+  </form>
+{% endblock %}
+
+{% block footer %}
+  <p><a href="{% url 'password_reset' %}">Forgotten your password?</a></p>
+  <p>No account yet? <a href="{% url 'signup' %}">Request one</a>.</p>
+{% endblock %}

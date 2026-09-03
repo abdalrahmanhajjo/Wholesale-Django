@@ -19,8 +19,7 @@ from django.contrib.postgres.search import TrigramSimilarity
 from django.db.models.functions import Upper
 
 from apps.core.form_ui import UIFormMixin
-from apps.parties.models import Customer, Vendor, Address, Contact
-  
+from apps.parties.models import Address, Contact, Customer, Vendor
 
 SIMILARITY_THRESHOLD = 0.45
 

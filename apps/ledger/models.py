@@ -10,12 +10,12 @@ import uuid
 from decimal import Decimal
 
 from django.conf import settings
-from django.urls import reverse
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
 from django.db import models
 from django.db.models import F, Q
 from django.db.models.functions import Upper
+from django.urls import reverse
 
 from apps.core.expressions import at_most_one, exactly_one
 from apps.core.models import MONEY, RATE, TimeStampedModel

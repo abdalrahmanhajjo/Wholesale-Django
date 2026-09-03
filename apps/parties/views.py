@@ -20,8 +20,8 @@ from apps.core.list_views import BooleanFilter, Column, FilteredListView
 from apps.core.mixins import ActionPermissionMixin, AuditedFormMixin, BackLinkMixin
 from apps.core.models import AuditEvent
 from apps.core.permissions import EXPORT_DATA
-from apps.parties.forms import CustomerForm, VendorForm, AddressForm, ContactForm
-from apps.parties.models import Customer, Vendor, Address, Contact
+from apps.parties.forms import AddressForm, ContactForm, CustomerForm, VendorForm
+from apps.parties.models import Address, Contact, Customer, Vendor
 
 
 # ---------------------------------------------------------------------------
@@ -369,4 +369,3 @@ class AddressDeleteView(PartyChildDeleteView):
 
 class ContactDeleteView(PartyChildDeleteView):
     model = Contact
-

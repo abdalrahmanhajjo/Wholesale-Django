@@ -364,8 +364,8 @@ class CustomerScreenTests(TestCase):
         self.assertContains(response, vendor.name)
         self.assertNotContains(response, reverse("parties:vendor_edit", args=[vendor.pk]))
 
+        # -- addresses and contacts (PTY-003) ----------------------------------
 
-            # -- addresses and contacts (PTY-003) ----------------------------------
     def test_a_second_default_address_moves_the_flag(self):
         """
         Ticking "default" means "make this the default", so the previous holder
@@ -408,9 +408,7 @@ class CustomerScreenTests(TestCase):
 
     def test_a_second_primary_contact_moves_the_flag(self):
         customer = Customer.objects.get(code="ACME-01")
-        first = Contact.objects.create(
-            customer=customer, name="Old contact", is_primary=True
-        )
+        first = Contact.objects.create(customer=customer, name="Old contact", is_primary=True)
 
         response = self.client.post(
             reverse("parties:customer_contact_create", args=[customer.pk]),

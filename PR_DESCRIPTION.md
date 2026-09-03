@@ -1,101 +1,93 @@
-# Warehouse ops: stock transfers and adjustments (Member 2, Day 6)
+# Purchase returns and vendor debit notes (Member 2, Day 7)
 
-Day 5 built the weighted-average costing engine (`post_stock_movement()`) and
-left it ready for the document types that hadn't landed yet. This PR is
-those document types: moving stock between warehouses, and correcting stock
-on hand with an audited reason — the two remaining ways stock changes
-outside the purchase cycle (INV-008, INV-009), both posting through the same
-engine and the same negative-stock policy as goods receipts.
+Days 3-6 covered the forward purchase cycle (orders → receipts → bills) and
+warehouse ops (transfers, adjustments). This PR adds the reverse side: goods
+shipped back to a vendor, and the credit that follows — the same
+physical/financial split the sales side uses for customer returns
+(`PurchaseReturn` mirrors `SalesReturn`; `VendorDebitNote` mirrors a credit
+note), so the shape is consistent everywhere a document is un-done.
 
 ## What's new
 
-### Stock transfers (`/inventory/transfers/`)
-`StockTransfer` / `StockTransferLine` already existed from the foundation
+### Purchase returns (`/purchases/returns/`)
+`PurchaseReturn` / `PurchaseReturnLine` already existed from the foundation
 schema; this PR adds the application layer:
 
-- **List / create-edit / detail** screens, same shape as goods receipts.
-- The form rejects transferring a warehouse into itself before it ever
-  reaches the DB's `stock_transfer_different_warehouses` constraint.
-- **Posting** (`apps/inventory/services.py::post_stock_transfer`): each line
-  becomes a `TRANSFER_OUT` at the source warehouse followed by a
-  `TRANSFER_IN` at the destination, both through `post_stock_movement()` —
-  the `IN` leg is costed at whatever the `OUT` leg actually left at, so a
-  transfer carries the source's weighted average forward instead of
-  inventing a new one. Insufficient stock at the source is refused by the
-  same `wams_stock_negative_check` trigger a goods receipt would hit.
-- **The general ledger only moves when it has to**: if the two warehouses
-  resolve to the same Inventory account (the common case — CFG-007's
-  per-warehouse override is optional and usually unset), a transfer is a
-  pure stock relocation with no journal. When the warehouses do have
-  distinct accounts, both legs clear through the seeded **Stock Transfer
-  Clearing** account (`1330`) rather than debiting one account and
-  crediting the other directly, so that account's activity is a reviewable
-  record of transfers rather than an opaque net-zero pair.
+- **List / create-edit / detail** screens, plus a "Return goods" link from a
+  posted bill's detail page.
+- **Posting** (`apps/purchases/services.py::post_purchase_return`, RET-005):
+  each stock-affecting line (`RESTOCK`/`WRITE_OFF` disposition) posts a
+  `PURCHASE_RETURN_OUT` movement through the shared costing engine — costed
+  at the warehouse's *current* average, same as any other outbound movement
+  — while a `NO_STOCK_EFFECT` line (a paperwork-only correction) moves no
+  stock at all. Every line, regardless of disposition, checks and consumes
+  return eligibility against whichever original line it traces back to
+  (BR-015), so the vendor can't be credited twice for the same units.
+- **No journal on the return itself, on purpose.** Unlike every other
+  posted document here, `PurchaseReturn` has no "posted must have a
+  journal" DB constraint — money follows on the debit note, exactly like
+  `SalesReturn`'s own docstring says for the sales side ("money follows on a
+  credit note"). `OVERRIDE_RETURN_QUANTITY` isn't wired to bypass the
+  eligibility check for the same reason `OVERRIDE_NEGATIVE_STOCK` and
+  `OVERRIDE_DUPLICATE_VENDOR_INVOICE` weren't in earlier PRs: the database
+  enforces the limit unconditionally, so a permission-gated override here
+  would be misleading.
 
-### Stock adjustments (`/inventory/adjustments/`)
-Same shape for `StockAdjustment` / `StockAdjustmentLine` / `AdjustmentReason`:
+### Vendor debit notes (`/purchases/debit-notes/`)
+Same shape for `VendorDebitNote` / `VendorDebitNoteLine`:
 
-- **List / create-edit / detail** screens, plus the **approval workflow**
-  (INV-009): draft → submit → approve/reject → post, mirroring the purchase
-  order pattern exactly. A reason with `requires_approval=False` skips
-  straight to approved on submit — none of the five seeded reasons currently
-  do, but the admin can add one.
-- **Direction enforced against the reason**: `AdjustmentReason.increases_stock`
-  says whether a reason only ever raises or only ever lowers stock (e.g.
-  "Damaged goods" only lowers). Nothing in the schema stopped a line from
-  disagreeing with that before this PR — `services.validate_adjustment_directions()`
-  checks it after the form and formset both validate and redisplays with one
-  clear message instead of a confusing posting-time result.
-- **Posting** (`apps/inventory/services.py::post_stock_adjustment`): each
-  line posts as `ADJUSTMENT_IN` or `ADJUSTMENT_OUT` (sign of `quantity_delta`
-  decides which) through the shared engine, then the net value books against
-  the reason's own `gain_loss_account` — **Dr Inventory / Cr the account**
-  for a net increase, the reverse for a decrease. All five seeded reasons
-  already carry the right account (`COUNT-UP` → Inventory Adjustment Gain,
-  `DAMAGE`/`EXPIRY`/`COUNT-DN` → Inventory Adjustment Loss, `OPENING` →
-  Opening Balance Equity), so this just wires up data that already existed.
-
-### Negative-stock policy
-Both flows post through Day 5's `post_stock_movement()` unchanged, so
-BR-017 applies identically: a transfer or a decrease adjustment that would
-take a warehouse negative is refused by the database trigger and surfaced
-as a `ValidationError`, exactly like a delivery would be. No new logic was
-needed here — the point of building the shared engine last time was so this
-would already be true.
+- **List / create-edit / detail** screens, plus a "Create debit note" link
+  from a posted return's detail page, prefilling each line from whatever
+  bill line it traces back to.
+- **Posting** (`apps/purchases/services.py::post_vendor_debit_note`,
+  RET-006): the exact mirror of `post_purchase_bill`, credited instead of
+  debited — a stock line credits Inventory directly (by bill-posting time
+  its value had already left GRNI one way or another, so there's no accrual
+  left to re-touch), a non-stock line credits its own expense account or
+  falls back to the dedicated **Purchase Returns** contra account (5150)
+  rather than Purchase Expense, so returns show as their own line instead
+  of silently netting against gross purchases, recoverable tax credits
+  Input Tax, and everything debits Accounts Payable (BR-006 balanced). If a
+  line traces back to a bill line directly (no physical return behind it —
+  a pure pricing correction), *this* is what consumes that bill line's
+  return eligibility instead — never both, so the same units are never
+  credited twice.
+- **Never touches physical stock.** A debit note with no return behind it
+  has nothing physical to reverse, same as how a bill never itself moves
+  stock — only a receipt or a return does.
+- `recalculate_debit_note()` reuses `_recalculate_line()`'s per-line tax
+  math but is its own function, not a call to `_recalculate_document()`:
+  that function settles `credited_txn`, a field `VendorDebitNote` doesn't
+  use — it settles against `refunded_txn` instead (RET-007) — and allocates
+  a header discount the model has no field for.
 
 ## Files touched
-Modified: `apps/inventory/{services,forms,views,urls,models,admin}.py`,
-`templates/base.html` (nav links for the two new sections).
-New: `templates/inventory/{stock_transfer_form,stock_transfer_detail,_st_line_row}.html`,
-`templates/inventory/{stock_adjustment_form,stock_adjustment_detail,_sa_line_row}.html`,
-`apps/inventory/tests/test_stock_transfers_adjustments.py`.
+Modified: `apps/purchases/{admin,forms,models,services,urls,views}.py`,
+`templates/base.html` (nav links), `templates/purchases/bill_detail.html`
+(the "Return goods" cross-link).
+New: `templates/purchases/{purchase_return_form,purchase_return_detail,_pr_line_row}.html`,
+`templates/purchases/{vendor_debit_note_form,vendor_debit_note_detail,_dbn_line_row}.html`,
+`apps/purchases/tests/test_purchase_returns_debit_notes.py`.
 
-No new migrations: `StockTransfer.get_absolute_url()` and
-`StockAdjustment.get_absolute_url()` are methods, not fields; every model
+No new migrations: `PurchaseReturn.get_absolute_url()` and
+`VendorDebitNote.get_absolute_url()` are methods, not fields; every model
 field and constraint used here already existed.
 
 ## Testing
-- `python manage.py test apps.inventory` — **33/33 pass** (19 from before,
-  14 new), run against the real Supabase database.
-- New tests in `test_stock_transfers_adjustments.py`:
-  - Transfers: numbering and the draft-time cost estimate, the
-    same-warehouse form rejection, posting moves stock and carries cost
-    forward, no journal when warehouses share an Inventory account, a
-    journal through Stock Transfer Clearing when they don't, insufficient
-    stock refused, and that Purchasing (as opposed to Warehouse) cannot post.
-  - Adjustments: numbering, a reason/sign mismatch rejected before saving,
-    the full submit → approve → post workflow booking the correct gain
-    account, a no-approval-required reason skipping straight to approved,
-    rejection requiring a reason, a decrease beyond on-hand refused at
-    posting, and that Purchasing cannot approve.
+- `python manage.py test apps.purchases apps.inventory` — **65/65 pass**,
+  run against the real Supabase database.
+- New tests in `test_purchase_returns_debit_notes.py`: numbering and the
+  mandatory-reason check, posting ships a restocked line back out at the
+  current average, a `NO_STOCK_EFFECT` line moves no stock, returning more
+  than was billed is refused, the debit note books a balanced AP/inventory/
+  tax reversal, a non-stock line credits Purchase Returns not Purchase
+  Expense, a debit note created from a posted return doesn't double-count
+  eligibility, and that Purchasing (as opposed to Accountant/Owner-Admin)
+  can create but not post either document.
 - `ruff check` / `ruff format` — clean.
-- `manage.py makemigrations inventory --check` — no changes detected.
+- `manage.py makemigrations purchases --check` — no changes detected.
 
 ## Follow-ups (out of scope here)
-- Deliveries (`DeliveryNote`) are the one remaining document type still
-  unposted — same engine, sales side owns the screen.
-- `OVERRIDE_NEGATIVE_STOCK` still isn't wired to an actual override path,
-  for the same reason `OVERRIDE_DUPLICATE_VENDOR_INVOICE` wasn't in the Day
-  3–4 PR: the underlying DB trigger is a hard block regardless of Django
-  permission, so a permission-gated UI for it would be misleading until
-  that's revisited (e.g. a per-transaction flag the trigger itself reads).
+- Applying a debit note's open balance to a future bill, or refunding it,
+  is the payments app's allocation mechanism (RET-007) — not built here,
+  same as a purchase bill's own payment allocation isn't.

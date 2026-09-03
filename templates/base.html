@@ -49,6 +49,10 @@ Blocks available to child templates:
            class="nav-link {% if request.resolver_match.app_name == 'purchases' and request.resolver_match.url_name|slice:':3' == 'po_' %}nav-link-active{% endif %}">Purchase orders</a>
         <a href="{% url 'purchases:bill_list' %}"
            class="nav-link {% if request.resolver_match.app_name == 'purchases' and request.resolver_match.url_name|slice:':5' == 'bill_' %}nav-link-active{% endif %}">Purchase bills</a>
+        <a href="{% url 'purchases:pr_list' %}"
+           class="nav-link {% if request.resolver_match.app_name == 'purchases' and request.resolver_match.url_name|slice:':3' == 'pr_' %}nav-link-active{% endif %}">Purchase returns</a>
+        <a href="{% url 'purchases:dbn_list' %}"
+           class="nav-link {% if request.resolver_match.app_name == 'purchases' and request.resolver_match.url_name|slice:':4' == 'dbn_' %}nav-link-active{% endif %}">Vendor debit notes</a>
         <a href="#" class="nav-link">Payments</a>
         <a href="{% url 'inventory:gr_list' %}"
            class="nav-link {% if request.resolver_match.app_name == 'inventory' and request.resolver_match.url_name|slice:':3' == 'gr_' %}nav-link-active{% endif %}">Goods receipts</a>

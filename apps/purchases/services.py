@@ -396,6 +396,8 @@ def post_purchase_bill(bill, user, request):
     lines = list(bill.lines.select_related("purchase_order_line", "receipt_line"))
     if not lines:
         raise ValidationError("Add at least one line before posting.")
+    if bill.total_txn == ZERO:
+        raise ValidationError("This bill has no value to post — check the line prices.")
 
     with transaction.atomic():
         fiscal_period = _fiscal_period_for(bill.posting_date)
@@ -446,23 +448,30 @@ def post_purchase_bill(bill, user, request):
         for line in lines:
             # The tax-exclusive base is what lands on inventory/expense; tax is
             # posted separately below so an inclusive rate is never counted twice.
-            if line.is_stock_line:
-                account = grni_account if line.receipt_line_id else inventory_account
-                _write_line(
-                    account,
-                    line.taxable_base_txn,
-                    line.taxable_base_base,
-                    description=line.description or (line.product and str(line.product)) or "",
-                    product=line.product,
-                    warehouse=line.warehouse,
-                )
-            else:
-                _write_line(
-                    line.expense_account or purchase_expense_account,
-                    line.taxable_base_txn,
-                    line.taxable_base_base,
-                    description=line.description,
-                )
+            # A zero-priced line (a free/bonus item) has nothing to book here —
+            # journal_line_debit_xor_credit rejects a line with both sides at
+            # zero, and there is nothing wrong with skipping it: it contributes
+            # nothing to the bill's total either, so BR-006 balance is unaffected.
+            if line.taxable_base_txn:
+                if line.is_stock_line:
+                    account = grni_account if line.receipt_line_id else inventory_account
+                    _write_line(
+                        account,
+                        line.taxable_base_txn,
+                        line.taxable_base_base,
+                        description=line.description
+                        or (line.product and str(line.product))
+                        or "",
+                        product=line.product,
+                        warehouse=line.warehouse,
+                    )
+                else:
+                    _write_line(
+                        line.expense_account or purchase_expense_account,
+                        line.taxable_base_txn,
+                        line.taxable_base_base,
+                        description=line.description,
+                    )
             if line.tax_txn:
                 tax_account = (
                     input_tax_account if line.tax_is_recoverable else non_recoverable_account
@@ -665,6 +674,8 @@ def post_vendor_debit_note(note, user, request):
     lines = list(note.lines.select_related("bill_line", "return_line", "tax_code"))
     if not lines:
         raise ValidationError("Add at least one line before posting.")
+    if note.total_txn == ZERO:
+        raise ValidationError("This debit note has no value to post — check the line prices.")
 
     with transaction.atomic():
         fiscal_period = _fiscal_period_for(note.posting_date)
@@ -712,21 +723,26 @@ def post_vendor_debit_note(note, user, request):
             )
 
         for line in lines:
-            if line.is_stock_line:
-                _write_line(
-                    inventory_account,
-                    line.taxable_base_txn,
-                    line.taxable_base_base,
-                    description=line.description or (line.product and str(line.product)) or "",
-                    product=line.product,
-                )
-            else:
-                _write_line(
-                    line.expense_account or purchase_returns_account,
-                    line.taxable_base_txn,
-                    line.taxable_base_base,
-                    description=line.description,
-                )
+            # See post_purchase_bill: a zero-value line has nothing to book
+            # here and would otherwise violate journal_line_debit_xor_credit.
+            if line.taxable_base_txn:
+                if line.is_stock_line:
+                    _write_line(
+                        inventory_account,
+                        line.taxable_base_txn,
+                        line.taxable_base_base,
+                        description=line.description
+                        or (line.product and str(line.product))
+                        or "",
+                        product=line.product,
+                    )
+                else:
+                    _write_line(
+                        line.expense_account or purchase_returns_account,
+                        line.taxable_base_txn,
+                        line.taxable_base_base,
+                        description=line.description,
+                    )
             if line.tax_txn:
                 tax_account = (
                     input_tax_account if line.tax_is_recoverable else non_recoverable_account

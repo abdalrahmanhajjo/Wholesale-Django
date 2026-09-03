@@ -569,6 +569,16 @@ class VendorDebitNoteLineForm(forms.ModelForm):
             raise forms.ValidationError("Quantity must be greater than zero.")
         return quantity
 
+    def clean_unit_price(self):
+        # A zero-priced line has nothing to credit — post_vendor_debit_note
+        # would otherwise try to write a journal line with both debit and
+        # credit at zero, which the database rejects (journal_line_debit_xor_credit).
+        # Catch it here with a clear message instead of that 500.
+        unit_price = self.cleaned_data.get("unit_price")
+        if not unit_price:
+            raise forms.ValidationError("Unit price must be greater than zero.")
+        return unit_price
+
     def clean(self):
         # Appendix A split, same as a bill line for the stock side: a stock
         # line needs a product. Unlike a bill line, a non-stock line does not

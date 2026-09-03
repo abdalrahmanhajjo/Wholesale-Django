@@ -138,7 +138,7 @@ class PurchaseReturnAndDebitNoteTests(TestCase):
 
         data = {**self._bill_header(), **self._bill_one_line()}
         response = self.client.post(reverse("purchases:bill_create"), data)
-        assert response.status_code == 302, getattr(response, "context", None)
+        self.assertEqual(response.status_code, 302, getattr(response, "context", None))
         return PurchaseBill.objects.latest("id")
 
     # -- purchase return helpers ------------------------------------------------

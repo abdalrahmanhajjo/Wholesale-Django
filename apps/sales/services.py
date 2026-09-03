@@ -985,8 +985,7 @@ def _posting_required_mappings(invoice):
         keys.append(MappingKey.OUTPUT_TAX)
     if invoice.rounding_base:
         keys.append(
-            MappingKey.ROUNDING_LOSS if invoice.rounding_base < 0
-            else MappingKey.ROUNDING_GAIN
+            MappingKey.ROUNDING_LOSS if invoice.rounding_base < 0 else MappingKey.ROUNDING_GAIN
         )
     has_cogs = any(
         (sl.delivery_line is not None and (sl.delivery_line.unit_cost or ZERO) > ZERO)
@@ -1005,14 +1004,16 @@ def post_invoice(invoice, user):
             "expected SUBMITTED (SAL-007)."
         )
     with transaction.atomic():
-        result = posting_service.post(PostingRequest(
-            source=invoice,
-            user=user,
-            idempotency_key=f"sales-invoice:{invoice.pk}:post:v1",
-            build_journal=build_sales_invoice_journal,
-            required_mappings=_posting_required_mappings(invoice),
-            reason="Invoice posting",
-        ))
+        result = posting_service.post(
+            PostingRequest(
+                source=invoice,
+                user=user,
+                idempotency_key=f"sales-invoice:{invoice.pk}:post:v1",
+                build_journal=build_sales_invoice_journal,
+                required_mappings=_posting_required_mappings(invoice),
+                reason="Invoice posting",
+            )
+        )
 
         invoice.status = DocumentStatus.POSTED
         invoice.journal_entry = result.journal_entry

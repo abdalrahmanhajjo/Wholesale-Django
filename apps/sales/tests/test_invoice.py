@@ -21,11 +21,9 @@ from apps.core.audit import AuditEvent
 from apps.core.models import (
     DocumentSequence,
     DocumentStatus,
-    DocumentType,
     FiscalPeriod,
     FiscalYear,
 )
-from apps.inventory.models import DeliveryNote, DeliveryNoteLine
 from apps.ledger.models import Account, AccountMapping, JournalEntry, MappingKey
 from apps.ledger.services import PostingError
 from apps.sales import services

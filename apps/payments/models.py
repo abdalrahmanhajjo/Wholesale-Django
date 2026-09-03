@@ -5,6 +5,7 @@ BRD coverage: CFG-002, PAY-001..PAY-012, RET-004, RET-007, RET-009,
 BR-008, BR-009, BR-014, BR-016, FTD-004, FTD-005, RPT-012, RPT-013, RPT-022.
 """
 
+import uuid
 from decimal import Decimal
 
 from django.conf import settings
@@ -310,6 +311,14 @@ class Allocation(TimeStampedModel):
     """
 
     allocation_date = models.DateField(db_index=True)
+    batch_key = models.UUIDField(
+        default=uuid.uuid4,
+        editable=False,
+        db_index=True,
+        help_text=(
+            "Idempotency key shared by every line submitted in one allocation request."
+        ),
+    )
 
     # Discriminators adopted from the colleague's schema. They are redundant with
     # the nullable FKs below, but they let one CHECK express the whole rule
@@ -423,6 +432,9 @@ class Allocation(TimeStampedModel):
                 name="allocation_amounts_positive",
             ),
             models.CheckConstraint(
+                condition=Q(amount_base__gt=0), name="allocation_base_positive"
+            ),
+            models.CheckConstraint(
                 condition=Q(settlement_rate__gt=0), name="allocation_rate_positive"
             ),
             # Exactly one source, exactly one target, exactly one party.
@@ -479,30 +491,31 @@ class Allocation(TimeStampedModel):
                 ),
                 name="allocation_side_consistency",
             ),
-            # PAY-007: the same source may not be applied twice to the same target.
+            # The request key makes retries idempotent while still allowing the
+            # same advance to settle the same target in separate later batches.
             models.UniqueConstraint(
-                fields=["payment", "sales_invoice"],
+                fields=["batch_key", "payment", "sales_invoice"],
                 condition=Q(
                     payment__isnull=False, sales_invoice__isnull=False, is_reversed=False
                 ),
-                name="allocation_unique_payment_invoice",
+                name="alloc_batch_payment_invoice_unique",
             ),
             models.UniqueConstraint(
-                fields=["payment", "purchase_bill"],
+                fields=["batch_key", "payment", "purchase_bill"],
                 condition=Q(
                     payment__isnull=False, purchase_bill__isnull=False, is_reversed=False
                 ),
-                name="allocation_unique_payment_bill",
+                name="alloc_batch_payment_bill_unique",
             ),
             models.UniqueConstraint(
-                fields=["sales_credit_note", "sales_invoice"],
+                fields=["batch_key", "sales_credit_note", "sales_invoice"],
                 condition=Q(sales_credit_note__isnull=False, is_reversed=False),
-                name="allocation_unique_credit_invoice",
+                name="alloc_batch_credit_invoice_unique",
             ),
             models.UniqueConstraint(
-                fields=["vendor_debit_note", "purchase_bill"],
+                fields=["batch_key", "vendor_debit_note", "purchase_bill"],
                 condition=Q(vendor_debit_note__isnull=False, is_reversed=False),
-                name="allocation_unique_debit_bill",
+                name="alloc_batch_debit_bill_unique",
             ),
         ]
         indexes = [
@@ -515,6 +528,16 @@ class Allocation(TimeStampedModel):
 
     def __str__(self):
         return f"Allocation {self.pk}: {self.target_amount_txn}"
+
+    @property
+    def source(self):
+        """Return the concrete payment or credit document behind this allocation."""
+        return self.payment or self.sales_credit_note or self.vendor_debit_note
+
+    @property
+    def target(self):
+        """Return the concrete invoice or bill settled by this allocation."""
+        return self.sales_invoice or self.purchase_bill
 
 
 # ---------------------------------------------------------------------------

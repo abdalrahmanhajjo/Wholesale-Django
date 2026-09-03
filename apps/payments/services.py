@@ -1,9 +1,11 @@
-"""Transactional creation and update services for payment entry."""
+"""Transactional entry and posting services for receipts and vendor payments."""
 
+from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal
 
 from django.core.exceptions import ValidationError
 from django.db import transaction
+from django.utils import timezone
 
 from apps.core.models import (
     DocumentSequence,
@@ -13,9 +15,18 @@ from apps.core.models import (
     PeriodStatus,
     SequenceReset,
 )
+from apps.ledger.services.posting import PostingEngine, PostingRequest
 from apps.payments.models import Payment, PaymentDirection
+from apps.payments.posting import build_payment_journal, payment_required_mappings
 
 MONEY_QUANTUM = Decimal("0.0001")
+posting_engine = PostingEngine()
+
+
+@dataclass(frozen=True, slots=True)
+class PaymentPostingResult:
+    payment: Payment
+    created: bool
 
 
 def _period_key(sequence, document_date):
@@ -114,3 +125,73 @@ def update_draft_payment(payment, *, user, **data):
     _validate_business_rules(locked)
     locked.save()
     return locked
+
+
+@transaction.atomic
+def post_payment(payment, *, user) -> PaymentPostingResult:
+    """Post one payment exactly once and place its value in an advance account.
+
+    The cash/bank movement happens here. Later allocation batches only reclassify
+    the advance to AR/AP, which is how PAY-005 applies an existing advance without
+    producing a second cash movement.
+    """
+    locked = (
+        Payment.objects.select_for_update(of=("self",))
+        .select_related(
+            "currency",
+            "customer",
+            "vendor",
+            "money_account__gl_account",
+        )
+        .get(pk=payment.pk)
+    )
+    if locked.is_reversed or locked.status == DocumentStatus.REVERSED:
+        raise ValidationError("A reversed payment cannot be posted.")
+    if locked.status in {
+        DocumentStatus.POSTED,
+        DocumentStatus.PARTIAL,
+        DocumentStatus.COMPLETED,
+    }:
+        if locked.journal_entry_id is None:
+            raise ValidationError(
+                f"{locked.number} is marked posted but has no journal entry. "
+                "An accountant must repair this inconsistency before continuing."
+            )
+        return PaymentPostingResult(payment=locked, created=False)
+    if locked.status not in {
+        DocumentStatus.DRAFT,
+        DocumentStatus.SUBMITTED,
+        DocumentStatus.APPROVED,
+    }:
+        raise ValidationError(
+            f"{locked.number} cannot be posted from status {locked.get_status_display()}."
+        )
+    if locked.allocated_txn != 0 or locked.unallocated_txn != locked.amount_txn:
+        raise ValidationError("A payment must be fully unallocated before its first posting.")
+
+    result = posting_engine.post(
+        PostingRequest(
+            source=locked,
+            user=user,
+            idempotency_key=f"payment:{locked.pk}:post:v1",
+            build_journal=build_payment_journal,
+            required_mappings=payment_required_mappings(locked),
+            reason="Payment posting",
+        )
+    )
+    locked.status = DocumentStatus.POSTED
+    locked.journal_entry = result.journal_entry
+    locked.posted_at = timezone.now()
+    locked.posted_by = user
+    locked.updated_by = user
+    locked.save(
+        update_fields=[
+            "status",
+            "journal_entry",
+            "posted_at",
+            "posted_by",
+            "updated_by",
+            "updated_at",
+        ]
+    )
+    return PaymentPostingResult(payment=locked, created=result.created)

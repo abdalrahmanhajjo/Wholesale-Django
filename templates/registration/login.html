@@ -13,7 +13,7 @@ The failure message never says whether the username exists. Telling someone
 
 {% block body %}
   {% if form.errors %}
-    <div class="alert-error mt-6" role="alert" id="auth-error" tabindex="-1">
+    <div class="alert-error mt-5" role="alert" id="auth-error" tabindex="-1">
       <svg class="icon shrink-0" aria-hidden="true"><use href="#i-alert"></use></svg>
       <p class="alert-body text-danger-strong">
         <span class="font-bold">Sign-in failed: </span>that username and password don't
@@ -23,7 +23,7 @@ The failure message never says whether the username exists. Telling someone
   {% endif %}
 
   {% if next and user.is_authenticated %}
-    <div class="alert-warning mt-6" role="alert">
+    <div class="alert-warning mt-5" role="alert">
       <svg class="icon shrink-0" aria-hidden="true"><use href="#i-alert"></use></svg>
       <p class="alert-body text-amber-900">
         Your account doesn't have access to that page. Sign in with one that does.
@@ -42,8 +42,16 @@ The failure message never says whether the username exists. Telling someone
              autocomplete="username" autofocus required class="field">
     </div>
 
+    {% comment %}
+    The reset link sits beside the password label rather than in the footer.
+    That is the moment the need is felt, and it saves reading past the button
+    to find it.
+    {% endcomment %}
     <div class="field-wrap auth-field">
-      <label for="{{ form.password.id_for_label }}" class="label">Password</label>
+      <div class="auth-label-row">
+        <label for="{{ form.password.id_for_label }}" class="label">Password</label>
+        <a href="{% url 'password_reset' %}">Forgotten?</a>
+      </div>
       <span class="auth-field-icon"><svg class="icon" aria-hidden="true"><use href="#i-lock"></use></svg></span>
       <input type="password" name="password" id="{{ form.password.id_for_label }}"
              autocomplete="current-password" required class="field">
@@ -57,6 +65,5 @@ The failure message never says whether the username exists. Telling someone
 {% endblock %}
 
 {% block footer %}
-  <p><a href="{% url 'password_reset' %}">Forgotten your password?</a></p>
   <p>No account yet? <a href="{% url 'signup' %}">Request one</a>.</p>
 {% endblock %}

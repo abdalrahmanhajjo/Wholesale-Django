@@ -3,7 +3,12 @@
 
 {% block title %}Signed out{% endblock %}
 {% block heading %}You're signed out{% endblock %}
-{% block panel_note %}Your session is closed on this device.{% endblock %}
+{% block note %}
+  <p class="auth-note">
+    <svg class="icon" aria-hidden="true"><use href="#i-shield"></use></svg>
+    <span>Your session is closed on this device.</span>
+  </p>
+{% endblock %}
 {% block intro %}
   <p class="auth-intro">
     Your session has ended. Anything you had saved is safe; anything you were
@@ -12,5 +17,5 @@
 {% endblock %}
 
 {% block body %}
-  <a href="{% url 'login' %}" class="btn-primary mt-7 h-11 w-full">Sign in again</a>
+  <a href="{% url 'login' %}" class="btn-primary mt-6 h-11 w-full">Sign in again</a>
 {% endblock %}

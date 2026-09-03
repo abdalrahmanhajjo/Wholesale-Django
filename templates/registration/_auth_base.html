@@ -1,28 +1,30 @@
 {% load static %}<!doctype html>
 {% comment %}
-The shell every page outside the application shares: sign in, create an account,
-and the four steps of a password reset.
+The shell every page outside the application shares: sign in, request an
+account, and the four steps of a password reset.
 
 These pages deliberately do not extend base.html. There is no navigation to show
 before authentication, no company context to read, and no reason to load the
 form and step scripts — so they carry their own document and only the pieces
 they use.
 
-The brand panel is not decoration for its own sake. The one thing that is true
-of this product and of almost nothing else is that its entries balance: debits
-equal credits or the document does not post. The motif draws exactly that — two
-columns of figures settling onto a beam — so the page says what the software is
-before a word is read. It is authored SVG rather than an image file: it stays
-sharp at any size, weighs a couple of kilobytes, takes its colours from the same
-palette as the rest of the product, and needs no request of its own.
+Layout: one centred column. The task here is singular — type two fields and
+continue — so the page gives it the whole screen and nothing to look past. The
+earlier split layout spent 46% of a wide viewport on a panel that was
+`aria-hidden` and hidden outright below `lg`, which meant the smaller the
+screen, the more of the design was simply absent.
+
+The brand mark is the whole identity now, plus one detail: the beam across the
+top of the panel. It is the motif this product is built on — two sides of an
+entry settling level — reduced to the only place it can be read at a glance.
 
 Blocks:
-  title      browser tab title
-  heading    the page's <h1>
-  intro      a sentence under the heading
-  body       the form
-  footer     links to the other auth pages
-  panel_note the line under the motif, for a page that wants its own
+  title    browser tab title
+  heading  the page's <h1>
+  intro    a sentence under the heading
+  body     the form
+  note     an aside under the form, for a page that has something to add
+  footer   links to the other auth pages
 {% endcomment %}
 <html lang="en" class="h-full">
 <head>
@@ -32,96 +34,42 @@ Blocks:
   {% include "_theme.html" %}
 </head>
 
-<body class="auth-body h-full">
+<body class="auth-body">
 {% include "core/_icons.html" %}
 
 <div class="auth-shell">
+  <main id="main-content" class="auth-column">
 
-  {# ------------------------------------------------------------- brand #}
-  {% comment %}
-  Hidden below lg, where it would only push the form down the page. It carries
-  no information the form needs, so it is announced to nobody.
-  {% endcomment %}
-  <aside class="auth-brand" aria-hidden="true">
-    <div class="auth-brand-inner">
-      <div class="flex items-center gap-3">
-        <span class="logo-mark"><i></i><i></i><i></i></span>
-        <span>
-          <strong class="block text-[15px] tracking-[-.02em] text-white">ledgerwise</strong>
-          <small class="block text-[10px] uppercase tracking-[.16em] text-nav-muted">Wholesale finance</small>
-        </span>
-      </div>
+    <a href="/" class="auth-lockup">
+      <span class="logo-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+      <span class="auth-wordmark">
+        <strong>ledgerwise</strong>
+        <small>Wholesale finance</small>
+      </span>
+    </a>
 
-      {% comment %}
-      The balance. Two columns of entries settle onto a beam that levels out —
-      the whole rule of double entry in one figure. The settle runs once on
-      load and is switched off entirely under prefers-reduced-motion.
-      {% endcomment %}
-      <svg class="auth-figure" viewBox="0 0 320 220" role="presentation" focusable="false">
-        <defs>
-          <linearGradient id="beam-glow" x1="0" y1="0" x2="1" y2="0">
-            <stop offset="0%"   stop-color="#39d889" stop-opacity=".15"/>
-            <stop offset="50%"  stop-color="#39d889" stop-opacity=".85"/>
-            <stop offset="100%" stop-color="#39d889" stop-opacity=".15"/>
-          </linearGradient>
-        </defs>
-
-        <g class="auth-figure-rings" stroke="#39d889" stroke-opacity=".10" fill="none">
-          <circle cx="160" cy="112" r="96"/>
-          <circle cx="160" cy="112" r="70"/>
-        </g>
-
-        {# Debits, left. Each bar is one entry. #}
-        <g class="auth-figure-col auth-figure-col-debit" fill="#e6eef8">
-          <rect x="44"  y="70" width="58" height="7" rx="3.5" opacity=".9"/>
-          <rect x="44"  y="85" width="42" height="7" rx="3.5" opacity=".65"/>
-          <rect x="44" y="100" width="50" height="7" rx="3.5" opacity=".45"/>
-        </g>
-
-        {# Credits, right — the same total, differently composed. #}
-        <g class="auth-figure-col auth-figure-col-credit" fill="#39d889">
-          <rect x="218" y="70" width="58" height="7" rx="3.5" opacity=".9"/>
-          <rect x="232" y="85" width="44" height="7" rx="3.5" opacity=".65"/>
-          <rect x="226" y="100" width="50" height="7" rx="3.5" opacity=".45"/>
-        </g>
-
-        {# The beam, level because the two sides agree. #}
-        <g class="auth-figure-beam">
-          <rect x="40" y="136" width="240" height="3" rx="1.5" fill="url(#beam-glow)"/>
-          <circle cx="160" cy="137.5" r="7" fill="#071a2f" stroke="#39d889" stroke-width="2"/>
-          <path d="M160 144v34" stroke="#39d889" stroke-opacity=".35" stroke-width="2"/>
-          <rect x="120" y="178" width="80" height="4" rx="2" fill="#39d889" fill-opacity=".35"/>
-        </g>
-      </svg>
-
-      <div>
-        <p class="auth-brand-line">
-          {% block panel_note %}Every figure traces back to the document that produced it.{% endblock %}
-        </p>
-        <ul class="auth-markers">
-          <li><svg class="icon"><use href="#i-scale"></use></svg>Debits equal credits, or it does not post</li>
-          <li><svg class="icon"><use href="#i-book"></use></svg>Accrual basis, one ledger</li>
-          <li><svg class="icon"><use href="#i-shield"></use></svg>Every change carries an audit trail</li>
-        </ul>
-      </div>
-    </div>
-  </aside>
-
-  {# -------------------------------------------------------------- form #}
-  <main id="main-content" class="auth-main">
-    <div class="auth-card">
-      <div class="mb-8 flex items-center gap-2.5 lg:hidden">
-        <span class="logo-mark" aria-hidden="true"><i></i><i></i><i></i></span>
-        <span class="text-[15px] font-black">ledgerwise</span>
-      </div>
-
+    <section class="auth-panel">
       <h1 class="auth-heading">{% block heading %}Sign in{% endblock %}</h1>
       {% block intro %}{% endblock %}
-
       {% block body %}{% endblock %}
+    </section>
 
-      <div class="auth-footer">{% block footer %}{% endblock %}</div>
-    </div>
+    {% comment %}
+    Outside the panel, because it is about the process rather than the form.
+    It used to sit in the decorative panel, where no screen reader and no phone
+    ever reached it — which is a poor place for "this link expires in three
+    hours".
+    {% endcomment %}
+    {% block note %}{% endblock %}
+
+    <nav class="auth-footer" aria-label="Account help">
+      {% block footer %}{% endblock %}
+    </nav>
+
+    <p class="auth-legal">
+      <svg class="icon" aria-hidden="true"><use href="#i-shield"></use></svg>
+      Every sign-in and every change to an account is recorded.
+    </p>
   </main>
 </div>
 

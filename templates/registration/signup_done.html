@@ -3,7 +3,12 @@
 
 {% block title %}Request sent{% endblock %}
 {% block heading %}Request sent{% endblock %}
-{% block panel_note %}An administrator decides what each account can reach.{% endblock %}
+{% block note %}
+  <p class="auth-note">
+    <svg class="icon" aria-hidden="true"><use href="#i-shield"></use></svg>
+    <span>An administrator decides what each account can reach.</span>
+  </p>
+{% endblock %}
 {% block intro %}
   <p class="auth-intro">
     Your account exists but is not active yet, so signing in won't work until

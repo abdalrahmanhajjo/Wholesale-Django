@@ -10,7 +10,12 @@ discover it when their first sign-in fails.
 
 {% block title %}Request an account{% endblock %}
 {% block heading %}Request an account{% endblock %}
-{% block panel_note %}Access is granted by your administrator, never by the form.{% endblock %}
+{% block note %}
+  <p class="auth-note">
+    <svg class="icon" aria-hidden="true"><use href="#i-shield"></use></svg>
+    <span>Access is granted by your administrator, never by the form.</span>
+  </p>
+{% endblock %}
 {% block intro %}
   <p class="auth-intro">
     Tell us who you are and choose a password. An administrator activates the

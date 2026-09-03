@@ -137,13 +137,17 @@ class AllocationFixtureMixin:
 
     # ---------------------------------------------------------------- helpers
 
+    #: account_subtype_matches_type only accepts a subtype from its own family.
+    SUBTYPE_FOR_TYPE = {
+        AccountType.ASSET: AccountSubtype.CURRENT_ASSET,
+        AccountType.LIABILITY: AccountSubtype.CURRENT_LIABILITY,
+        AccountType.INCOME: AccountSubtype.OTHER_INCOME,
+        AccountType.EXPENSE: AccountSubtype.OTHER_EXPENSE,
+    }
+
     @classmethod
     def _account(cls, code, account_type, normal_balance):
-        subtype = (
-            AccountSubtype.CURRENT_ASSET
-            if account_type == AccountType.ASSET
-            else AccountSubtype.CURRENT_LIABILITY
-        )
+        subtype = cls.SUBTYPE_FOR_TYPE[account_type]
         return Account.objects.create(
             code=code,
             name=f"{code} account",
@@ -462,12 +466,15 @@ class AllocationGuardTests(AllocationFixtureMixin, TestCase):
             self.allocate(payment, [(invoice, "10")])
         self.assertIn("different currency", str(ctx.exception))
 
-    def test_a_different_stored_rate_is_refused(self):
+    def test_a_different_stored_rate_is_allowed_and_realises_fx(self):
+        """Superseded by FX settlement: a moved rate settles, it does not refuse."""
         invoice = self.make_invoice("INV-G7", "100", rate=Decimal("1.30"))
         payment = self.make_payment("100")
-        with self.assertRaises(ValidationError) as ctx:
-            self.allocate(payment, [(invoice, "10")])
-        self.assertIn("exchange rate", str(ctx.exception))
+        result = self.allocate(payment, [(invoice, "10")])
+        invoice.refresh_from_db()
+        self.assertEqual(invoice.allocated_txn, Decimal("10.0000"))
+        # 10 at 1.25 is worth 12.50; the invoice booked it at 1.30, so 13.00.
+        self.assertEqual(result.allocations[0].fx_gain_loss_base, Decimal("-0.5000"))
 
     def test_an_unposted_payment_cannot_be_allocated(self):
         invoice = self.make_invoice("INV-G8", "100")
@@ -763,7 +770,9 @@ class AllocationTargetTests(AllocationFixtureMixin, TestCase):
         wanted = self.make_invoice("INV-T1", "100")
         self.make_invoice("INV-T2", "100", customer=self.other_customer)
         self.make_invoice("INV-T3", "100", currency=self.other_currency)
-        self.make_invoice("INV-T4", "100", rate=Decimal("1.30"))
+        # A document booked at a different rate IS offered now — it settles and
+        # realises an exchange difference. Only the currency has to match.
+        moved_rate = self.make_invoice("INV-T4", "100", rate=Decimal("1.30"))
         self.make_invoice("INV-T5", "100", status=DocumentStatus.DRAFT)
         self.make_invoice("INV-T6", "100", is_reversed=True)
         # Settle one for real rather than forcing the columns: the derived-open
@@ -774,7 +783,10 @@ class AllocationTargetTests(AllocationFixtureMixin, TestCase):
 
         offered = list(available_payment_targets(payment))
 
-        self.assertEqual([item.number for item in offered], [wanted.number])
+        self.assertEqual(
+            sorted(item.number for item in offered),
+            sorted([wanted.number, moved_rate.number]),
+        )
 
     def test_targets_are_ordered_by_due_date_so_the_oldest_settles_first(self):
         late = self.make_invoice("INV-T8", "10", due_date=date(2091, 12, 1))

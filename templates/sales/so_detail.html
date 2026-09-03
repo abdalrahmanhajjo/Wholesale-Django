@@ -1,0 +1,278 @@
+{% extends "base.html" %}
+{% comment %}
+Sales order detail (SAL-001..SAL-004, ACC-005).
+
+Layout follows customer_detail.html: main info card + sidebar with
+status actions and audit history.
+{% endcomment %}
+
+{% block header_title %}{{ order.number }}{% endblock %}
+
+{% block actions %}
+  {% if order.status == "DRAFT" or order.status == "SUBMITTED" or order.status == "REJECTED" %}
+    {% if perms.sales.change_salesorder %}
+      <a href="{% url 'sales:so_edit' order.pk %}" class="btn-primary">Edit</a>
+    {% endif %}
+  {% endif %}
+  {% if order.status == "APPROVED" or order.status == "PARTIAL" %}
+    {% if perms.inventory.add_deliverynote %}
+      <a href="{% url 'sales:delivery_create' %}?order={{ order.pk }}" class="btn-primary">Create delivery note</a>
+    {% endif %}
+  {% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="grid gap-4 lg:grid-cols-3">
+
+  <div class="space-y-4 lg:col-span-2">
+    {# ---- Header info ---- #}
+    <div class="card card-pad">
+      <div class="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p class="eyebrow">Sales order</p>
+          <h2 class="display mt-1 text-2xl">{{ order.customer }}</h2>
+          <p class="font-mono text-xs text-muted-fg">{{ order.number }}</p>
+        </div>
+        <div class="flex gap-2">
+          {% include "core/_status_badge.html" with value=order.status display=order.get_status_display %}
+        </div>
+      </div>
+
+      <dl class="mt-6 grid gap-x-6 gap-y-4 sm:grid-cols-2">
+        <div><dt class="eyebrow">Customer</dt>
+          <dd class="mt-1 text-sm">{{ order.customer }}</dd></div>
+        <div><dt class="eyebrow">Warehouse</dt>
+          <dd class="mt-1 text-sm">{{ order.warehouse }}</dd></div>
+        <div><dt class="eyebrow">Order date</dt>
+          <dd class="mt-1 text-sm">{{ order.document_date }}</dd></div>
+        <div><dt class="eyebrow">Expected date</dt>
+          <dd class="mt-1 text-sm">{{ order.expected_date|default:"—" }}</dd></div>
+        <div><dt class="eyebrow">Customer reference</dt>
+          <dd class="mt-1 font-mono text-sm">{{ order.customer_reference|default:"—" }}</dd></div>
+        <div><dt class="eyebrow">Currency</dt>
+          <dd class="mt-1 text-sm">{{ order.currency_id }} @ {{ order.exchange_rate }}</dd></div>
+        <div><dt class="eyebrow">Payment terms</dt>
+          <dd class="mt-1 text-sm">{{ order.payment_term|default:"—" }}</dd></div>
+        <div><dt class="eyebrow">Salesperson</dt>
+          <dd class="mt-1 text-sm">{{ order.salesperson|default:"—" }}</dd></div>
+      </dl>
+    </div>
+
+    {# ---- Lines ---- #}
+    <div class="card card-pad">
+      <p class="eyebrow">Lines</p>
+      <div class="mt-3 overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-line bg-muted-bg text-[11px] font-bold uppercase tracking-[0.1em] text-muted-fg">
+              <th class="px-4 py-2 text-right">#</th>
+              <th class="px-4 py-2 text-left">Product</th>
+              <th class="px-4 py-2 text-right">Qty</th>
+              <th class="px-4 py-2 text-right">Price</th>
+              <th class="px-4 py-2 text-right">Disc %</th>
+              <th class="px-4 py-2 text-right">Gross</th>
+              <th class="px-4 py-2 text-right">Tax</th>
+              <th class="px-4 py-2 text-right">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for line in order.lines.all %}
+              <tr class="border-b border-line last:border-0">
+                <td class="px-4 py-2 text-right tabular-nums">{{ line.line_no }}</td>
+                <td class="px-4 py-2">{{ line.product }}</td>
+                <td class="px-4 py-2 text-right tabular-nums">{{ line.quantity }}</td>
+                <td class="px-4 py-2 text-right tabular-nums">{{ line.unit_price|floatformat:2 }}</td>
+                <td class="px-4 py-2 text-right tabular-nums">{{ line.discount_percent|floatformat:1 }}%</td>
+                <td class="px-4 py-2 text-right tabular-nums">{{ line.gross_txn|floatformat:2 }}</td>
+                <td class="px-4 py-2 text-right tabular-nums">{{ line.tax_txn|floatformat:2 }}</td>
+                <td class="px-4 py-2 text-right tabular-nums font-semibold">{{ line.total_txn|floatformat:2 }}</td>
+              </tr>
+            {% empty %}
+              <tr>
+                <td colspan="8" class="px-4 py-8 text-center text-sm text-muted-fg">No lines yet.</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+          <tfoot>
+            <tr class="border-t-2 border-line bg-muted-bg font-semibold">
+              <td colspan="5" class="px-4 py-2 text-right text-xs uppercase tracking-wide text-muted-fg">Totals</td>
+              <td class="px-4 py-2 text-right tabular-nums">{{ order.subtotal_txn|floatformat:2 }}</td>
+              <td class="px-4 py-2 text-right tabular-nums">{{ order.tax_txn|floatformat:2 }}</td>
+              <td class="px-4 py-2 text-right tabular-nums text-brand-deep text-base">
+                {{ order.total_txn|floatformat:2 }}
+              </td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+
+    {# ---- Addresses & notes ---- #}
+    {% if order.billing_address_text or order.shipping_address_text or order.notes %}
+      <div class="card card-pad">
+        <p class="eyebrow">Addresses &amp; notes</p>
+        <dl class="mt-4 grid gap-x-6 gap-y-4 sm:grid-cols-2">
+          {% if order.billing_address_text %}
+            <div><dt class="eyebrow">Billing address</dt>
+              <dd class="mt-1 whitespace-pre-line text-sm">{{ order.billing_address_text }}</dd></div>
+          {% endif %}
+          {% if order.shipping_address_text %}
+            <div><dt class="eyebrow">Shipping address</dt>
+              <dd class="mt-1 whitespace-pre-line text-sm">{{ order.shipping_address_text }}</dd></div>
+          {% endif %}
+        </dl>
+        {% if order.notes %}
+          <div class="mt-4 border-t border-line pt-4">
+            <p class="eyebrow">Notes</p>
+            <p class="mt-1 whitespace-pre-line text-sm text-muted-fg">{{ order.notes }}</p>
+          </div>
+        {% endif %}
+      </div>
+    {% endif %}
+
+    {# ---- Delivery notes (SAL-005, INV-007) ---- #}
+    {% with deliveries=order.deliveries.all %}
+    {% if deliveries %}
+      <div class="card card-pad">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <p class="eyebrow">Delivery notes</p>
+          {% if order.status == "APPROVED" or order.status == "PARTIAL" %}
+            {% if perms.inventory.add_deliverynote %}
+              <a href="{% url 'sales:delivery_create' %}?order={{ order.pk }}" class="text-xs font-semibold text-brand hover:text-brand-deep">+ new</a>
+            {% endif %}
+          {% endif %}
+        </div>
+        <div class="mt-3 overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-b border-line bg-muted-bg text-[11px] font-bold uppercase tracking-[0.1em] text-muted-fg">
+                <th class="px-4 py-2 text-left">Number</th>
+                <th class="px-4 py-2 text-right">Date</th>
+                <th class="px-4 py-2 text-right">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for d in deliveries %}
+                <tr class="border-b border-line last:border-0">
+                  <td class="px-4 py-2">
+                    <a href="{% url 'sales:delivery_detail' d.pk %}" class="font-semibold text-ink hover:text-brand-deep">{{ d.number }}</a>
+                  </td>
+                  <td class="px-4 py-2 text-right tabular-nums">{{ d.document_date }}</td>
+                  <td class="px-4 py-2 text-right">
+                    {% include "core/_status_badge.html" with value=d.status display=d.get_status_display %}
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    {% endif %}
+    {% endwith %}
+  </div>
+
+  {# ---- Sidebar ---- #}
+  <div class="space-y-4">
+
+    {# ---- Status & actions ---- #}
+    <div class="card card-pad">
+      <p class="eyebrow">Status</p>
+      <div class="mt-3">
+        {% include "core/_status_badge.html" with value=order.status display=order.get_status_display %}
+      </div>
+
+      {% if order.status == "DRAFT" and perms.sales.change_salesorder %}
+        <form method="post" data-guard-unsaved="off"
+              data-confirm="Submit {{ order.number }} for approval? It becomes read-only until it is approved or rejected."
+              action="{% url 'sales:so_submit' order.pk %}" class="mt-4">
+          {% csrf_token %}
+          <button type="submit" data-busy-label="Submitting…" class="btn-accent w-full">Submit for approval</button>
+        </form>
+      {% endif %}
+
+      {% if order.status == "REJECTED" and perms.sales.change_salesorder %}
+        <div class="mt-4 rounded-xl2 border-l-4 border-l-danger bg-red-50 px-4 py-3">
+          <p class="text-sm font-semibold text-danger">This order was rejected</p>
+          {% if order.approval_reason %}
+            <p class="mt-0.5 text-sm text-danger/80">{{ order.approval_reason }}</p>
+          {% endif %}
+        </div>
+        <form method="post" data-guard-unsaved="off"
+              data-confirm="Resubmit {{ order.number }} for approval?"
+              action="{% url 'sales:so_submit' order.pk %}" class="mt-3">
+          {% csrf_token %}
+          <button type="submit" class="btn-accent w-full">Edit fixes done — resubmit for approval</button>
+        </form>
+      {% endif %}
+
+      {% if order.status == "SUBMITTED" and perms.core.approve_sales_order %}
+        <form method="post" data-guard-unsaved="off"
+              data-confirm="Approve {{ order.number }}? This releases it for delivery."
+              action="{% url 'sales:so_approve' order.pk %}" class="mt-4 space-y-3">
+          {% csrf_token %}
+          <input type="hidden" name="confirm" value="yes">
+          <label for="approval-reason" class="sr-only">Reason for approval</label>
+          <input type="text" id="approval-reason" name="reason"
+                 placeholder="Reason for approval (required)"
+                 class="field" required>
+          <button type="submit" data-busy-label="Approving…" class="btn-accent w-full">Approve</button>
+        </form>
+        <form method="post" data-guard-unsaved="off"
+              data-confirm="Reject {{ order.number }}? The reason you entered is recorded in the audit trail."
+              action="{% url 'sales:so_reject' order.pk %}" class="mt-3 space-y-3">
+          {% csrf_token %}
+          <input type="hidden" name="confirm" value="yes">
+          <label for="rejection-reason" class="sr-only">Reason for rejection</label>
+          <input type="text" id="rejection-reason" name="reason"
+                 placeholder="Reason for rejection (required)"
+                 class="field" required>
+          <button type="submit" data-busy-label="Rejecting…" class="btn-danger w-full">Reject</button>
+        </form>
+      {% endif %}
+
+      {% if order.approval_reason %}
+        <div class="mt-4 border-t border-line pt-4">
+          <p class="eyebrow">Approval reason</p>
+          <p class="mt-1 text-sm text-muted-fg">{{ order.approval_reason }}</p>
+          {% if order.approved_by %}
+            <p class="mt-1 text-xs text-muted-fg">
+              by {{ order.approved_by }} at {{ order.approved_at|date:"j M Y, H:i" }}
+            </p>
+          {% endif %}
+        </div>
+      {% endif %}
+    </div>
+
+    {# ---- Audit history (ACC-005) ---- #}
+    <div class="card card-pad">
+      <p class="eyebrow">Audit history</p>
+      <h2 class="card-title mt-2">What changed, and who changed it</h2>
+      <ul class="mt-4 space-y-4">
+        {% for event in audit_events %}
+          <li class="border-l-2 border-line pl-3">
+            <p class="text-xs font-bold uppercase tracking-wide text-brand-deep">
+              {{ event.get_action_display }}
+            </p>
+            <p class="text-sm">{{ event.user|default:"system" }}</p>
+            <p class="text-xs text-muted-fg">{{ event.occurred_at|date:"j M Y, H:i" }}</p>
+            {% if event.changes %}
+              <ul class="mt-1.5 space-y-0.5">
+                {% for field, change in event.changes.items %}
+                  <li class="font-mono text-[11px] text-muted-fg">
+                    {{ field }}: {{ change.from|default:"—" }} → {{ change.to|default:"—" }}
+                  </li>
+                {% endfor %}
+              </ul>
+            {% endif %}
+            {% if event.reason %}
+              <p class="mt-1 text-xs italic text-muted-fg">{{ event.reason }}</p>
+            {% endif %}
+          </li>
+        {% empty %}
+          <li class="text-sm text-muted-fg">No changes recorded yet.</li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+</div>
+{% endblock %}

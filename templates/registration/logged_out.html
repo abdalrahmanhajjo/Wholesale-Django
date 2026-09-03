@@ -1,1 +1,16 @@
-{% extends "registration/login.html" %}
+{% extends "registration/_auth_base.html" %}
+{% comment %}Shown after signing out.{% endcomment %}
+
+{% block title %}Signed out{% endblock %}
+{% block heading %}You're signed out{% endblock %}
+{% block panel_note %}Your session is closed on this device.{% endblock %}
+{% block intro %}
+  <p class="auth-intro">
+    Your session has ended. Anything you had saved is safe; anything you were
+    part-way through entering was not sent.
+  </p>
+{% endblock %}
+
+{% block body %}
+  <a href="{% url 'login' %}" class="btn-primary mt-7 h-11 w-full">Sign in again</a>
+{% endblock %}

@@ -1,0 +1,450 @@
+{% extends "base.html" %}
+{% comment %}
+Create / edit a sales order with header fields and a line formset (SAL-001..SAL-004).
+The layout follows customer_form.html: card sections with section headings, the
+same field widget styling, and a save/cancel footer.
+{% endcomment %}
+
+{% block header_title %}{{ page_title }}{% endblock %}
+
+{% block content %}
+{% comment %}
+Eleven header fields, an address block, a discount, notes and a twelve-column
+line grid is too much to meet at once, so it is presented in three steps. They
+are sections of one form shown and hidden, never separate requests: nothing is
+saved until the whole order is complete, and with JavaScript off all three are
+simply visible.
+{% endcomment %}
+<form method="post" novalidate class="form-shell max-w-6xl" data-steps
+      data-draft-key="sales-order-{{ object.pk|default:'new' }}">
+  {% csrf_token %}
+
+  {% include "core/_form_errors.html" with form=form formset=line_formset %}
+  <div data-notice-slot data-draft-slot class="space-y-2 empty:hidden"></div>
+
+  {# ---- Step 1 ---- #}
+  <div data-step="Order">
+  <section class="form-section" aria-labelledby="sec-order">
+    <div class="form-section-head">
+      <h2 class="form-section-title" id="sec-order">Order details</h2>
+      <p class="form-section-hint">Choosing the customer fills in their currency, payment term, warehouse and tax code. Change any of it if this order differs.</p>
+    </div>
+    <div class="form-section-body form-section-body-3">
+      {% include "core/_form_field.html" with field=form.customer %}
+      {% include "core/_form_field.html" with field=form.warehouse %}
+      {% include "core/_form_field.html" with field=form.currency %}
+      {% include "core/_form_field.html" with field=form.exchange_rate %}
+      {% include "core/_form_field.html" with field=form.document_date %}
+      {% include "core/_form_field.html" with field=form.posting_date %}
+      {% include "core/_form_field.html" with field=form.due_date %}
+      {% include "core/_form_field.html" with field=form.payment_term %}
+      {% include "core/_form_field.html" with field=form.expected_date %}
+      {% include "core/_form_field.html" with field=form.customer_reference %}
+      {% include "core/_form_field.html" with field=form.salesperson %}
+    </div>
+  </section>
+  </div>
+
+  {# ---- Step 2 ---- #}
+  <div data-step="Lines" class="w-full">
+  <section class="form-section" aria-labelledby="sec-lines">
+    <div class="form-section-head">
+      <div>
+        <h2 class="form-section-title" id="sec-lines">Order lines</h2>
+        <p class="form-section-hint">Choosing a product fills in its description, unit, price and tax code.</p>
+      </div>
+      <button type="button" id="add-line" class="btn-ghost">
+        <svg class="icon" aria-hidden="true"><use href="#i-plus"></use></svg>
+        <span>Add line</span>
+      </button>
+    </div>
+
+    {{ line_formset.management_form }}
+
+    <p class="border-b border-line px-5 py-2 text-sm text-muted-fg" id="line-limit" role="status">
+      Up to 10 lines per order.
+    </p>
+
+    {% comment %}
+    One table, two layouts. At md and up it is a grid, in a region that takes
+    focus so the horizontal scroll is reachable from the keyboard (WCAG 2.1.1).
+    Below md the same rows stack into labelled cards — see .lines-stack — so
+    nobody has to scroll a column header off screen to reach the input it names.
+    {% endcomment %}
+    <div class="lines-stack-wrap scroll-region px-4 pt-2 md:px-0 md:pt-0"
+         tabindex="0" role="region" aria-label="Order lines">
+      <table class="lines-stack w-full text-sm" id="lines-table">
+        <caption class="sr-only">Order lines. Each row is one product with its quantity, price, discount and tax code.</caption>
+        <thead>
+          <tr class="border-b border-line bg-muted-bg text-[11px] font-bold uppercase tracking-[0.1em] text-muted-fg">
+            <th scope="col" class="px-3 py-3 text-left">#</th>
+            <th scope="col" class="px-3 py-3 text-left">Item</th>
+            <th scope="col" class="px-3 py-3 text-left">Quantity</th>
+            <th scope="col" class="px-3 py-3 text-left">Unit price</th>
+            <th scope="col" class="px-3 py-3 text-left">Tax code</th>
+            <th scope="col" class="px-3 py-3 text-right">Line total</th>
+            <th scope="col" class="px-3 py-3 text-center">Remove</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for lf in line_formset %}
+            {% include "sales/_so_line_row.html" with lf=lf line=forloop.counter %}
+          {% endfor %}
+        </tbody>
+        <tfoot>
+          <tr class="border-t-2 border-line bg-muted-bg font-semibold">
+            <th colspan="4" scope="row" class="px-3 py-3 text-right text-xs font-bold uppercase tracking-wide text-muted-fg">
+              Totals, recalculated on save
+            </th>
+            <td data-label="Document discount" class="px-3 py-3 text-right tabular-nums" id="sum-discount">0.00</td>
+            <td data-label="Order total" class="px-3 py-3 text-right align-top">
+              <span class="line-total-main tabular-nums text-brand-deep" id="sum-total">
+                {{ object.total_txn|default:0|floatformat:2 }}
+              </span>
+              <span class="line-total-parts">
+                <span class="tabular-nums" id="sum-gross">{{ object.subtotal_txn|default:0|floatformat:2 }}</span>
+                <span aria-hidden="true"> gross · </span>
+                <span class="tabular-nums" id="sum-tax">{{ object.tax_txn|default:0|floatformat:2 }}</span>
+                <span aria-hidden="true"> tax</span>
+              </span>
+            </td>
+            <td></td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+    <template id="empty-line-template">
+      {% include "sales/_so_line_row.html" with lf=line_formset.empty_form line="__LINE__" %}
+    </template>
+  </section>
+  </div>
+
+  {# ---- Step 3 ---- #}
+  {% comment %}
+  One section, three groups. Addresses, the discount and the notes were a card
+  each — six fields across three panels, where steps 1 and 2 are a single card
+  apiece. A rule between groups separates them as clearly as a gap between cards
+  and costs a fraction of the height.
+  {% endcomment %}
+  <div data-step="Delivery and terms">
+  <section class="form-section" aria-labelledby="sec-terms">
+    <div class="form-section-head">
+      <h2 class="form-section-title" id="sec-terms">Delivery and terms</h2>
+      <p class="form-section-hint">Where the order goes, what it is discounted by, and anything to record against it.</p>
+    </div>
+
+    <div class="form-group" role="group" aria-labelledby="grp-addresses">
+      <h3 class="form-group-title" id="grp-addresses">Addresses</h3>
+      <p class="form-group-hint">Leave the shipping address blank to deliver to the billing address.</p>
+      <div class="form-group-body">
+        {% include "core/_form_field.html" with field=form.billing_address_text %}
+        {% include "core/_form_field.html" with field=form.shipping_address_text %}
+      </div>
+    </div>
+
+    <div class="form-group" role="group" aria-labelledby="grp-discount">
+      <h3 class="form-group-title" id="grp-discount">Document discount</h3>
+      <p class="form-group-hint">Applied to the order as a whole, after any per-line discounts.</p>
+      <div class="form-group-body">
+        {% include "core/_form_field.html" with field=form.document_discount_kind %}
+        {% include "core/_form_field.html" with field=form.document_discount_value wrapper_class="discount-value" %}
+      </div>
+    </div>
+
+    <div class="form-group" role="group" aria-labelledby="grp-notes">
+      <h3 class="form-group-title" id="grp-notes">Notes</h3>
+      <p class="form-group-hint">Notes print on the order. Internal notes never leave the system.</p>
+      <div class="form-group-body">
+        {% include "core/_form_field.html" with field=form.notes %}
+        {% include "core/_form_field.html" with field=form.internal_notes %}
+      </div>
+    </div>
+  </section>
+  </div>
+
+  <div class="form-actions">
+    <button type="submit" class="btn-primary" data-busy-label="Saving order…">
+      {% if object %}Save changes{% else %}Create sales order{% endif %}
+    </button>
+    <a href="{% if object %}{% url 'sales:so_detail' object.pk %}{% else %}{% url 'sales:so_list' %}{% endif %}"
+       class="btn-ghost">Cancel</a>
+    <p class="form-actions-hint">
+      Saved as a draft. Nothing reaches the ledger until the order is posted.
+    </p>
+  </div>
+</form>
+{% endblock %}
+
+{% block extra_scripts %}
+{{ tax_rates|json_script:"tax-rates" }}
+{{ product_map|json_script:"product-map" }}
+<script>
+  // Live line totals preview (UX only — server recalculates on save per SAL-002).
+  // Mirrors services.calculate_line: doc discount (SAL-003) is allocated
+  // proportionally by gross, with the last line absorbing rounding drift.
+  (function () {
+    const table = document.getElementById('lines-table');
+    if (!table) return;
+    const taxScript = document.getElementById('tax-rates');
+    const TAX_RATES = taxScript ? JSON.parse(taxScript.textContent) : {};
+    const prodScript = document.getElementById('product-map');
+    const PRODUCTS = prodScript ? JSON.parse(prodScript.textContent) : {};
+    const round4 = n => Math.round((n + Number.EPSILON) * 10000) / 10000;
+    const round2 = n => Math.round((n + Number.EPSILON) * 100) / 100;
+
+    // Auto-fill price/tax/unit/description when a product is picked (UX; the
+    // server stores what the user submits — the product's price is the source).
+    // A product change always overwrites these derived fields so switching
+    // products never leaves the previous product's price behind.
+    const findInRow = (row, field) =>
+      row.querySelector(`[name$="-${field}"]`);
+
+    const setField = (row, field, value) => {
+      const el = findInRow(row, field);
+      if (el && value !== undefined && value !== null) {
+        el.value = value;
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+    };
+
+    const onProductChange = e => {
+      const row = e.target.closest('.line-row');
+      if (!row) return;
+      const p = PRODUCTS[e.target.value];
+      if (!p || !p.price) return;
+      setField(row, 'unit_price', p.price);
+      setField(row, 'tax_code', p.tax_code);
+      setField(row, 'unit', p.unit);
+      const desc = findInRow(row, 'description');
+      if (desc) {
+        desc.value = p.name;
+        desc.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+      recalc();
+    };
+
+    const recalc = () => {
+      const rows = Array.from(table.querySelectorAll('tbody tr.line-row'));
+      if (!rows.length) return;
+
+      const data = rows.map(row => {
+        const del = row.querySelector('[name$="-DELETE"]');
+        const get = name => {
+          const el = row.querySelector(`[name$="-${name}"]`);
+          const v = el ? parseFloat(el.value) : NaN;
+          return isFinite(v) && v > 0 ? v : 0;
+        };
+        const taxSel = row.querySelector('[name$="-tax_code"]');
+        const tc = taxSel ? TAX_RATES[taxSel.value] : null;
+        const gross = round4(get('quantity') * get('unit_price'));
+        const lineDisc = Math.min(gross, round4(gross * get('discount_percent') / 100));
+        return {
+          row,
+          gross,
+          lineDisc,
+          net: gross - lineDisc,
+          rate: tc ? Number(tc.rate) : 0,
+          inclusive: tc ? tc.inclusive : false,
+          skip: del && del.checked,
+        };
+      });
+
+      const active = data.filter(d => !d.skip);
+      const totalGross = active.reduce((s, d) => s + d.gross, 0);
+
+      const kindEl = document.getElementById('id_document_discount_kind');
+      const valueEl = document.getElementById('id_document_discount_value');
+      let docDisc = 0;
+      if (kindEl && valueEl && totalGross > 0 && kindEl.value !== 'NONE') {
+        const val = parseFloat(valueEl.value) || 0;
+        if (kindEl.value === 'AMOUNT') docDisc = Math.min(totalGross, val);
+        else if (kindEl.value === 'PERCENT') docDisc = totalGross * val / 100;
+      }
+      docDisc = round4(docDisc);
+
+      let remaining = docDisc;
+      let sumGross = 0, sumTax = 0, sumTotal = 0;
+      active.forEach((d, i) => {
+        let alloc;
+        if (i === active.length - 1) alloc = remaining;
+        else if (totalGross > 0) alloc = round4(docDisc * d.gross / totalGross);
+        else alloc = 0;
+        remaining -= alloc;
+        if (remaining < 0.00005) remaining = 0;
+
+        const net = Math.max(0, d.net - alloc);
+        let taxable = net;
+        if (d.inclusive && d.rate > 0) taxable = round4(net / (1 + d.rate / 100));
+        const tax = round4(taxable * d.rate / 100);
+        const total = taxable + tax;
+
+        // By class, not by column index. The index broke silently the moment
+        // the row was relaid out, writing totals into the wrong cells.
+        const put = (selector, value) => {
+          const el = d.row.querySelector(selector);
+          if (el) el.textContent = value.toFixed(2);
+        };
+        put('.line-gross', d.gross);
+        put('.line-tax', tax);
+        put('.line-total', total);
+
+        sumGross += d.gross;
+        sumTax += tax;
+        sumTotal += total;
+      });
+
+      const set = (id, v) => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = v;
+      };
+      set('sum-discount', docDisc.toFixed(2));
+      set('sum-gross', sumGross.toFixed(2));
+      set('sum-tax', sumTax.toFixed(2));
+      set('sum-total', round2(sumTotal).toFixed(2));
+    };
+
+    recalc();
+    table.querySelectorAll('tbody').forEach(tbody => {
+      ['input', 'change'].forEach(evt => tbody.addEventListener(evt, recalc));
+    });
+    // Delegated, so a line added after load is covered without the add-line
+    // script needing to know this handler exists.
+    table.addEventListener('change', event => {
+      if (event.target.name && event.target.name.endsWith('-product')) onProductChange(event);
+    });
+    ['id_document_discount_kind', 'id_document_discount_value'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.addEventListener('input', recalc);
+    });
+
+    // A discount value means nothing until a kind is chosen, and its unit
+    // depends on which one — a percentage or an amount. Rather than leave a box
+    // that accepts a number and then ignores it, the field is disabled until
+    // the kind says what the number would mean, and the label says so.
+    (function () {
+      const kind = document.getElementById('id_document_discount_kind');
+      const value = document.getElementById('id_document_discount_value');
+      if (!kind || !value) return;
+      const wrap = value.closest('.field-wrap');
+      let note = wrap && wrap.querySelector('.field-note');
+      if (wrap && !note) {
+        note = document.createElement('p');
+        note.className = 'field-note';
+        wrap.appendChild(note);
+      }
+      const sync = () => {
+        const chosen = kind.value && kind.value !== 'NONE';
+        // readOnly, not disabled: a disabled input is not submitted at all, so
+        // the server saw the field missing and reported it as required — which
+        // is exactly the error this was meant to prevent. readOnly still posts
+        // the value while refusing edits.
+        value.readOnly = !chosen;
+        if (!chosen) value.value = '0';
+        if (note) {
+          // Keyed on the value, not the visible label, so translating the
+          // choice does not change what the hint says.
+          note.textContent = !chosen
+            ? 'Choose a discount kind first.'
+            : kind.value === 'PERCENT'
+              ? 'A percentage of the order total.'
+              : 'An amount in the order currency.';
+        }
+        recalc();
+      };
+      kind.addEventListener('change', sync);
+      sync();
+    })();
+  })();
+</script>
+
+<script>
+(() => {
+  const formsetTotal = document.getElementById('id_lines-TOTAL_FORMS');
+  const addLineButton = document.getElementById('add-line');
+  const lineTemplate = document.getElementById('empty-line-template');
+  const lineBody = document.querySelector('#lines-table tbody');
+  const limitNote = document.getElementById('line-limit');
+  if (!formsetTotal || !addLineButton || !lineTemplate || !lineBody) return;
+  const maxLines = 10;
+
+  // A control that silently stops working is an unexplained dead end, so the
+  // note next to it says why. role="status" announces the change.
+  function updateAddLineState() {
+    const atLimit = Number(formsetTotal.value) >= maxLines;
+    addLineButton.disabled = atLimit;
+    if (limitNote) {
+      limitNote.textContent = atLimit
+        ? 'Line limit reached — an order can hold 10 lines. Remove a line to add another.'
+        : 'Up to ' + maxLines + ' lines per order.';
+    }
+  }
+
+  addLineButton.addEventListener('click', () => {
+    const index = Number(formsetTotal.value);
+    if (index >= maxLines) return;
+    const fragment = lineTemplate.content.cloneNode(true);
+    fragment.querySelectorAll('[name], [id], [for]').forEach(element => {
+      for (const attribute of ['name', 'id', 'for']) {
+        if (element.hasAttribute(attribute)) {
+          element.setAttribute(
+            attribute,
+            element.getAttribute(attribute).replaceAll('__prefix__', index),
+          );
+        }
+      }
+    });
+    // The row's accessible names carry the human line number, not the
+    // zero-based formset index.
+    const lineNumber = String(index + 1);
+    fragment.querySelectorAll('[aria-label], [data-line]').forEach(element => {
+      if (element.hasAttribute('aria-label')) {
+        element.setAttribute('aria-label', element.getAttribute('aria-label').replaceAll('__LINE__', lineNumber));
+      }
+      if (element.hasAttribute('data-line')) element.setAttribute('data-line', lineNumber);
+    });
+    fragment.querySelectorAll('.sr-only').forEach(element => {
+      element.textContent = element.textContent.replaceAll('__LINE__', lineNumber);
+    });
+    const row = fragment.querySelector('.line-row');
+    lineBody.appendChild(fragment);
+    formsetTotal.value = index + 1;
+    updateAddLineState();
+    // Give the new row the same live validation and searchable selects as the
+    // rows that came with the page.
+    if (row) {
+      document.dispatchEvent(new CustomEvent('ledgerwise:rows-added', { detail: { root: row } }));
+    }
+    // Land in the row that was just created rather than making the user tab to it.
+    const firstInput = row && row.querySelector('input:not([type=hidden]), select, textarea');
+    if (firstInput) firstInput.focus();
+  });
+
+  // Taking back a row that has never been saved. Removing a row from the middle
+  // would leave the formset indexes non-contiguous, which Django rejects, so
+  // only a trailing row is deleted outright; anything else is emptied, and an
+  // empty extra form is ignored on save.
+  lineBody.addEventListener('click', event => {
+    const button = event.target.closest('.remove-new-line');
+    if (!button) return;
+    const row = button.closest('.line-row');
+    if (!row) return;
+    const isLast = row === lineBody.lastElementChild;
+    if (isLast && Number(formsetTotal.value) > 0) {
+      row.remove();
+      formsetTotal.value = Number(formsetTotal.value) - 1;
+    } else {
+      row.querySelectorAll('input:not([type=hidden]), select, textarea').forEach(field => {
+        if (field.type === 'checkbox' || field.type === 'radio') field.checked = false;
+        else field.value = '';
+      });
+      row.hidden = true;
+    }
+    updateAddLineState();
+    addLineButton.focus();
+  });
+
+  updateAddLineState();
+
+})();
+</script>
+{% endblock %}

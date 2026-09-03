@@ -1,0 +1,78 @@
+{% extends "registration/_auth_base.html" %}
+{% comment %}
+Request an account (ACC-001, ACC-003).
+
+Not a registration. The account this creates has no role and cannot sign in
+until an administrator activates it — a wholesale ledger is not something people
+should be able to join. The page says so plainly rather than letting someone
+discover it when their first sign-in fails.
+{% endcomment %}
+
+{% block title %}Request an account{% endblock %}
+{% block heading %}Request an account{% endblock %}
+{% block panel_note %}Access is granted by your administrator, never by the form.{% endblock %}
+{% block intro %}
+  <p class="auth-intro">
+    Tell us who you are and choose a password. An administrator activates the
+    account and sets what you can see.
+  </p>
+{% endblock %}
+
+{% block body %}
+  {% include "core/_form_errors.html" with form=form %}
+
+  <form method="post" class="auth-form" novalidate>
+    {% csrf_token %}
+
+    <div class="field-wrap auth-field">
+      <label for="{{ form.username.id_for_label }}" class="label">{{ form.username.label }}</label>
+      <span class="auth-field-icon"><svg class="icon" aria-hidden="true"><use href="#i-user"></use></svg></span>
+      {{ form.username }}
+      {% if form.username.errors %}<p class="error-text"><span aria-hidden="true">&#9888;</span><span><span class="sr-only">Error: </span>{{ form.username.errors|join:" " }}</span></p>{% endif %}
+    </div>
+
+    {% include "core/_form_field.html" with field=form.full_name %}
+
+    <div class="field-wrap auth-field">
+      <label for="{{ form.email.id_for_label }}" class="label">{{ form.email.label }}</label>
+      <span class="auth-field-icon"><svg class="icon" aria-hidden="true"><use href="#i-mail"></use></svg></span>
+      {{ form.email }}
+      {% if form.email.errors %}<p class="error-text"><span aria-hidden="true">&#9888;</span><span><span class="sr-only">Error: </span>{{ form.email.errors|join:" " }}</span></p>{% endif %}
+    </div>
+
+    {% include "core/_form_field.html" with field=form.job_title %}
+
+    <div class="field-wrap auth-field">
+      <label for="{{ form.password1.id_for_label }}" class="label">{{ form.password1.label }}</label>
+      <span class="auth-field-icon"><svg class="icon" aria-hidden="true"><use href="#i-lock"></use></svg></span>
+      <input type="password" name="password1" id="{{ form.password1.id_for_label }}"
+             autocomplete="new-password" class="field" data-strength required>
+      {% if form.password1.errors %}<p class="error-text"><span aria-hidden="true">&#9888;</span><span><span class="sr-only">Error: </span>{{ form.password1.errors|join:" " }}</span></p>{% endif %}
+    </div>
+
+    <div class="field-wrap auth-field">
+      <label for="{{ form.password2.id_for_label }}" class="label">{{ form.password2.label }}</label>
+      <span class="auth-field-icon"><svg class="icon" aria-hidden="true"><use href="#i-lock"></use></svg></span>
+      <input type="password" name="password2" id="{{ form.password2.id_for_label }}"
+             autocomplete="new-password" class="field" required>
+      <p class="help">{{ form.password2.help_text }}</p>
+      {% if form.password2.errors %}<p class="error-text"><span aria-hidden="true">&#9888;</span><span><span class="sr-only">Error: </span>{{ form.password2.errors|join:" " }}</span></p>{% endif %}
+    </div>
+
+    <div class="alert-info" role="status">
+      <svg class="icon shrink-0 text-muted-fg" aria-hidden="true"><use href="#i-info"></use></svg>
+      <p class="alert-body">
+        The account starts with no access at all. You'll be able to sign in once
+        an administrator activates it.
+      </p>
+    </div>
+
+    <button type="submit" class="btn-primary h-11 w-full" data-busy-label="Sending request…">
+      Request account
+    </button>
+  </form>
+{% endblock %}
+
+{% block footer %}
+  <p>Already have an account? <a href="{% url 'login' %}">Sign in</a>.</p>
+{% endblock %}

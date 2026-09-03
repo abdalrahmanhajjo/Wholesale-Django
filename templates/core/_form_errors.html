@@ -1,0 +1,63 @@
+{% load ui %}{% comment %}
+Error summary for a submitted form.
+
+Django re-renders the whole page on a validation failure, which drops the user
+at the top of a form whose problems may be four cards further down. This block
+says how many things need fixing and links to each one, and `form-errors.js`
+moves focus here so the failure is the first thing announced.
+
+Include it directly after the opening <form> tag:
+
+    {% include "core/_form_errors.html" with form=form %}
+    {% include "core/_form_errors.html" with form=form formset=line_formset %}
+{% endcomment %}
+{% comment %}
+A bound formset with no problems still reports `formset.errors` as a list of
+empty dicts, which is truthy — so the count, not the presence of the attribute,
+decides whether the summary appears.
+{% endcomment %}
+{% error_count form formset as total %}
+{% if total %}
+  <div id="form-error-summary" role="alert" tabindex="-1"
+       class="alert-error mb-5 flex-col items-stretch gap-2">
+    <p class="alert-title text-danger-strong">
+      {% if total == 1 %}
+        There is 1 problem to fix before this can be saved
+      {% else %}
+        There are {{ total }} problems to fix before this can be saved
+      {% endif %}
+    </p>
+    <ul class="space-y-1">
+      {% for error in form.non_field_errors %}
+        <li class="alert-body text-danger-strong">{{ error }}</li>
+      {% endfor %}
+      {% for field in form %}
+        {% for error in field.errors %}
+          <li class="alert-body">
+            <a href="#{{ field.id_for_label }}" class="font-semibold text-danger-strong underline">
+              {{ field.label }}</a>
+            <span class="text-danger-strong"> — {{ error }}</span>
+          </li>
+        {% endfor %}
+      {% endfor %}
+      {% for error in formset.non_form_errors %}
+        <li class="alert-body text-danger-strong">{{ error }}</li>
+      {% endfor %}
+      {% for inline in formset.forms %}
+        {% for error in inline.non_field_errors %}
+          <li class="alert-body text-danger-strong">Line {{ forloop.parentloop.counter }} — {{ error }}</li>
+        {% endfor %}
+        {% for field in inline.visible_fields %}
+          {% for error in field.errors %}
+            <li class="alert-body">
+              <a href="#{{ field.id_for_label }}" class="font-semibold text-danger-strong underline">
+                Line {{ forloop.parentloop.parentloop.counter }}, {{ field.label }}</a>
+              <span class="text-danger-strong"> — {{ error }}</span>
+            </li>
+          {% endfor %}
+        {% endfor %}
+      {% endfor %}
+    </ul>
+    <p class="text-[13px] text-danger-strong">Nothing has been saved yet. Everything you entered is still here.</p>
+  </div>
+{% endif %}

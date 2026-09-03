@@ -65,7 +65,14 @@ def env_list(key, default=""):
     return [item.strip() for item in env(key, default).split(",") if item.strip()]
 
 
-DEBUG = env_bool("DJANGO_DEBUG", True)
+def env_int(key, default):
+    try:
+        return int(env(key, str(default)))
+    except (TypeError, ValueError) as exc:
+        raise RuntimeError(f"{key} must be an integer.") from exc
+
+
+DEBUG = env_bool("DJANGO_DEBUG", False)
 
 # In development a throwaway key is fine; in production the app refuses to start
 # without a real one rather than running on a key that is public on GitHub.
@@ -122,6 +129,9 @@ TEMPLATES = [
                 "django.template.context_processors.request",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
+                # The company name and base currency appear in the shell of
+                # every page, so they cannot be one view's responsibility.
+                "apps.core.context.company",
             ]
         },
     }
@@ -144,7 +154,11 @@ if database_url:
         "PASSWORD": unquote(parsed_database_url.password or ""),
         "HOST": parsed_database_url.hostname or "",
         "PORT": str(parsed_database_url.port or 5432),
-        "OPTIONS": {"sslmode": query_options.get("sslmode", ["require"])[-1]},
+        "OPTIONS": {
+            "sslmode": query_options.get("sslmode", ["require"])[-1],
+            "connect_timeout": env_int("DB_CONNECT_TIMEOUT", 10),
+            "application_name": env("DB_APPLICATION_NAME", "ledgerwise-django"),
+        },
     }
 else:
     database_config = {
@@ -154,15 +168,43 @@ else:
         "PASSWORD": env("PGPASSWORD", ""),
         "HOST": env("PGHOST", "127.0.0.1"),
         "PORT": env("PGPORT", "5432"),
-        "OPTIONS": {"sslmode": env("PGSSLMODE", "prefer")},
+        "OPTIONS": {
+            "sslmode": env("PGSSLMODE", "prefer"),
+            "connect_timeout": env_int("DB_CONNECT_TIMEOUT", 10),
+            "application_name": env("DB_APPLICATION_NAME", "ledgerwise-django"),
+        },
     }
 
 # Posting services open their own transaction.atomic() blocks (BR-005), so
 # wrapping every request in a transaction would nest pointlessly.
-database_config.update({"ATOMIC_REQUESTS": False, "CONN_MAX_AGE": 60})
+database_config.update(
+    {
+        "ATOMIC_REQUESTS": False,
+        "CONN_MAX_AGE": env_int("DB_CONN_MAX_AGE", 60),
+        # A health check adds a network round trip to every DB-using request.
+        # Keep it opt-in for the high-latency hosted database; the short max age
+        # already limits exposure to stale connections.
+        "CONN_HEALTH_CHECKS": env_bool("DB_CONN_HEALTH_CHECKS", False),
+    }
+)
+test_database_name = env("DJANGO_TEST_DATABASE_NAME")
+if test_database_name:
+    database_config["TEST"] = {"NAME": test_database_name}
 DATABASES = {
     "default": database_config,
 }
+
+# The dashboard is intentionally short-lived: it avoids repeated remote
+# aggregates during navigation without presenting operational data as live.
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+        "LOCATION": "ledgerwise-process-cache",
+        "TIMEOUT": env_int("DJANGO_CACHE_DEFAULT_TIMEOUT", 300),
+        "OPTIONS": {"MAX_ENTRIES": env_int("DJANGO_CACHE_MAX_ENTRIES", 1000)},
+    }
+}
+DASHBOARD_CACHE_SECONDS = env_int("DASHBOARD_CACHE_SECONDS", 30)
 
 AUTH_USER_MODEL = "accounts.User"
 
@@ -179,8 +221,13 @@ AUTH_PASSWORD_VALIDATORS = [
 LOGIN_URL = "login"
 LOGIN_REDIRECT_URL = "/"
 LOGOUT_REDIRECT_URL = "login"
-SESSION_COOKIE_AGE = int(env("DJANGO_SESSION_AGE", "43200"))  # 12 hours
+SESSION_COOKIE_AGE = env_int("DJANGO_SESSION_AGE", 43200)  # 12 hours
 SESSION_EXPIRE_AT_BROWSER_CLOSE = False
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SAMESITE = "Lax"
+# Preserve database-backed session durability while caching repeat navigation
+# in the serving process. A cache miss always falls back to django_session.
+SESSION_ENGINE = "django.contrib.sessions.backends.cached_db"
 
 # ---------------------------------------------------------------------------
 # Locale (CFG-001, NFR-018). The company row carries the business timezone and
@@ -215,7 +262,20 @@ LOGGING = {
     "loggers": {
         "apps": {
             "handlers": ["console"],
-            "level": env("APP_LOG_LEVEL", "DEBUG"),
+            "level": env("APP_LOG_LEVEL", "INFO"),
+            "propagate": False,
+        },
+        # Permission and CSRF denial tests intentionally exercise 403 paths.
+        # Keep their production warnings, but allow CI to suppress expected
+        # tracebacks without muting genuine application failures.
+        "django.request": {
+            "handlers": ["console"],
+            "level": env("DJANGO_REQUEST_LOG_LEVEL", "WARNING"),
+            "propagate": False,
+        },
+        "django.security.csrf": {
+            "handlers": ["console"],
+            "level": env("DJANGO_REQUEST_LOG_LEVEL", "WARNING"),
             "propagate": False,
         },
     },
@@ -226,10 +286,23 @@ LOGGING = {
 # nobody has to remember to switch it on at deployment time.
 # ---------------------------------------------------------------------------
 if not DEBUG:
-    SECURE_SSL_REDIRECT = True
+    SECURE_SSL_REDIRECT = env_bool("DJANGO_SECURE_SSL_REDIRECT", True)
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
-    SECURE_HSTS_SECONDS = 31536000
-    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    CSRF_COOKIE_HTTPONLY = True
+    SECURE_HSTS_SECONDS = env_int("DJANGO_HSTS_SECONDS", 31536000)
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = env_bool("DJANGO_HSTS_INCLUDE_SUBDOMAINS", False)
+    SECURE_HSTS_PRELOAD = env_bool("DJANGO_HSTS_PRELOAD", False)
     SECURE_CONTENT_TYPE_NOSNIFF = True
+    SECURE_REFERRER_POLICY = "same-origin"
     X_FRAME_OPTIONS = "DENY"
+    STORAGES = {
+        "default": {
+            "BACKEND": "django.core.files.storage.FileSystemStorage",
+        },
+        "staticfiles": {
+            "BACKEND": ("django.contrib.staticfiles.storage.ManifestStaticFilesStorage"),
+        },
+    }
+    if env_bool("DJANGO_BEHIND_HTTPS_PROXY", False):
+        SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")

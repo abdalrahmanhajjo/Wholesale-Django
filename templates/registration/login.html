@@ -14,46 +14,49 @@ navigation to show before authentication, and the split layout is its own thing.
 <div class="flex min-h-full">
 
   <!-- Brand panel: hidden on small screens, where it would just push the form down. -->
-  <div class="hidden w-1/2 flex-col justify-between bg-navy p-12 lg:flex">
+  <div class="hidden w-1/2 flex-col justify-between bg-navy p-12 lg:flex" aria-hidden="true">
     <div class="flex items-center gap-2.5">
-      <span class="grid h-9 w-9 place-items-center rounded-lg bg-brand text-base font-black text-navy">A</span>
-      <span class="text-[13px] font-black uppercase tracking-[0.12em] text-white">Atlas Wholesale</span>
+      <span class="logo-mark"><i></i><i></i><i></i></span>
+      <span><strong class="block text-[15px] text-white">ledgerwise</strong><small class="text-[10px] uppercase tracking-[.16em] text-nav-muted">Wholesale finance</small></span>
     </div>
     <div>
-      <h1 class="display-xl max-w-lg text-4xl text-white">
+      <p class="display-xl max-w-lg text-4xl text-white">
         Every figure traces back to the document that produced it.
-      </h1>
+      </p>
       <p class="mt-4 max-w-md text-sm leading-relaxed text-slate-400">
         Purchasing, inventory, sales and payments on one accrual-basis
         double-entry ledger. Posted entries balance or they do not post.
       </p>
     </div>
-    <p class="text-xs text-slate-500">Accrual basis · double entry · audited</p>
+    <p class="text-xs text-nav-muted">Accrual basis · double entry · audited</p>
   </div>
 
   <!-- Form -->
-  <div class="flex w-full items-center justify-center px-6 py-12 lg:w-1/2">
+  <main id="main-content" class="flex w-full items-center justify-center px-6 py-12 lg:w-1/2">
     <div class="w-full max-w-sm">
       <div class="mb-8 flex items-center gap-2.5 lg:hidden">
-        <span class="grid h-9 w-9 place-items-center rounded-lg bg-brand text-base font-black text-navy">A</span>
-        <span class="text-[13px] font-black uppercase tracking-[0.12em]">Atlas Wholesale</span>
+        <span class="logo-mark"><i></i><i></i><i></i></span>
+        <span class="text-[15px] font-black">ledgerwise</span>
       </div>
 
-      <h2 class="display text-2xl">Sign in</h2>
+      <h1 class="display text-2xl">Sign in</h1>
       <p class="mt-1 text-sm text-muted-fg">Use your work account.</p>
 
       {% if form.errors %}
-        <div class="mt-6 rounded-xl2 border-l-4 border-l-danger bg-red-50 px-4 py-3">
-          {# UX-008: say what failed, without revealing whether the username exists. #}
-          <p class="text-sm font-medium text-danger">
-            That username and password don't match an active account.
+        {# UX-008: say what failed, without revealing whether the username exists. #}
+        <div class="alert-error mt-6" role="alert" id="login-error" tabindex="-1">
+          <span aria-hidden="true">&#9888;</span>
+          <p class="alert-body text-danger-strong">
+            <span class="font-bold">Sign-in failed: </span>that username and password
+            don't match an active account. Check both, then try again.
           </p>
         </div>
       {% endif %}
 
       {% if next and user.is_authenticated %}
-        <div class="mt-6 rounded-xl2 border-l-4 border-l-amber-500 bg-amber-50 px-4 py-3">
-          <p class="text-sm text-amber-800">
+        <div class="alert-warning mt-6" role="alert">
+          <span aria-hidden="true">&#9888;</span>
+          <p class="alert-body text-amber-900">
             Your account doesn't have access to that page. Sign in with an account that does.
           </p>
         </div>
@@ -80,11 +83,17 @@ navigation to show before authentication, and the split layout is its own thing.
         </button>
       </form>
 
-      <p class="mt-8 text-xs text-muted-fg">
+      <p class="mt-8 text-sm text-muted-fg">
         Trouble signing in? Contact your system administrator.
       </p>
     </div>
-  </div>
+  </main>
 </div>
+<script>
+  // A failed sign-in reloads the page; land on the reason rather than leaving
+  // the user to spot it.
+  var loginError = document.getElementById("login-error");
+  if (loginError) loginError.focus({ preventScroll: true });
+</script>
 </body>
 </html>

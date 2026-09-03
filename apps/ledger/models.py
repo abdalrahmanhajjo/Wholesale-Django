@@ -10,6 +10,7 @@ import uuid
 from decimal import Decimal
 
 from django.conf import settings
+from django.urls import reverse
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
 from django.db import models
@@ -66,7 +67,11 @@ class Account(TimeStampedModel):
     is_postable = models.BooleanField(default=True)
     is_control = models.BooleanField(
         default=False,
-        help_text="Backed by a subledger (AR/AP/Inventory). Postable only via services (GL-011).",
+        help_text=(
+            "This account is driven by a subledger - receivables, payables or "
+            "inventory - so entries reach it through those workflows rather "
+            "than by direct posting."
+        ),
     )
     control_type = models.CharField(
         max_length=18,
@@ -191,6 +196,9 @@ class Account(TimeStampedModel):
     def __str__(self):
         return f"{self.code} {self.name}"
 
+    def get_absolute_url(self):
+        return reverse("core:account_edit", args=[self.pk])
+
 
 class MappingKey(models.TextChoices):
     """
@@ -239,6 +247,9 @@ class AccountMapping(TimeStampedModel):
 
     def __str__(self):
         return f"{self.key} -> {self.account_id}"
+
+    def get_absolute_url(self):
+        return reverse("core:mapping_edit", args=[self.pk])
 
 
 # ---------------------------------------------------------------------------

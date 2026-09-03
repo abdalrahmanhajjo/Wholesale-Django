@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+
+{% block header_title %}{{ vendor.code }}{% endblock %}
+
+{% block actions %}
+  <a href="{% url 'parties:vendor_list' %}" class="btn-ghost">Back to vendors</a>
+  {% if perms.parties.change_vendor %}
+    <a href="{% url 'parties:vendor_edit' vendor.pk %}" class="btn-primary">Edit</a>
+  {% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="grid gap-4 lg:grid-cols-3">
+  <div class="space-y-4 lg:col-span-2">
+    <div class="card card-pad">
+      <div class="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 class="eyebrow">Vendor</h2>
+          <p class="mt-1 font-mono text-sm text-muted-fg">{{ vendor.code }}</p>
+        </div>
+        {% if vendor.is_active %}<span class="badge-posted">Active</span>
+        {% else %}<span class="badge-draft">Inactive</span>{% endif %}
+      </div>
+
+      <dl class="mt-6 grid gap-x-6 gap-y-4 sm:grid-cols-2">
+        <div><dt class="eyebrow">Legal name</dt><dd class="mt-1 text-sm">{{ vendor.legal_name|default:"—" }}</dd></div>
+        <div><dt class="eyebrow">Tax ID</dt><dd class="mt-1 font-mono text-sm">{{ vendor.tax_id|default:"—" }}</dd></div>
+        <div><dt class="eyebrow">Email</dt><dd class="mt-1 text-sm">{{ vendor.email|default:"—" }}</dd></div>
+        <div><dt class="eyebrow">Phone</dt><dd class="mt-1 text-sm">{{ vendor.phone|default:"—" }}</dd></div>
+        <div><dt class="eyebrow">Currency</dt><dd class="mt-1 text-sm">{{ vendor.currency_id }}</dd></div>
+        <div><dt class="eyebrow">Payment terms</dt><dd class="mt-1 text-sm">{{ vendor.payment_term|default:"—" }}</dd></div>
+        <div><dt class="eyebrow">Payables account</dt><dd class="mt-1 text-sm">{{ vendor.payable_account|default:"—" }}</dd></div>
+        <div><dt class="eyebrow">Default expense account</dt><dd class="mt-1 text-sm">{{ vendor.default_expense_account|default:"—" }}</dd></div>
+      </dl>
+
+      {% if vendor.notes %}
+        <div class="mt-5 border-t border-line pt-4">
+          <p class="eyebrow">Notes</p>
+          <p class="mt-1 whitespace-pre-line text-sm text-muted-fg">{{ vendor.notes }}</p>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="card card-pad self-start">
+    <p class="eyebrow">Audit history</p>
+    <h2 class="card-title mt-2">What changed, and who changed it</h2>
+    <ul class="mt-4 space-y-4">
+      {% for event in audit_events %}
+        <li class="border-l-2 border-line pl-3">
+          <p class="text-xs font-bold uppercase tracking-wide text-brand-deep">{{ event.get_action_display }}</p>
+          <p class="text-sm">{{ event.user|default:"system" }}</p>
+          <p class="text-xs text-muted-fg">{{ event.occurred_at|date:"j M Y, H:i" }}</p>
+        </li>
+      {% empty %}
+        <li class="text-sm text-muted-fg">No changes recorded yet.</li>
+      {% endfor %}
+    </ul>
+  </div>
+</div>
+{% endblock %}

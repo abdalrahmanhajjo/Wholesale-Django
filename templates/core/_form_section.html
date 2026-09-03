@@ -1,0 +1,16 @@
+{% comment %}
+One section of a form.
+
+Takes `title`, optional `hint`, and `columns` (1, 2 or 3 — 2 by default). Used
+with {% include %} it cannot wrap arbitrary content, so templates use the
+classes directly; this file documents the shape and exists for the simple case
+where a section holds a single named field group.
+
+    <section class="form-section" aria-labelledby="s-identity">
+      <div class="form-section-head">
+        <h2 class="form-section-title" id="s-identity">Identity</h2>
+        <p class="form-section-hint">How this record is referred to.</p>
+      </div>
+      <div class="form-section-body">…fields…</div>
+    </section>
+{% endcomment %}

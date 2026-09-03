@@ -4,7 +4,7 @@ A full-stack Django application for a wholesale business: purchasing, inventory,
 sales, payments, and an accrual-basis double-entry general ledger.
 
 Built from `Wholesale_Accounting_BRD_Django.docx` (BRD v1.0, 28 August 2026).
-Django 5.1 · PostgreSQL 16 · Django Templates (no separate frontend).
+Django 5.2 LTS · PostgreSQL 16+ · Django Templates (no separate frontend).
 
 ---
 
@@ -16,7 +16,7 @@ will tell you why.
 ### 1. Prerequisites
 
 - **Python 3.11+**
-- **PostgreSQL 13+** (16 recommended) running locally
+- **PostgreSQL 14+** (16 recommended) running locally
 
 Everyone runs their own local database. Migrations are shared through git; data
 is not. Nobody can break anybody else's data.
@@ -182,7 +182,34 @@ python manage.py runserver           # start the dev server
 python manage.py shell               # Django shell
 python verify_schema.py              # verify the accounting rules (fresh DB)
 ruff format . && ruff check .        # format and lint before committing
+npm run build:css                    # rebuild static/css/app.css after UI changes
 ```
+
+When developing against a remote PostgreSQL database, use
+`python manage.py runserver --nothreading`. Django's default development server
+creates a thread per request, so it cannot reliably reuse a persistent database
+connection; the single-threaded option avoids repeating the remote TLS and
+connection setup during ordinary page-to-page navigation. This advice is for
+local development only—never use `runserver` in production.
+
+### Frontend assets
+
+The application remains full-stack Django: templates are rendered on the
+server and there is no JavaScript application to run. Tailwind is a build-time
+tool only. A compiled, minified stylesheet is committed, so a normal Python
+setup works without Node. Contributors changing templates or design tokens run:
+
+```bash
+npm ci
+npm run watch:css   # development, or npm run build:css once
+```
+
+Production runs `python manage.py collectstatic`; the web server or platform
+must serve `STATIC_ROOT` at `/static/`.
+
+The measured performance, security findings, implemented corrections, and
+production runbook are recorded in
+[`docs/performance-security-quality-audit.md`](docs/performance-security-quality-audit.md).
 
 ## Reporting layer
 

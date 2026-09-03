@@ -46,7 +46,9 @@ class SalesOrder(FinancialDocumentBase):
     )
     expected_date = models.DateField(null=True, blank=True)
     customer_reference = models.CharField(
-        max_length=64, blank=True, help_text="Customer PO number (SAL-014)."
+        max_length=64,
+        blank=True,
+        help_text="The customer’s own purchase order number, printed on their invoice.",
     )
     billing_address_text = models.TextField(blank=True)
     shipping_address_text = models.TextField(blank=True)
@@ -77,6 +79,11 @@ class SalesOrder(FinancialDocumentBase):
             models.Index(fields=["status", "-document_date"], name="ix_so_status_date"),
             models.Index(fields=["customer_reference"], name="ix_so_customer_ref"),
         ]
+
+    def get_absolute_url(self):
+        from django.urls import reverse
+
+        return reverse("sales:so_detail", args=[self.pk])
 
 
 class SalesOrderLine(DocumentLineBase):
@@ -215,6 +222,11 @@ class SalesInvoice(FinancialDocumentBase):
             ),
             models.Index(fields=["currency", "status"], name="ix_si_currency_status"),
         ]
+
+    def get_absolute_url(self):
+        from django.urls import reverse
+
+        return reverse("sales:invoice_detail", args=[self.pk])
 
 
 class SalesInvoiceLine(DocumentLineBase):

@@ -549,7 +549,7 @@
    * of their own rather than the application's: there is no navigation to show
    * before authentication and no company context to read.
    */
-  .auth-body { @apply bg-canvas font-sans text-ink antialiased; }
+  .auth-body { @apply bg-white font-sans text-ink antialiased; }
 
   /* One centred column. The task is singular, so the page is too. min-h-dvh
      rather than min-h-screen: on mobile Safari the toolbar makes 100vh taller
@@ -571,10 +571,12 @@
      honest affordance rather than card-by-reflex: it says where the task
      starts and stops. The shadow is close and quiet — this is a work tool
      signing someone in, not a product page. */
+  /* On a white page the panel cannot be told apart by its fill, so the edge
+     does the work: a hairline border and no shadow. A drop shadow between two
+     identical whites reads as grubbiness rather than lift. */
   .auth-panel {
     @apply relative overflow-hidden rounded-2xl border border-line bg-white
-           px-6 py-7 shadow-[0_1px_2px_rgba(7,26,47,.04),0_12px_32px_rgba(7,26,47,.06)]
-           sm:px-8 sm:py-9;
+           px-6 py-7 sm:px-8 sm:py-9;
   }
   /* The beam: two sides of an entry settling level, which is the one thing
      that is true of this product and almost nothing else. It survives from the
@@ -609,7 +611,7 @@
      panel — and in the flow, where a screen reader and a phone both reach it. */
   .auth-note {
     @apply mt-4 flex items-start gap-2.5 rounded-xl2 border border-line
-           bg-white/70 px-4 py-3 text-[13px] leading-5 text-muted-fg;
+           bg-white px-4 py-3 text-[13px] leading-5 text-muted-fg;
   }
   .auth-note .icon { @apply mt-px h-4 w-4 shrink-0 text-brand-deep; }
 
@@ -636,9 +638,17 @@
            items-center text-muted-fg;
   }
   .auth-field-icon .icon { @apply h-4 w-4; }
+  /* Optically symmetrical with the icon opposite it. The left icon's centre
+     sits 22px in (14px inset + half of a 16px glyph); this button is 40px wide,
+     so a 2px inset puts its centre at 22px too. It was 4px, which read as
+     jammed against the border while the lock had room.
+
+     The hit area stays the full 44px height; background-clip keeps the hover
+     tint inside the padding so it never touches the field's own border. */
   .auth-reveal {
-    @apply absolute inset-y-0 right-1 grid w-10 place-items-center rounded-lg
-           text-muted-fg transition-colors hover:text-ink;
+    @apply absolute inset-y-0 right-0.5 grid w-10 place-items-center rounded-xl2
+           p-1 text-muted-fg transition-colors hover:bg-muted-bg hover:text-ink;
+    background-clip: content-box;
   }
   .auth-control:has(.auth-reveal) .field { @apply pr-12; }
 
@@ -672,7 +682,14 @@
 
   /* "Keep me signed in", beside the submit rather than lost above it. */
   .auth-remember { @apply flex items-start gap-2.5 pt-1; }
-  .auth-remember input { @apply mt-0.5 h-4 w-4 shrink-0 accent-[#1f7447]; }
+  /* @tailwindcss/forms replaces the native control (appearance:none) and paints
+     a checked box with background-color:currentColor, defaulting the colour to
+     blue-600. So the brand colour has to arrive as `color`; `accent-color` is
+     ignored the moment the control stops being native. The focus ring is the
+     plugin's too, and was blue for the same reason. */
+  .auth-remember input {
+    @apply mt-0.5 h-4 w-4 shrink-0 rounded text-brand-deep focus:ring-brand-deep;
+  }
   .auth-remember label { @apply text-sm font-medium text-ink; }
   .auth-remember .help { @apply mt-0.5; }
 

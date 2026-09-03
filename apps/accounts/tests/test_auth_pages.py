@@ -92,8 +92,17 @@ class AccountRequestTests(TestCase):
         self.assertFalse(User.objects.filter(username="new-person").exists())
 
     def test_a_signed_in_user_is_sent_away(self):
+        """
+        fetch_redirect_response=False because the destination is not the point:
+        this user has no role, so the dashboard would refuse them — which is
+        correct, and nothing to do with whether the redirect happened.
+        """
         self.client.force_login(make_user("already-in"))
-        self.assertRedirects(self.client.get(reverse("signup")), reverse("dashboard"))
+        self.assertRedirects(
+            self.client.get(reverse("signup")),
+            reverse("dashboard"),
+            fetch_redirect_response=False,
+        )
 
 
 @override_settings(EMAIL_BACKEND=LOCMEM)
@@ -191,13 +200,32 @@ class AuthPageRenderTests(TestCase):
                     self.assertNotIn(delimiter, body, f"{name} leaked {delimiter}")
 
     def test_the_sign_in_failure_does_not_say_whether_the_user_exists(self):
+        """
+        Compares the two responses rather than matching a phrase.
+
+        The property is that a real username and an invented one are
+        indistinguishable — that is what stops the form being used to discover
+        who has an account. Asserting on a phrase would keep passing if the two
+        messages diverged, as long as both still contained it.
+        """
         make_user("real-person")
-        for username in ("real-person", "no-such-person"):
-            with self.subTest(username=username):
-                response = self.client.post(
-                    reverse("login"), {"username": username, "password": "wrong-password"}
-                )
-                self.assertContains(response, "don&#x27;t match an active account")
+
+        def failure_text(username):
+            response = self.client.post(
+                reverse("login"), {"username": username, "password": "wrong-password"}
+            )
+            self.assertEqual(response.status_code, 200)
+            body = response.content.decode()
+            alert = re.search(r'role="alert".*?</div>', body, re.S)
+            self.assertIsNotNone(alert, "no failure message shown")
+            # Collapse the wrapping so the comparison is about words, not layout.
+            return " ".join(re.sub(r"<[^>]+>", " ", alert.group(0)).split())
+
+        real = failure_text("real-person")
+        invented = failure_text("no-such-person")
+        self.assertEqual(real, invented)
+        self.assertIn("Sign-in failed", real)
+        self.assertNotIn("real-person", real)
 
     def test_each_page_links_onward_so_none_is_a_dead_end(self):
         for route, expected in [

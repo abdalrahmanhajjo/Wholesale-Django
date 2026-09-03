@@ -653,9 +653,15 @@
      tint inside the padding so it never touches the field's own border. */
   .auth-reveal {
     @apply absolute inset-y-0 right-0.5 grid w-10 place-items-center rounded-xl2
-           p-1 text-muted-fg transition-colors hover:bg-muted-bg hover:text-ink;
-    background-clip: content-box;
+           bg-transparent text-muted-fg transition-colors hover:text-ink;
   }
+  /* A reveal button that is not inside .auth-control was put there by an older
+     cached copy of auth.js, which appended straight to .auth-field — the group
+     that also holds the label. Centred over that, it rides up out of the input.
+     Hiding it degrades to a plain password field, which is correct and looks
+     deliberate, instead of an icon floating in the wrong place. The current
+     script places it inside .auth-control and it shows normally. */
+  .auth-field > .auth-reveal { @apply hidden; }
   .auth-control:has(.auth-reveal) .field { @apply pr-12; }
 
   /* Password strength, shown while a new password is being chosen. */

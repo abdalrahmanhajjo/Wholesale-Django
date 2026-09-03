@@ -162,7 +162,7 @@ class VendorForm(PartyFormMixin, UIFormMixin, forms.ModelForm):
         super().__init__(*args, **kwargs)
 
 
-class AddressForm(forms.ModelForm):
+class AddressForm(UIFormMixin, forms.ModelForm):
     """PTY-003. The owning party is set by the view, never by the browser."""
 
     class Meta:
@@ -179,30 +179,8 @@ class AddressForm(forms.ModelForm):
             "is_default",
         ]
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        for fld in self.fields.values():
-            widget = fld.widget
-            if isinstance(widget, forms.CheckboxInput):
-                widget.attrs.setdefault(
-                    "class", "h-4 w-4 rounded border-line text-brand focus:ring-brand/30"
-                )
-            else:
-                widget.attrs.setdefault("class", "field")
 
-
-class ContactForm(forms.ModelForm):
+class ContactForm(UIFormMixin, forms.ModelForm):
     class Meta:
         model = Contact
         fields = ["name", "job_title", "email", "phone", "is_primary"]
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        for fld in self.fields.values():
-            widget = fld.widget
-            if isinstance(widget, forms.CheckboxInput):
-                widget.attrs.setdefault(
-                    "class", "h-4 w-4 rounded border-line text-brand focus:ring-brand/30"
-                )
-            else:
-                widget.attrs.setdefault("class", "field")

@@ -42,4 +42,19 @@ urlpatterns = [
         views.ContactDeleteView.as_view(),
         name="contact_delete",
     ),
+    path(
+        "vendors/<int:pk>/deactivate/",
+        views.VendorDeactivateView.as_view(),
+        name="vendor_deactivate",
+    ),
+    path(
+        "vendors/<int:vendor_pk>/addresses/new/",
+        views.VendorAddressCreateView.as_view(),
+        name="vendor_address_create",
+    ),
+    path(
+        "vendors/<int:vendor_pk>/contacts/new/",
+        views.VendorContactCreateView.as_view(),
+        name="vendor_contact_create",
+    ),
 ]

@@ -139,6 +139,12 @@ class JournalDraft:
     source_doc_type: str
     source_doc_number: str
     lines: tuple[JournalLineDraft, ...]
+    #: Set together to record that this journal undoes an earlier one. The
+    #: ledger is append-only (BR-004), so a correction is always a new entry
+    #: pointing back at what it reverses — never an edit to the original.
+    reverses: JournalEntry | None = None
+    is_reversal: bool = False
+    reversal_reason: str = ""
 
     def __post_init__(self) -> None:
         if not isinstance(self.entry_date, date):
@@ -160,6 +166,24 @@ class JournalDraft:
             raise PostingContractError("Journal draft lines must be an immutable tuple")
         if not all(isinstance(line, JournalLineDraft) for line in self.lines):
             raise PostingContractError("Journal draft contains an invalid line")
+        if self.is_reversal:
+            if not _is_saved_model(self.reverses, JournalEntry):
+                raise PostingContractError(
+                    "A reversal must name the saved journal it reverses",
+                    code=PostingErrorCode.INVALID_DRAFT,
+                )
+            if not self.reversal_reason.strip():
+                raise PostingContractError(
+                    "A reversal must carry a reason",
+                    code=PostingErrorCode.INVALID_DRAFT,
+                )
+        elif self.reverses is not None:
+            raise PostingContractError(
+                "reverses is only meaningful on a reversal draft",
+                code=PostingErrorCode.INVALID_DRAFT,
+            )
+        if len(self.reversal_reason) > 500:
+            raise PostingContractError("reversal_reason exceeds 500 characters")
 
 
 class JournalBuilder(Protocol[BuilderSourceT]):
@@ -383,6 +407,9 @@ class PostingEngine(PostingService[SourceT]):
                     source_object_id=source.pk,
                     source_doc_type=draft.source_doc_type,
                     source_doc_number=draft.source_doc_number,
+                    reverses=draft.reverses,
+                    is_reversal=draft.is_reversal,
+                    reversal_reason=draft.reversal_reason,
                     idempotency_key=request.idempotency_key,
                     posted_at=timezone.now(),
                     posted_by=request.user,

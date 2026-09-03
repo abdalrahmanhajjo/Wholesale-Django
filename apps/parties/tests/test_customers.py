@@ -16,7 +16,7 @@ from django.urls import reverse
 
 from apps.accounts.models import User
 from apps.core.models import AuditAction, AuditEvent, Currency, PaymentTerm
-from apps.parties.models import Customer, Vendor
+from apps.parties.models import Address, AddressType, Contact, Customer, Vendor
 
 
 class CustomerScreenTests(TestCase):
@@ -363,6 +363,70 @@ class CustomerScreenTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, vendor.name)
         self.assertNotContains(response, reverse("parties:vendor_edit", args=[vendor.pk]))
+
+
+            # -- addresses and contacts (PTY-003) ----------------------------------
+    def test_a_second_default_address_moves_the_flag(self):
+        """
+        Ticking "default" means "make this the default", so the previous holder
+        loses the flag rather than the save being refused. The database allows
+        only one per customer and type, and checks it on insert.
+        """
+        customer = Customer.objects.get(code="ACME-01")
+        first = Address.objects.create(
+            customer=customer,
+            label="Old depot",
+            address_type=AddressType.SHIPPING,
+            line1="1 Old Road",
+            is_default=True,
+        )
+
+        response = self.client.post(
+            reverse("parties:customer_address_create", args=[customer.pk]),
+            {
+                "label": "New depot",
+                "address_type": AddressType.SHIPPING,
+                "line1": "2 New Road",
+                "line2": "",
+                "city": "",
+                "state": "",
+                "postal_code": "",
+                "country": "",
+                "is_default": "on",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        first.refresh_from_db()
+        self.assertFalse(first.is_default, "the previous default should have been cleared")
+        self.assertEqual(
+            customer.addresses.filter(
+                address_type=AddressType.SHIPPING, is_default=True
+            ).count(),
+            1,
+        )
+
+    def test_a_second_primary_contact_moves_the_flag(self):
+        customer = Customer.objects.get(code="ACME-01")
+        first = Contact.objects.create(
+            customer=customer, name="Old contact", is_primary=True
+        )
+
+        response = self.client.post(
+            reverse("parties:customer_contact_create", args=[customer.pk]),
+            {
+                "name": "New contact",
+                "job_title": "",
+                "email": "",
+                "phone": "",
+                "is_primary": "on",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        first.refresh_from_db()
+        self.assertFalse(first.is_primary)
+        self.assertEqual(customer.contacts.filter(is_primary=True).count(), 1)
 
 
 def _view_customer_permissions():

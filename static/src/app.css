@@ -623,19 +623,24 @@
   .auth-legal .icon { @apply mr-1.5 inline-block h-3.5 w-3.5 align-[-2px]; }
 
   /* An icon inside the box, and room made for it. A password field also holds
-     the reveal button, so it gets room on the right as well. */
-  .auth-field { @apply relative; }
+     the reveal button, so it gets room on the right as well.
+
+     Both are positioned against .auth-control, which wraps the input alone.
+     Anchoring them to the field-wrap instead put them at the bottom of
+     everything below the input too — help text, the strength meter, the rules
+     list — which is where they drifted to as those were added. */
+  .auth-control { @apply relative; }
   .auth-field .field { @apply h-11 pl-11; }
   .auth-field-icon {
-    @apply pointer-events-none absolute bottom-0 left-3.5 flex h-11 w-4
+    @apply pointer-events-none absolute inset-y-0 left-3.5 flex w-4
            items-center text-muted-fg;
   }
   .auth-field-icon .icon { @apply h-4 w-4; }
   .auth-reveal {
-    @apply absolute bottom-0 right-1 grid h-11 w-10 place-items-center rounded-lg
+    @apply absolute inset-y-0 right-1 grid w-10 place-items-center rounded-lg
            text-muted-fg transition-colors hover:text-ink;
   }
-  .auth-field:has(.auth-reveal) .field { @apply pr-12; }
+  .auth-control:has(.auth-reveal) .field { @apply pr-12; }
 
   /* Password strength, shown while a new password is being chosen. */
   .auth-meter { @apply mt-2; }
@@ -648,6 +653,28 @@
   .auth-meter[data-score="3"] .auth-meter-track span:nth-child(-n+3) { @apply bg-amber-500; }
   .auth-meter[data-score="4"] .auth-meter-track span { @apply bg-brand-deep; }
   .auth-meter-label { @apply mt-1.5 block text-[13px] text-muted-fg; }
+
+  /* The rules the server actually applies, ticked as they are met. Grey until
+     the box has something in it, so an untouched form is not a wall of red. */
+  .auth-rules { @apply mt-3 space-y-1.5; }
+  .auth-rules li { @apply flex items-center gap-2 text-[13px] leading-5 text-muted-fg; }
+  .auth-rules .icon {
+    @apply h-3.5 w-3.5 shrink-0 rounded-full bg-muted-bg p-0.5 text-transparent
+           transition-colors;
+  }
+  .auth-rules li.is-met { @apply text-ink; }
+  .auth-rules li.is-met .icon { @apply bg-brand-deep text-white; }
+
+  /* Live confirmation that two password boxes agree. */
+  .auth-match { @apply mt-1.5 text-[13px] leading-5; }
+  .auth-match.is-ok { @apply font-medium text-brand-deep; }
+  .auth-match.is-bad { @apply font-medium text-danger-strong; }
+
+  /* "Keep me signed in", beside the submit rather than lost above it. */
+  .auth-remember { @apply flex items-start gap-2.5 pt-1; }
+  .auth-remember input { @apply mt-0.5 h-4 w-4 shrink-0 accent-[#1f7447]; }
+  .auth-remember label { @apply text-sm font-medium text-ink; }
+  .auth-remember .help { @apply mt-0.5; }
 
   /* Ink is invisible against the navy sidebar and the navy panels. */
   .on-dark { --focus-ring: #ffffff; --focus-ring-offset: #071a2f; }

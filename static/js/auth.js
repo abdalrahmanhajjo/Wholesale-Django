@@ -1,9 +1,9 @@
 /*
- * The two pieces of behaviour the sign-in, sign-up and reset pages need.
+ * The behaviour the sign-in, sign-up, reset and password-change pages need.
  *
- * Both are enhancements. Without this file the forms submit exactly as they do
- * with it: the password is typed into a normal password field and the server
- * decides whether it is acceptable.
+ * All of it is enhancement. Without this file the forms submit exactly as they
+ * do with it: the password is typed into a normal password field and the server
+ * decides whether it is acceptable. Nothing here gates a submission.
  */
 (function () {
   "use strict";
@@ -14,7 +14,9 @@
   // The button is added here rather than in the template so a page that never
   // loads this script does not show a control that does nothing.
   document.querySelectorAll('input[type="password"]').forEach(function (field) {
-    var wrap = field.closest(".auth-field");
+    // The control wraps the input alone, so the button lands on the box
+    // rather than below whatever the field-wrap also contains.
+    var wrap = field.closest(".auth-control");
     if (!wrap) return;
 
     var button = document.createElement("button");
@@ -88,6 +90,155 @@
       timer = setTimeout(function () {
         label.textContent = field.value ? LABELS[value] : "";
       }, 400);
+    });
+  });
+
+  /* ================================================== requirements ======*/
+  // The checklist states the rules the server actually applies, and nothing
+  // else. AUTH_PASSWORD_VALIDATORS enforces a minimum length, refuses an
+  // all-numeric password, refuses common ones, and refuses anything too close
+  // to the account's own details — so those are the four lines shown. Adding
+  // "one uppercase, one symbol" would look reassuring and be untrue: the
+  // server neither requires them nor accepts a password just because it has
+  // them.
+  var COMMON = [
+    "password", "passw0rd", "123456", "12345678", "123456789", "qwerty",
+    "abc123", "letmein", "welcome", "admin", "iloveyou", "monkey", "dragon",
+    "football", "baseball", "sunshine", "princess", "trustno1", "changeme"
+  ];
+
+  function nearby(field) {
+    // The other things the account knows about this person. Django compares
+    // the password against exactly these, so the hint can too.
+    var form = field.form;
+    if (!form) return [];
+    var names = ["username", "email", "full_name", "first_name", "last_name"];
+    var values = [];
+    names.forEach(function (name) {
+      var el = form.elements[name];
+      if (el && el.value && el.value.length > 2) values.push(el.value.toLowerCase());
+    });
+    return values;
+  }
+
+  function similar(value, others) {
+    var lower = value.toLowerCase();
+    return others.some(function (other) {
+      if (lower.indexOf(other) !== -1 || other.indexOf(lower) !== -1) return true;
+      var local = other.split("@")[0];
+      return local.length > 2 && lower.indexOf(local) !== -1;
+    });
+  }
+
+  var RULES = [
+    { text: "At least 8 characters", test: function (v) { return v.length >= 8; } },
+    { text: "Not only numbers", test: function (v) { return !/^\d+$/.test(v); } },
+    {
+      text: "Not a password in common use",
+      test: function (v) {
+        var lower = v.toLowerCase();
+        return !COMMON.some(function (c) { return lower === c || lower.indexOf(c) === 0; });
+      }
+    },
+    {
+      text: "Not too like your name or email",
+      test: function (v, field) { return !similar(v, nearby(field)); }
+    }
+  ];
+
+  document.querySelectorAll("[data-strength]").forEach(function (field) {
+    var list = document.createElement("ul");
+    list.className = "auth-rules";
+    // Decorative as a live region: the meter's status label already speaks the
+    // verdict, and announcing four rules on every keystroke is unusable.
+    list.setAttribute("aria-hidden", "true");
+
+    var items = RULES.map(function (rule) {
+      var li = document.createElement("li");
+      li.innerHTML =
+        '<svg class="icon" aria-hidden="true"><use href="#i-check"></use></svg>' +
+        "<span>" + rule.text + "</span>";
+      list.appendChild(li);
+      return li;
+    });
+
+    (field.closest(".field-wrap") || field.parentNode).appendChild(list);
+
+    field.addEventListener("input", function () {
+      var value = field.value;
+      RULES.forEach(function (rule, i) {
+        items[i].classList.toggle("is-met", Boolean(value) && rule.test(value, field));
+      });
+      list.classList.toggle("is-active", Boolean(value));
+    });
+  });
+
+  /* ======================================================= match ========*/
+  // Two password boxes that disagree is the most common reason a request form
+  // comes back rejected. Saying so while it is still on screen costs a round
+  // trip nobody wanted.
+  document.querySelectorAll("[data-confirms]").forEach(function (field) {
+    var form = field.form;
+    if (!form) return;
+    var first = form.elements[field.dataset.confirms];
+    if (!first) return;
+
+    var note = document.createElement("p");
+    note.className = "auth-match";
+    note.setAttribute("role", "status");
+    (field.closest(".field-wrap") || field.parentNode).appendChild(note);
+
+    function check() {
+      if (!field.value) {
+        note.textContent = "";
+        note.classList.remove("is-ok", "is-bad");
+        field.removeAttribute("aria-invalid");
+        return;
+      }
+      var same = field.value === first.value;
+      note.textContent = same ? "Both entries match." : "The two entries don't match yet.";
+      note.classList.toggle("is-ok", same);
+      note.classList.toggle("is-bad", !same);
+      // aria-invalid and the styling can never disagree, because one sets both.
+      if (same) field.removeAttribute("aria-invalid");
+      else field.setAttribute("aria-invalid", "true");
+    }
+
+    field.addEventListener("input", check);
+    first.addEventListener("input", function () { if (field.value) check(); });
+  });
+
+  /* ======================================================== busy ========*/
+  // Every auth button already carried data-busy-label, but the script that
+  // reads it (forms.js) is not loaded on these pages — so the button advertised
+  // a loading state that never arrived and a slow network looked like a dead
+  // form. Same behaviour, without pulling in the whole form runtime.
+  document.querySelectorAll(".auth-panel form").forEach(function (form) {
+    form.addEventListener("submit", function () {
+      if (form.dataset.submitting === "1") return;
+      form.dataset.submitting = "1";
+
+      var buttons = form.querySelectorAll('button[type="submit"]');
+      buttons.forEach(function (button) {
+        button.dataset.idleLabel = button.innerHTML;
+        button.disabled = true;
+        button.classList.add("is-busy");
+        button.innerHTML =
+          '<span class="spinner" aria-hidden="true"></span><span>' +
+          (button.dataset.busyLabel || "Working…") + "</span>";
+      });
+
+      // Restored from the back/forward cache, the page must not still spin.
+      window.addEventListener("pageshow", function restore(e) {
+        if (!e.persisted) return;
+        window.removeEventListener("pageshow", restore);
+        form.dataset.submitting = "0";
+        buttons.forEach(function (button) {
+          button.disabled = false;
+          button.classList.remove("is-busy");
+          if (button.dataset.idleLabel) button.innerHTML = button.dataset.idleLabel;
+        });
+      });
     });
   });
 })();

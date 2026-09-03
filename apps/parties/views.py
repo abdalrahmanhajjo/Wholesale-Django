@@ -118,7 +118,12 @@ class CustomerDetailView(BackLinkMixin, ActionPermissionMixin, DetailView):
     context_object_name = "customer"
 
     def get_queryset(self):
-        return super().get_queryset().select_related("currency", "payment_term", "salesperson")
+        return (
+            super()
+            .get_queryset()
+            .select_related("currency", "payment_term", "salesperson")
+            .prefetch_related("addresses", "contacts")
+        )
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
@@ -242,6 +247,7 @@ class VendorDetailView(BackLinkMixin, ActionPermissionMixin, DetailView):
                 "default_tax_code",
                 "default_expense_account",
             )
+            .prefetch_related("addresses", "contacts")
         )
 
     def get_context_data(self, **kwargs):
@@ -271,6 +277,31 @@ class VendorUpdateView(BackLinkMixin, AuditedFormMixin, ActionPermissionMixin, U
         return reverse("parties:vendor_detail", args=[self.object.pk])
 
 
+def party_owner(obj):
+    """Which party an address or contact hangs off: ('customer', <Customer>) or ('vendor', <Vendor>)."""
+    if obj.customer_id:
+        return "customer", obj.customer
+    return "vendor", obj.vendor
+
+
+class OwnerAwarePermissionMixin:
+    """
+    The address and contact edit/delete screens serve customers and vendors
+    alike, so the permission is not known until the row is loaded. Cached,
+    because dispatch() and the handler both need the object and one query is
+    enough.
+    """
+
+    def get_child_object(self):
+        if not hasattr(self, "_child_object"):
+            self._child_object = get_object_or_404(self.model, pk=self.kwargs["pk"])
+        return self._child_object
+
+    def get_required_permissions(self):
+        field, _ = party_owner(self.get_child_object())
+        return [f"parties.change_{field}"]
+
+
 class PartyChildMixin(AuditedFormMixin, ActionPermissionMixin):
     """
     Shared behaviour for the address and contact forms: set the owning party,
@@ -278,40 +309,46 @@ class PartyChildMixin(AuditedFormMixin, ActionPermissionMixin):
     """
 
     template_name = "core/settings_form.html"
-    required_permission = "parties.change_customer"
-    #: Field that marks the default row, and the fields it is unique within.
+    #: Which party a *newly created* child belongs to. Update views read it
+    #: from the object instead, so one edit screen serves both.
+    party_field = "customer"
+    party_model = Customer
     flag_field = ""
     scope_fields = ()
 
-    def get_customer(self):
-        if "customer_pk" in self.kwargs:
-            return get_object_or_404(Customer, pk=self.kwargs["customer_pk"])
-        return self.object.customer if self.object else None
+    def get_owner(self):
+        """(field name, party instance) — from the URL on create, from the row on edit."""
+        kwarg = f"{self.party_field}_pk"
+        if kwarg in self.kwargs:
+            return self.party_field, get_object_or_404(self.party_model, pk=self.kwargs[kwarg])
+        return party_owner(self.object)
 
-    def clear_previous_flag(self, instance):
+    def clear_previous_flag(self, instance, field, party):
         """
         Only one default per party (and per address type) is allowed, and the
         constraint is checked on INSERT — so the previous holder must lose the
-        flag *before* the new row is written, not after.
+        flag before the new row is written.
         """
         if not getattr(instance, self.flag_field, False):
             return
-        siblings = self.model.objects.filter(customer=instance.customer)
+        siblings = self.model.objects.filter(**{field: party})
         if instance.pk:
             siblings = siblings.exclude(pk=instance.pk)
-        for field in self.scope_fields:
-            siblings = siblings.filter(**{field: getattr(instance, field)})
+        for name in self.scope_fields:
+            siblings = siblings.filter(**{name: getattr(instance, name)})
         siblings.filter(**{self.flag_field: True}).update(**{self.flag_field: False})
 
     def form_valid(self, form):
-        form.instance.customer = self.get_customer()
-        form.instance.vendor = None
+        field, party = self.get_owner()
+        setattr(form.instance, field, party)
+        setattr(form.instance, "vendor" if field == "customer" else "customer", None)
         with transaction.atomic():
-            self.clear_previous_flag(form.instance)
+            self.clear_previous_flag(form.instance, field, party)
             return super().form_valid(form)
 
     def get_success_url(self):
-        return reverse("parties:customer_detail", args=[self.object.customer_id])
+        field, party = party_owner(self.object)
+        return reverse(f"parties:{field}_detail", args=[party.pk])
 
 
 class CustomerAddressCreateView(PartyChildMixin, CreateView):
@@ -322,7 +359,7 @@ class CustomerAddressCreateView(PartyChildMixin, CreateView):
     extra_context = {"page_title": "New address"}
 
 
-class AddressUpdateView(PartyChildMixin, UpdateView):
+class AddressUpdateView(OwnerAwarePermissionMixin, PartyChildMixin, UpdateView):
     model = Address
     form_class = AddressForm
     flag_field = "is_default"
@@ -337,30 +374,29 @@ class CustomerContactCreateView(PartyChildMixin, CreateView):
     extra_context = {"page_title": "New contact"}
 
 
-class ContactUpdateView(PartyChildMixin, UpdateView):
+class ContactUpdateView(OwnerAwarePermissionMixin, PartyChildMixin, UpdateView):
     model = Contact
     form_class = ContactForm
     flag_field = "is_primary"
     extra_context = {"page_title": "Edit contact"}
 
 
-class PartyChildDeleteView(ActionPermissionMixin, View):
+class PartyChildDeleteView(OwnerAwarePermissionMixin, ActionPermissionMixin, View):
     """
     POST-only. Addresses and contacts may be deleted — documents snapshot the
     address text at posting, so removing one never rewrites history (PTY-003).
     """
 
     model = None
-    required_permission = "parties.change_customer"
 
     def post(self, request, pk):
-        obj = get_object_or_404(self.model, pk=pk)
-        customer_id = obj.customer_id
+        obj = self.get_child_object()
+        field, party = party_owner(obj)
         with transaction.atomic():
             audit.record_delete(request, obj)
             obj.delete()
         messages.success(request, f"{obj} removed.")
-        return redirect("parties:customer_detail", pk=customer_id)
+        return redirect(f"parties:{field}_detail", pk=party.pk)
 
 
 class AddressDeleteView(PartyChildDeleteView):
@@ -369,3 +405,45 @@ class AddressDeleteView(PartyChildDeleteView):
 
 class ContactDeleteView(PartyChildDeleteView):
     model = Contact
+
+
+class VendorAddressCreateView(CustomerAddressCreateView):
+    party_field = "vendor"
+    party_model = Vendor
+    required_permission = "parties.change_vendor"
+
+
+class VendorContactCreateView(CustomerContactCreateView):
+    party_field = "vendor"
+    party_model = Vendor
+    required_permission = "parties.change_vendor"
+
+
+class VendorDeactivateView(ActionPermissionMixin, View):
+    """PTY-008: deactivate, never delete. There is no vendor delete view."""
+
+    required_permission = "parties.change_vendor"
+
+    def post(self, request, pk):
+        reason = request.POST.get("reason", "").strip()
+        if not reason:
+            messages.error(request, "Give a reason for the vendor status change.")
+            return redirect("parties:vendor_detail", pk=pk)
+
+        vendor = get_object_or_404(Vendor, pk=pk)
+        before = audit.snapshot(vendor)
+        reactivating = not vendor.is_active
+
+        with transaction.atomic():
+            vendor.is_active = reactivating
+            vendor.deactivated_at = None if reactivating else timezone.now()
+            vendor.updated_by = request.user
+            vendor.save(
+                update_fields=["is_active", "deactivated_at", "updated_by", "updated_at"]
+            )
+            audit.record_update(request, vendor, before, reason=reason)
+
+        messages.success(
+            request, f"{vendor} {'reactivated' if reactivating else 'deactivated'}."
+        )
+        return redirect("parties:vendor_detail", pk=pk)

@@ -168,3 +168,28 @@ PaymentAllocationLineFormSet = formset_factory(
     validate_max=True,
     absolute_max=250,
 )
+
+
+class ReversalForm(UIFormMixin, forms.Form):
+    """Why, and when. PAY-010 makes both mandatory on the audit trail."""
+
+    reason = forms.CharField(
+        max_length=255,
+        widget=forms.Textarea(
+            attrs={
+                "rows": 3,
+                "class": "field",
+                "placeholder": "Why is this being reversed?",
+            }
+        ),
+        help_text="Recorded against the reversal and shown in the audit trail.",
+    )
+    reversal_date = forms.DateField(
+        widget=forms.DateInput(attrs={"type": "date"}),
+        help_text="The date the reversing journal is posted into.",
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if not self.is_bound:
+            self.initial.setdefault("reversal_date", timezone.localdate())

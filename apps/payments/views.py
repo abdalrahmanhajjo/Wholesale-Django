@@ -1,4 +1,6 @@
-"""Payment register, posting, allocation, entry, and detail screens."""
+"""Payment register, posting, allocation, reversal, voucher, and detail screens."""
+
+from decimal import Decimal
 
 from django.contrib import messages
 from django.core.exceptions import ValidationError
@@ -11,14 +13,20 @@ from django.views.generic import CreateView, DetailView, UpdateView
 from apps.core import audit
 from apps.core.list_views import ChoiceFilter, Column, DateRangeFilter, FilteredListView
 from apps.core.mixins import ActionPermissionMixin, BackLinkMixin, PostingPermissionMixin
-from apps.core.models import AuditAction, AuditEvent, DocumentStatus
-from apps.core.permissions import ALLOCATE_PAYMENT, EXPORT_DATA, POST_PAYMENT
+from apps.core.models import AuditAction, AuditEvent, Company, DocumentStatus
+from apps.core.permissions import (
+    ALLOCATE_PAYMENT,
+    EXPORT_DATA,
+    POST_PAYMENT,
+    REVERSE_DOCUMENT,
+)
 from apps.ledger.services.exceptions import PostingError
-from apps.payments import allocation, services
+from apps.payments import allocation, reversal, services
 from apps.payments.forms import (
     PaymentAllocationHeaderForm,
     PaymentAllocationLineFormSet,
     PaymentForm,
+    ReversalForm,
 )
 from apps.payments.models import Allocation, Payment, PaymentDirection
 from apps.purchases.models import PurchaseBill
@@ -358,3 +366,157 @@ def _error_message(error):
             )
         return " ".join(error.messages)
     return str(error)
+
+
+class _ReversalView(BackLinkMixin, ActionPermissionMixin, View):
+    """Shared confirm-then-act shell for the two reversal actions."""
+
+    required_permission = REVERSE_DOCUMENT
+    back_to_object = True
+    back_label = "Back to this payment"
+    template_name = "payments/payment_reverse.html"
+
+    def get_payment(self):
+        return get_object_or_404(
+            Payment.objects.select_related("customer", "vendor", "currency"),
+            pk=self.kwargs["pk"],
+        )
+
+    def get(self, request, **kwargs):
+        return self._render(self.get_payment(), ReversalForm())
+
+    def post(self, request, **kwargs):
+        payment = self.get_payment()
+        form = ReversalForm(request.POST)
+        if form.is_valid():
+            try:
+                result = self.perform(payment, form)
+            except (ValidationError, PostingError) as exc:
+                form.add_error(None, _error_message(exc))
+            else:
+                audit.record_action(
+                    request,
+                    self.audit_action,
+                    payment,
+                    reason=form.cleaned_data["reason"],
+                    amount_txn=str(result.amount_txn),
+                    journal=getattr(result.journal_entry, "number", ""),
+                )
+                messages.success(request, self.success_message(payment, result))
+                return redirect("payments:payment_detail", pk=payment.pk)
+        return self._render(payment, form)
+
+    def _render(self, payment, form):
+        from django.shortcuts import render
+
+        return render(
+            self.request,
+            self.template_name,
+            {
+                "payment": payment,
+                "form": form,
+                "page_title": self.page_title(payment),
+                "intro": self.intro(payment),
+                "live_batches": reversal.live_allocation_batches(payment),
+                "mode": self.mode,
+            },
+        )
+
+
+class PaymentReverseView(_ReversalView):
+    """PAY-010: reverse the cash itself, once nothing is applied to it."""
+
+    mode = "payment"
+    audit_action = AuditAction.REVERSE
+
+    def page_title(self, payment):
+        return f"Reverse {payment.number}"
+
+    def intro(self, payment):
+        return (
+            "This posts a journal that cancels the original and marks the "
+            "payment reversed. The original journal is left untouched."
+        )
+
+    def perform(self, payment, form):
+        return reversal.reverse_payment(
+            payment,
+            user=self.request.user,
+            reason=form.cleaned_data["reason"],
+            reversal_date=form.cleaned_data["reversal_date"],
+        )
+
+    def success_message(self, payment, result):
+        return f"{payment.number} reversed by journal {result.journal_entry.number}."
+
+
+class AllocationReverseView(_ReversalView):
+    """PAY-011: un-apply one allocation batch and give the balances back."""
+
+    mode = "allocation"
+    audit_action = AuditAction.UNALLOCATE
+    back_label = "Back to this payment"
+
+    def page_title(self, payment):
+        return f"Reverse an allocation of {payment.number}"
+
+    def intro(self, payment):
+        return (
+            "The settled documents get their open balance back, and any "
+            "exchange difference realised at the time is reversed with it."
+        )
+
+    def perform(self, payment, form):
+        return reversal.reverse_allocation_batch(
+            self.kwargs["batch_key"],
+            user=self.request.user,
+            reason=form.cleaned_data["reason"],
+            reversal_date=form.cleaned_data["reversal_date"],
+        )
+
+    def success_message(self, payment, result):
+        return (
+            f"Reversed {result.amount_txn:,.4f} of {payment.number}; "
+            f"{result.source.unallocated_txn:,.4f} is available again."
+        )
+
+
+class PaymentVoucherView(BackLinkMixin, ActionPermissionMixin, DetailView):
+    """PTY-003: the printable receipt or payment voucher."""
+
+    back_to_object = True
+    back_label = "Back to this payment"
+    model = Payment
+    template_name = "payments/payment_voucher.html"
+    context_object_name = "payment"
+    required_permission = "payments.view_payment"
+
+    def get_queryset(self):
+        return (
+            super()
+            .get_queryset()
+            .select_related(
+                "customer",
+                "vendor",
+                "currency",
+                "method",
+                "money_account",
+                "journal_entry",
+                "posted_by",
+            )
+        )
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        payment = self.object
+        context["company"] = Company.objects.select_related("base_currency").first()
+        context["party"] = payment.customer or payment.vendor
+        context["allocations"] = (
+            Allocation.objects.filter(payment=payment, is_reversed=False)
+            .select_related("sales_invoice", "purchase_bill")
+            .order_by("allocation_date", "id")
+        )
+        context["fx_total"] = sum(
+            (row.fx_gain_loss_base for row in context["allocations"]), Decimal("0")
+        )
+        return context

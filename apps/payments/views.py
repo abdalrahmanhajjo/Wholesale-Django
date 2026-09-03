@@ -1,20 +1,28 @@
-"""Payment register, entry, editing and detail screens (PAY-001, PAY-002)."""
+"""Payment register, posting, allocation, entry, and detail screens."""
 
 from django.contrib import messages
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.db.models import Count, Q, Sum
-from django.shortcuts import redirect
+from django.shortcuts import get_object_or_404, redirect
+from django.views import View
 from django.views.generic import CreateView, DetailView, UpdateView
 
 from apps.core import audit
 from apps.core.list_views import ChoiceFilter, Column, DateRangeFilter, FilteredListView
-from apps.core.mixins import ActionPermissionMixin, BackLinkMixin
-from apps.core.models import AuditEvent, DocumentStatus
-from apps.core.permissions import EXPORT_DATA
-from apps.payments import services
-from apps.payments.forms import PaymentForm
-from apps.payments.models import Payment, PaymentDirection
+from apps.core.mixins import ActionPermissionMixin, BackLinkMixin, PostingPermissionMixin
+from apps.core.models import AuditAction, AuditEvent, DocumentStatus
+from apps.core.permissions import ALLOCATE_PAYMENT, EXPORT_DATA, POST_PAYMENT
+from apps.ledger.services.exceptions import PostingError
+from apps.payments import allocation, services
+from apps.payments.forms import (
+    PaymentAllocationHeaderForm,
+    PaymentAllocationLineFormSet,
+    PaymentForm,
+)
+from apps.payments.models import Allocation, Payment, PaymentDirection
+from apps.purchases.models import PurchaseBill
+from apps.sales.models import SalesInvoice
 
 
 def _form_data(form):
@@ -156,6 +164,7 @@ class PaymentDetailView(BackLinkMixin, ActionPermissionMixin, DetailView):
                 "method",
                 "money_account",
                 "fiscal_period",
+                "journal_entry",
                 "created_by",
                 "updated_by",
             )
@@ -169,7 +178,165 @@ class PaymentDetailView(BackLinkMixin, ActionPermissionMixin, DetailView):
             content_type__model="payment",
             object_id=self.object.pk,
         ).select_related("user")[:20]
+        context["allocations"] = (
+            Allocation.objects.filter(payment=self.object, is_reversed=False)
+            .select_related(
+                "sales_invoice",
+                "purchase_bill",
+                "journal_entry",
+                "created_by",
+            )
+            .order_by("-allocation_date", "-id")
+        )
         return context
+
+
+class PaymentPostView(PostingPermissionMixin, View):
+    """Create the payment's one cash/bank journal (PAY-001, GL-002)."""
+
+    required_permission = POST_PAYMENT
+    http_method_names = ["post"]
+
+    def post(self, request, pk):
+        payment = get_object_or_404(Payment, pk=pk)
+        try:
+            with transaction.atomic():
+                result = services.post_payment(payment, user=request.user)
+                audit.record_action(
+                    request,
+                    AuditAction.POST,
+                    result.payment,
+                    amount_txn=str(result.payment.amount_txn),
+                    journal_entry_id=result.payment.journal_entry_id,
+                )
+        except (ValidationError, PostingError) as exc:
+            messages.error(request, _error_message(exc))
+        else:
+            verb = "posted" if result.created else "was already posted"
+            messages.success(request, f"{result.payment.number} {verb} successfully.")
+        return redirect("payments:payment_detail", pk=payment.pk)
+
+
+class PaymentAllocationView(BackLinkMixin, ActionPermissionMixin, View):
+    """Server-rendered workbench for partial and multi-document allocation."""
+
+    required_permission = ALLOCATE_PAYMENT
+    back_to_object = True
+    back_label = "Back to this payment"
+    template_name = "payments/payment_allocation.html"
+
+    def _payment(self, pk):
+        return get_object_or_404(
+            Payment.objects.select_related("customer", "vendor", "currency", "journal_entry"),
+            pk=pk,
+        )
+
+    def _targets(self, payment):
+        return list(allocation.available_payment_targets(payment))
+
+    def get(self, request, pk):
+        payment = self._payment(pk)
+        targets = self._targets(payment)
+        header_form = PaymentAllocationHeaderForm()
+        line_formset = PaymentAllocationLineFormSet(
+            initial=[{"target_id": target.pk} for target in targets], prefix="lines"
+        )
+        return self._render(request, payment, targets, header_form, line_formset)
+
+    def post(self, request, pk):
+        payment = self._payment(pk)
+        targets = self._targets(payment)
+        header_form = PaymentAllocationHeaderForm(request.POST)
+        line_formset = PaymentAllocationLineFormSet(request.POST, prefix="lines")
+        if header_form.is_valid() and line_formset.is_valid():
+            try:
+                with transaction.atomic():
+                    result = allocation.allocate_payment(
+                        payment,
+                        lines=line_formset.allocation_lines,
+                        allocation_date=header_form.cleaned_data["allocation_date"],
+                        user=request.user,
+                        batch_key=header_form.cleaned_data["batch_key"],
+                    )
+                    audit.record_action(
+                        request,
+                        AuditAction.ALLOCATE,
+                        result.source,
+                        amount_txn=str(result.amount_txn),
+                        remaining_txn=str(result.remaining_txn),
+                        allocation_ids=[item.pk for item in result.allocations],
+                        batch_key=str(header_form.cleaned_data["batch_key"]),
+                    )
+            except (ValidationError, PostingError) as exc:
+                header_form.add_error(None, _error_message(exc))
+            else:
+                if result.created:
+                    messages.success(
+                        request,
+                        f"Allocated {result.amount_txn:,.4f} from {payment.number}; "
+                        f"{result.remaining_txn:,.4f} remains available.",
+                    )
+                else:
+                    messages.info(request, "This allocation batch was already applied.")
+                return redirect("payments:payment_detail", pk=payment.pk)
+        return self._render(request, payment, targets, header_form, line_formset)
+
+    def _render(self, request, payment, targets, header_form, line_formset):
+        target_map = {target.pk: target for target in targets}
+        rows = []
+        for form in line_formset.forms:
+            raw_id = form["target_id"].value()
+            try:
+                target_id = int(raw_id)
+            except (TypeError, ValueError):
+                target_id = None
+            rows.append({"form": form, "target": target_map.get(target_id)})
+
+        party_filter = {
+            "customer_id": payment.customer_id
+            if payment.direction == PaymentDirection.RECEIPT
+            else None,
+            "vendor_id": payment.vendor_id
+            if payment.direction == PaymentDirection.PAYMENT
+            else None,
+        }
+        if payment.direction == PaymentDirection.RECEIPT:
+            deferred_fx_count = (
+                SalesInvoice.objects.filter(
+                    customer_id=party_filter["customer_id"],
+                    open_txn__gt=0,
+                    status__in=allocation.ALLOCATABLE_STATUSES,
+                    is_reversed=False,
+                )
+                .exclude(currency_id=payment.currency_id, exchange_rate=payment.exchange_rate)
+                .count()
+            )
+        else:
+            deferred_fx_count = (
+                PurchaseBill.objects.filter(
+                    vendor_id=party_filter["vendor_id"],
+                    open_txn__gt=0,
+                    status__in=allocation.ALLOCATABLE_STATUSES,
+                    is_reversed=False,
+                )
+                .exclude(currency_id=payment.currency_id, exchange_rate=payment.exchange_rate)
+                .count()
+            )
+
+        context = {
+            "payment": payment,
+            "page_title": f"Allocate {payment.number}",
+            "header_form": header_form,
+            "line_formset": line_formset,
+            "allocation_rows": rows,
+            "deferred_fx_count": deferred_fx_count,
+        }
+        return self.render_to_response(context)
+
+    def render_to_response(self, context):
+        from django.shortcuts import render
+
+        return render(self.request, self.template_name, context)
 
 
 def _attach_validation_error(form, error):
@@ -181,3 +348,13 @@ def _attach_validation_error(form, error):
     else:
         for message in error.messages:
             form.add_error(None, message)
+
+
+def _error_message(error):
+    if isinstance(error, ValidationError):
+        if hasattr(error, "message_dict"):
+            return " ".join(
+                message for messages_ in error.message_dict.values() for message in messages_
+            )
+        return " ".join(error.messages)
+    return str(error)

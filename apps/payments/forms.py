@@ -1,9 +1,14 @@
-"""Server-rendered payment and receipt entry form (PAY-001, PAY-002)."""
+"""Server-rendered payment entry and allocation forms (PAY-001..PAY-007)."""
+
+import uuid
+from decimal import Decimal
 
 from django import forms
+from django.forms import BaseFormSet, formset_factory
 from django.utils import timezone
 
 from apps.core.form_ui import UIFormMixin
+from apps.payments.allocation import AllocationLineInput
 from apps.payments.models import Payment, PaymentDirection
 
 
@@ -99,3 +104,67 @@ class PaymentForm(UIFormMixin, forms.ModelForm):
         if not account:
             self.add_error("money_account", "Select a money account.")
         return cleaned
+
+
+class PaymentAllocationHeaderForm(UIFormMixin, forms.Form):
+    allocation_date = forms.DateField(widget=forms.DateInput(attrs={"type": "date"}))
+    batch_key = forms.UUIDField(widget=forms.HiddenInput)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if not self.is_bound:
+            self.initial.setdefault("allocation_date", timezone.localdate())
+            self.initial.setdefault("batch_key", uuid.uuid4())
+
+
+class AllocationLineForm(UIFormMixin, forms.Form):
+    target_id = forms.IntegerField(min_value=1, widget=forms.HiddenInput)
+    amount_txn = forms.DecimalField(
+        required=False,
+        min_value=Decimal("0"),
+        max_digits=18,
+        decimal_places=4,
+        widget=forms.NumberInput(
+            attrs={
+                "step": "0.0001",
+                "inputmode": "decimal",
+                "autocomplete": "off",
+                "class": "field text-right tabular-nums",
+                "aria-label": "Amount to allocate",
+            }
+        ),
+    )
+
+
+class BaseAllocationLineFormSet(BaseFormSet):
+    """Collect only positive rows; blank and zero rows are intentional no-ops."""
+
+    allocation_lines: tuple[AllocationLineInput, ...] = ()
+
+    def clean(self):
+        super().clean()
+        if any(self.errors):
+            return
+        target_ids = set()
+        lines = []
+        for form in self.forms:
+            target_id = form.cleaned_data["target_id"]
+            if target_id in target_ids:
+                raise forms.ValidationError("An open document appears more than once.")
+            target_ids.add(target_id)
+            amount = form.cleaned_data.get("amount_txn") or Decimal("0")
+            if amount > 0:
+                lines.append(AllocationLineInput(target_id=target_id, amount_txn=amount))
+        if not lines:
+            raise forms.ValidationError("Enter an amount for at least one open document.")
+        self.allocation_lines = tuple(lines)
+
+
+PaymentAllocationLineFormSet = formset_factory(
+    AllocationLineForm,
+    formset=BaseAllocationLineFormSet,
+    extra=0,
+    max_num=200,
+    validate_max=True,
+    absolute_max=250,
+)

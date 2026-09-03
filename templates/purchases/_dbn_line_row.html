@@ -1,0 +1,36 @@
+{% comment %}
+One vendor-debit-note line, used both for existing rows and — via
+`empty_form` with __prefix__ substituted by JS — for a freshly added row. A
+line is either a stock line (product, credits Inventory) or a non-stock line
+(expense account, Appendix A) — same split as a purchase-bill line.
+{% endcomment %}
+<tr data-dbn-row class="border-b border-line last:border-0 {% if form.instance.pk and form.DELETE.value %}hidden{% endif %}">
+  {{ form.id }}
+  {{ form.bill_line }}
+  {{ form.return_line }}
+  <td class="px-3 py-2 align-top">{{ form.is_stock_line }}</td>
+  <td class="px-3 py-2 align-top">
+    {{ form.product }}
+    {{ form.expense_account }}
+    {% for error in form.product.errors %}<p class="error-text">{{ error }}</p>{% endfor %}
+    {% for error in form.expense_account.errors %}<p class="error-text">{{ error }}</p>{% endfor %}
+  </td>
+  <td class="px-3 py-2 align-top">{{ form.description }}</td>
+  <td class="px-3 py-2 align-top">{{ form.unit }}</td>
+  <td class="px-3 py-2 align-top">{{ form.tax_code }}</td>
+  <td class="px-3 py-2 align-top">
+    {{ form.quantity }}
+    {% for error in form.quantity.errors %}<p class="error-text">{{ error }}</p>{% endfor %}
+  </td>
+  <td class="px-3 py-2 align-top">{{ form.unit_price }}</td>
+  <td class="px-3 py-2 align-top">{{ form.discount_percent }}</td>
+  <td class="px-3 py-2 text-right align-top tabular-nums font-medium" data-role="line-total">
+    {{ form.instance.total_txn|floatformat:2|default:"0.00" }}
+  </td>
+  <td class="px-3 py-2 text-right align-top">
+    <span class="hidden">{{ form.DELETE }}</span>
+    <button type="button" data-role="remove-line" class="text-xs font-semibold text-danger hover:underline">
+      Remove
+    </button>
+  </td>
+</tr>

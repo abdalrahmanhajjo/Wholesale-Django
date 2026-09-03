@@ -227,6 +227,30 @@ SESSION_COOKIE_HTTPONLY = True
 SESSION_COOKIE_SAMESITE = "Lax"
 # Preserve database-backed session durability while caching repeat navigation
 # in the serving process. A cache miss always falls back to django_session.
+# ---------------------------------------------------------------------------
+# Email (ACC-001 password reset).
+#
+# Reset works by sending a signed, single-use link, so without a backend the
+# feature silently does nothing. Development prints the message to the console,
+# which is enough to click the link; a deployment sets DJANGO_EMAIL_HOST and the
+# SMTP backend takes over. Nothing else in the product sends mail.
+# ---------------------------------------------------------------------------
+EMAIL_HOST = env("DJANGO_EMAIL_HOST")
+if EMAIL_HOST:
+    EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+    EMAIL_PORT = int(env("DJANGO_EMAIL_PORT") or 587)
+    EMAIL_HOST_USER = env("DJANGO_EMAIL_USER")
+    EMAIL_HOST_PASSWORD = env("DJANGO_EMAIL_PASSWORD")
+    EMAIL_USE_TLS = env("DJANGO_EMAIL_USE_TLS") != "0"
+else:
+    EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+
+DEFAULT_FROM_EMAIL = env("DJANGO_FROM_EMAIL") or "no-reply@ledgerwise.local"
+
+#: How long a reset link stays valid. Three hours is long enough to find the
+#: mail and short enough that a forwarded one has usually expired.
+PASSWORD_RESET_TIMEOUT = int(env("DJANGO_PASSWORD_RESET_TIMEOUT") or 60 * 60 * 3)
+
 SESSION_ENGINE = "django.contrib.sessions.backends.cached_db"
 
 # ---------------------------------------------------------------------------

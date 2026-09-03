@@ -41,7 +41,7 @@ urlpatterns = [
         name="sequence_edit",
     ),
     path("fiscal-periods/", views.FiscalPeriodListView.as_view(), name="fiscalperiod_list"),
-        path("chart-of-accounts/", views.AccountListView.as_view(), name="account_list"),
+    path("chart-of-accounts/", views.AccountListView.as_view(), name="account_list"),
     path("chart-of-accounts/new/", views.AccountCreateView.as_view(), name="account_create"),
     path(
         "chart-of-accounts/<int:pk>/edit/",

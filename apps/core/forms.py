@@ -11,7 +11,7 @@ from apps.core.models import (
     TaxCode,
     TaxTreatment,
 )
-from apps.ledger.models import  (
+from apps.ledger.models import (
     Account,
     AccountMapping,
     AccountSubtype,
@@ -19,6 +19,7 @@ from apps.ledger.models import  (
     MappingKey,
     NormalBalance,
 )
+
 
 class StyledModelForm(UIFormMixin, forms.ModelForm):
     """
@@ -253,12 +254,15 @@ SUBTYPES_BY_TYPE = {
     },
 }
 
+
 def _article(word):
     """'a' or 'an', so the validation messages read like English."""
     return "an" if word[:1].lower() in "aeiou" else "a"
 
+
 #: Types whose natural balance is a debit (mirrors account_normal_balance_matches_type).
 DEBIT_TYPES = {AccountType.ASSET, AccountType.EXPENSE}
+
 
 def _article(word):
     """'a' or 'an', so the validation messages read like English."""

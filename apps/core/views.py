@@ -42,20 +42,18 @@ from apps.core.models import (
     TaxCode,
     TaxTreatment,
 )
-from apps.core.permissions import(
+from apps.core.permissions import (
     EXPORT_DATA,
     MANAGE_CHART_OF_ACCOUNTS,
     MANAGE_CONFIGURATION,
 )
-
-from apps.ledger.models import(
+from apps.ledger.models import (
     Account,
     AccountMapping,
     AccountSubtype,
     AccountType,
     MappingKey,
 )
-
 from apps.parties.models import Customer, Vendor
 from apps.payments.models import Payment, PaymentDirection
 from apps.sales.models import SalesOrder

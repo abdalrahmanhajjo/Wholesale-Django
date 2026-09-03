@@ -367,7 +367,6 @@ class AddressUpdateView(OwnerAwarePermissionMixin, PartyChildMixin, UpdateView):
     extra_context = {"page_title": "Edit address"}
 
 
-
 class CustomerContactCreateView(PartyChildMixin, CreateView):
     model = Contact
     form_class = ContactForm
@@ -382,7 +381,6 @@ class ContactUpdateView(OwnerAwarePermissionMixin, PartyChildMixin, UpdateView):
     extra_context = {"page_title": "Edit contact"}
 
 
-
 class PartyChildDeleteView(OwnerAwarePermissionMixin, ActionPermissionMixin, View):
     """
     POST-only. Addresses and contacts may be deleted — documents snapshot the
@@ -390,6 +388,7 @@ class PartyChildDeleteView(OwnerAwarePermissionMixin, ActionPermissionMixin, Vie
     """
 
     model = None
+
     def post(self, request, pk):
         obj = self.get_child_object()
         field, party = party_owner(obj)
@@ -398,8 +397,6 @@ class PartyChildDeleteView(OwnerAwarePermissionMixin, ActionPermissionMixin, Vie
             obj.delete()
         messages.success(request, f"{obj} removed.")
         return redirect(f"parties:{field}_detail", pk=party.pk)
-
-
 
 
 class AddressDeleteView(PartyChildDeleteView):

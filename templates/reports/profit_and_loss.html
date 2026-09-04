@@ -1,0 +1,68 @@
+{% extends "reports/_statement_shell.html" %}
+{% comment %}
+RPT-002. Income less expenditure over the chosen window.
+
+Every figure here is movement within the range, not a standing balance, which
+is why the heading states the range rather than a single date.
+{% endcomment %}
+
+{% block date_controls %}
+  {% include "core/_form_field.html" with field=form.date_from %}
+  {% include "core/_form_field.html" with field=form.date_to %}
+{% endblock %}
+
+{% block period_link %}?date_from={{ period.start_date|date:"Y-m-d" }}&date_to={{ period.end_date|date:"Y-m-d" }}{% endblock %}
+
+{% block statement %}
+<div class="card card-pad mx-auto max-w-3xl">
+  <div class="border-b border-line pb-4 text-center">
+    <p class="eyebrow">{{ company_name }}</p>
+    <h2 class="display mt-1 text-xl">Profit and loss</h2>
+    <p class="mt-1 text-sm text-muted-fg">
+      {{ report.date_from|date:"j M Y" }} to {{ report.date_to|date:"j M Y" }}
+    </p>
+    {# FTD-003: the ledger is kept in base currency, so every figure here is. #}
+    <p class="mt-1 text-xs text-muted-fg">All amounts in {{ base_currency }}</p>
+  </div>
+
+  <table class="mt-4 w-full text-sm">
+    <caption class="sr-only">
+      Profit and loss from {{ report.date_from }} to {{ report.date_to }}
+    </caption>
+    <tbody>
+      {% include "reports/_statement_section.html" with section=report.revenue amount="period" %}
+      {% include "reports/_statement_section.html" with section=report.cost_of_sales amount="period" %}
+      <tr class="bg-muted-bg font-semibold">
+        <td class="px-4 py-2">Gross profit</td>
+        <td class="px-4 py-2 text-right tabular-nums">{{ report.gross_profit|floatformat:2 }}</td>
+      </tr>
+
+      {% include "reports/_statement_section.html" with section=report.operating_expenses amount="period" %}
+      <tr class="bg-muted-bg font-semibold">
+        <td class="px-4 py-2">Operating profit</td>
+        <td class="px-4 py-2 text-right tabular-nums">{{ report.operating_profit|floatformat:2 }}</td>
+      </tr>
+
+      {% include "reports/_statement_section.html" with section=report.other_income amount="period" %}
+      {% include "reports/_statement_section.html" with section=report.other_expenses amount="period" %}
+    </tbody>
+    <tfoot>
+      <tr class="border-t-2 border-line text-base font-bold">
+        <td class="px-4 py-3">
+          {% if report.net_profit < 0 %}Net loss{% else %}Net profit{% endif %}
+        </td>
+        <td class="px-4 py-3 text-right tabular-nums {% if report.net_profit < 0 %}text-danger{% else %}text-brand-deep{% endif %}">
+          {{ report.net_profit|floatformat:2 }}
+        </td>
+      </tr>
+    </tfoot>
+  </table>
+
+  {% if report.gross_margin_percent is not None %}
+    <p class="mt-4 border-t border-line pt-3 text-xs text-muted-fg">
+      Gross margin {{ report.gross_margin_percent }}% of revenue.
+      {# Revenue is stated net of returns and discounts, so the margin is too. #}
+    </p>
+  {% endif %}
+</div>
+{% endblock %}

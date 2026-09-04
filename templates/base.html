@@ -147,6 +147,28 @@ a click that takes a second looks like a click that did nothing.
           </li>
         </ul>
 
+        {% if perms.core.view_financial_reports %}
+          <p class="nav-group" id="nav-financials">Financials</p>
+          <ul aria-labelledby="nav-financials">
+            <li>
+              <a href="{% url 'reports:general_ledger' %}" class="nav-link {% if request.resolver_match.url_name == 'general_ledger' %}nav-link-active{% endif %}"
+                 {% if request.resolver_match.url_name == 'general_ledger' %}aria-current="page"{% endif %}>General ledger</a>
+            </li>
+            <li>
+              <a href="{% url 'reports:trial_balance' %}" class="nav-link {% if request.resolver_match.url_name == 'trial_balance' %}nav-link-active{% endif %}"
+                 {% if request.resolver_match.url_name == 'trial_balance' %}aria-current="page"{% endif %}>Trial balance</a>
+            </li>
+            <li>
+              <a href="{% url 'reports:profit_and_loss' %}" class="nav-link {% if request.resolver_match.url_name == 'profit_and_loss' %}nav-link-active{% endif %}"
+                 {% if request.resolver_match.url_name == 'profit_and_loss' %}aria-current="page"{% endif %}>Profit and loss</a>
+            </li>
+            <li>
+              <a href="{% url 'reports:balance_sheet' %}" class="nav-link {% if request.resolver_match.url_name == 'balance_sheet' %}nav-link-active{% endif %}"
+                 {% if request.resolver_match.url_name == 'balance_sheet' %}aria-current="page"{% endif %}>Balance sheet</a>
+            </li>
+          </ul>
+        {% endif %}
+
         <p class="nav-group" id="nav-relationships">Relationships</p>
         <ul aria-labelledby="nav-relationships">
           {% if perms.parties.view_customer %}

@@ -223,6 +223,35 @@ Available to query directly — Member 4 builds screens on top of these.
 **Functions:** `fn_trial_balance(from, to)`, `fn_ar_ageing(as_of)`,
 `fn_ap_ageing(as_of)`, `fn_stock_card(product, warehouse, from, to)`
 
+### Financial statements (RPT-001..RPT-005)
+
+Four screens under **Financials**, gated on `view_financial_reports`:
+
+| Screen | Answers | Spans |
+|---|---|---|
+| General ledger | every posted line and its source document | filtered |
+| Trial balance | opening, movement, closing per account | a range |
+| Profit and loss | what was earned and what it cost | a range |
+| Balance sheet | what is owned and owed | a date |
+
+All three statements come from `fn_trial_balance` and nothing else. That is
+deliberate: they are three presentations of the same balances, and computing
+them from three queries is how a balance sheet ends up disagreeing with its own
+trial balance. Anything added here should go through
+`apps/reports/services.py:account_balances` rather than writing a fourth
+definition of "balance".
+
+Two behaviours that look wrong until you know why:
+
+- **Reversed entries are included.** The ledger is append-only, so reversing
+  entry A writes a second entry B with the opposite lines and leaves A's lines
+  in place. Filtering to `status = 'POSTED'` would drop A but keep B and leave
+  every report short by the reversal.
+- **The balance sheet carries the year's result.** Until a closing entry moves
+  income and expense into reserves, the profit sits in the P&L accounts and the
+  statement would be out by exactly that amount. It shows as its own equity
+  line and becomes zero on its own once the year is closed.
+
 ## Pending accountant sign-off
 
 These are placeholders (BRD §14.4) and will change. Don't hard-code them.

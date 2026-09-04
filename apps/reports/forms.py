@@ -89,3 +89,100 @@ def open_periods():
         .select_related("fiscal_year")
         .order_by("-start_date")[:12]
     )
+
+
+class AgeingFilterForm(UIFormMixin, forms.Form):
+    """As at when, and in which currency.
+
+    Currency is a filter rather than a column because the ageing functions
+    return each document in its own currency with no base equivalent, and a
+    total that adds dollars to euros is worse than no total at all.
+    """
+
+    as_of = forms.DateField(
+        label="As at", widget=forms.DateInput(attrs={"type": "date", "class": "field"})
+    )
+    currency = forms.ChoiceField(label="Currency", choices=(), required=False)
+    overdue_only = forms.BooleanField(label="Overdue only", required=False)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        from apps.core.models import Currency
+
+        currencies = list(Currency.objects.filter(is_active=True).values_list("code", "name"))
+        self.fields["currency"].choices = [
+            (code, f"{code} — {name}") for code, name in currencies
+        ]
+        self.fields["currency"].widget.attrs.setdefault("class", "field")
+        base = next(
+            (
+                code
+                for code, _ in currencies
+                if Currency.objects.filter(code=code, is_base=True).exists()
+            ),
+            currencies[0][0] if currencies else "",
+        )
+        if not self.is_bound:
+            self.initial.setdefault("as_of", timezone.localdate())
+            self.initial.setdefault("currency", base)
+        self._fallback_currency = base
+
+    def chosen(self):
+        """The filters actually in force, defaults included."""
+        if self.is_valid():
+            return (
+                self.cleaned_data["as_of"],
+                self.cleaned_data.get("currency") or self._fallback_currency,
+                bool(self.cleaned_data.get("overdue_only")),
+            )
+        return timezone.localdate(), self._fallback_currency, False
+
+
+class MoneyRegisterFilterForm(UIFormMixin, forms.Form):
+    """Which account, and over what span."""
+
+    money_account = forms.ChoiceField(label="Money account", choices=())
+    date_from = forms.DateField(
+        label="From", widget=forms.DateInput(attrs={"type": "date", "class": "field"})
+    )
+    date_to = forms.DateField(
+        label="To", widget=forms.DateInput(attrs={"type": "date", "class": "field"})
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        from apps.payments.models import MoneyAccount
+
+        accounts = list(
+            MoneyAccount.objects.filter(is_active=True)
+            .order_by("code")
+            .values_list("pk", "code", "name")
+        )
+        self.fields["money_account"].choices = [
+            (pk, f"{code} — {name}") for pk, code, name in accounts
+        ]
+        self.fields["money_account"].widget.attrs.setdefault("class", "field")
+        self._first_account = accounts[0][0] if accounts else None
+        if not self.is_bound:
+            start, end = default_window()
+            self.initial.setdefault("date_from", start)
+            self.initial.setdefault("date_to", end)
+            if self._first_account is not None:
+                self.initial.setdefault("money_account", self._first_account)
+
+    def clean(self):
+        cleaned = super().clean()
+        start, end = cleaned.get("date_from"), cleaned.get("date_to")
+        if start and end and start > end:
+            self.add_error("date_to", "The end of the range comes before its start.")
+        return cleaned
+
+    def chosen(self):
+        if self.is_valid():
+            return (
+                int(self.cleaned_data["money_account"]),
+                self.cleaned_data["date_from"],
+                self.cleaned_data["date_to"],
+            )
+        start, end = default_window()
+        return self._first_account, start, end

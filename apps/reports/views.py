@@ -28,8 +28,14 @@ from apps.core.mixins import ActionPermissionMixin
 from apps.core.models import AuditAction
 from apps.core.permissions import EXPORT_DATA, VIEW_FINANCIAL_REPORTS
 from apps.ledger.models import Account, JournalLine, JournalType
-from apps.reports import reconciliation, services
-from apps.reports.forms import AsOfForm, DateRangeForm, open_periods
+from apps.reports import ageing, reconciliation, registers, services
+from apps.reports.forms import (
+    AgeingFilterForm,
+    AsOfForm,
+    DateRangeForm,
+    MoneyRegisterFilterForm,
+    open_periods,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -382,3 +388,224 @@ class ReconciliationView(StatementView):
                     "not examined - no ledger activity",
                 ]
             )
+
+
+# ---------------------------------------------------------------------------
+# Ageing (RPT-006, RPT-007)
+# ---------------------------------------------------------------------------
+class AgeingView(StatementView):
+    """Shared by both sides; the subclasses only choose which one."""
+
+    template_name = "reports/ageing.html"
+    side = ageing.AR
+
+    def report(self):
+        form = AgeingFilterForm(self.request.GET or None)
+        as_of, currency, overdue_only = form.chosen()
+        report = ageing.ageing(self.side, as_of, currency)
+        return form, report, overdue_only
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        form, report, overdue_only = self.report()
+        parties = report.parties
+        if overdue_only:
+            parties = tuple(party for party in parties if party.overdue)
+        ctx.update(
+            {
+                "form": form,
+                "report": report,
+                "parties": parties,
+                "overdue_only": overdue_only,
+                "buckets": ageing.BUCKETS,
+                "bucket_labels": ageing.BUCKET_LABELS,
+                "page_title": report.title,
+                "page_subtitle": (
+                    f"Open documents at {report.as_of}, by how overdue they are."
+                ),
+            }
+        )
+        return ctx
+
+    def write_csv(self, writer):
+        _, report, overdue_only = self.report()
+        writer.writerow([report.title, f"as at {report.as_of}", report.currency_code])
+        writer.writerow([])
+        writer.writerow(
+            [
+                report.party_label,
+                "Document",
+                "Document date",
+                "Due date",
+                "Days overdue",
+                "Total",
+                "Settled",
+                "Open",
+                "Bucket",
+            ]
+        )
+        for party in report.parties:
+            if overdue_only and not party.overdue:
+                continue
+            for item in party.items:
+                writer.writerow(
+                    [
+                        item.party_name,
+                        item.document_number,
+                        item.document_date,
+                        item.due_date or "",
+                        item.days_overdue,
+                        _money(item.total),
+                        _money(item.settled),
+                        _money(item.open_amount),
+                        item.bucket,
+                    ]
+                )
+            writer.writerow(
+                [
+                    "",
+                    f"Total for {party.party_name}",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    _money(party.total),
+                    "",
+                ]
+            )
+        writer.writerow([])
+        writer.writerow(["Bucket totals"])
+        for bucket in ageing.BUCKETS:
+            writer.writerow([ageing.BUCKET_LABELS[bucket], _money(report.buckets[bucket])])
+        writer.writerow(["Total", _money(report.total)])
+        for code, count in report.other_currencies:
+            writer.writerow([f"Excluded: {count} open document(s) in {code}"])
+
+
+class ReceivablesAgeingView(AgeingView):
+    side = ageing.AR
+    export_filename = "receivables-ageing"
+
+
+class PayablesAgeingView(AgeingView):
+    side = ageing.AP
+    export_filename = "payables-ageing"
+
+
+# ---------------------------------------------------------------------------
+# Tax (RPT-008)
+# ---------------------------------------------------------------------------
+class TaxReportView(StatementView):
+    template_name = "reports/tax.html"
+    export_filename = "tax-report"
+
+    def report(self):
+        form = DateRangeForm(self.request.GET or None)
+        start, end = form.window()
+        return form, registers.tax_report(start, end)
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        form, report = self.report()
+        ctx.update(
+            {
+                "form": form,
+                "report": report,
+                "page_title": "Tax report",
+                "page_subtitle": "Tax charged on sales and incurred on purchases.",
+            }
+        )
+        return ctx
+
+    def write_csv(self, writer):
+        _, report = self.report()
+        writer.writerow(["Tax report", f"{report.date_from} to {report.date_to}"])
+        writer.writerow([])
+        for side in (report.sales, report.purchases):
+            writer.writerow([side.label])
+            writer.writerow(["Tax code", "Treatment", "Rate %", "Taxable base", "Tax"])
+            for group in side.groups:
+                writer.writerow(
+                    [
+                        group.tax_code,
+                        group.treatment,
+                        group.rate_percent,
+                        _money(group.taxable_base),
+                        _money(group.tax_amount),
+                    ]
+                )
+            writer.writerow(
+                ["", "Total", "", _money(side.taxable_base), _money(side.tax_amount)]
+            )
+            if side.non_recoverable:
+                writer.writerow(
+                    ["", "of which non-recoverable", "", "", _money(side.non_recoverable)]
+                )
+            writer.writerow([])
+        writer.writerow(["Net payable", _money(report.net_payable)])
+
+
+# ---------------------------------------------------------------------------
+# Money account register (RPT-013)
+# ---------------------------------------------------------------------------
+class MoneyRegisterView(StatementView):
+    template_name = "reports/money_register.html"
+    export_filename = "money-register"
+
+    def report(self):
+        form = MoneyRegisterFilterForm(self.request.GET or None)
+        account_id, start, end = form.chosen()
+        if account_id is None:
+            return form, None
+        return form, registers.money_register(
+            money_account_id=account_id, date_from=start, date_to=end
+        )
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        form, report = self.report()
+        ctx.update(
+            {
+                "form": form,
+                "report": report,
+                "page_title": "Money account register",
+                "page_subtitle": "Every movement through one cash or bank account, in order.",
+            }
+        )
+        return ctx
+
+    def write_csv(self, writer):
+        _, report = self.report()
+        if report is None:
+            writer.writerow(["No money accounts are configured."])
+            return
+        writer.writerow(["Money account register", f"{report.date_from} to {report.date_to}"])
+        writer.writerow([])
+        writer.writerow(["Date", "Entry", "Journal", "Description", "In", "Out", "Balance"])
+        writer.writerow(
+            ["", "", "", "Opening balance", "", "", _money(report.opening_balance)]
+        )
+        for entry in report.entries:
+            writer.writerow(
+                [
+                    entry.entry_date,
+                    entry.entry_number,
+                    entry.journal_type,
+                    entry.description,
+                    _money(entry.money_in),
+                    _money(entry.money_out),
+                    _money(entry.balance),
+                ]
+            )
+        writer.writerow(
+            [
+                "",
+                "",
+                "",
+                "Closing balance",
+                _money(report.total_in),
+                _money(report.total_out),
+                _money(report.closing_balance),
+            ]
+        )

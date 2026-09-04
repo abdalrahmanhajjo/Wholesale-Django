@@ -252,6 +252,30 @@ Two behaviours that look wrong until you know why:
   statement would be out by exactly that amount. It shows as its own equity
   line and becomes zero on its own once the year is closed.
 
+### The other reports (RPT-006, RPT-007, RPT-008, RPT-013)
+
+| Screen | Answers | Drill-down |
+|---|---|---|
+| Receivables ageing | who owes us, and how late | invoice, customer |
+| Payables ageing | who we owe, and how late | bill, vendor |
+| Tax report | tax charged on sales, incurred on purchases | — |
+| Money register | one cash or bank account, movement by movement | journal entry |
+
+Inventory valuation already lives under Inventory → Inventory valuation
+(`v_inventory_valuation`), so it is not duplicated here.
+
+**Ageing is single-currency, deliberately.** `fn_ar_ageing` and `fn_ap_ageing`
+return each document in its own currency with no base equivalent, and a total
+that adds dollars to euros would be worse than no total on a report whose whole
+job is to be totalled and chased. So currency is a filter, and anything open in
+another currency is counted and named underneath — choosing a currency never
+hides money.
+
+**The tax report does not net the two sides.** A return is filed as output tax
+and input tax; the amount payable is a consequence of those two rather than a
+figure in its own right. Non-recoverable input tax is carried separately,
+because it is a cost rather than something to reclaim.
+
 ### Closing a period (CFG-009, ACC-008, BR-020)
 
 **Financials → Period close**, or any row on the fiscal periods list. The screen

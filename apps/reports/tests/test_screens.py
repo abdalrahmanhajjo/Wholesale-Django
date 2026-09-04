@@ -15,6 +15,10 @@ STATEMENTS = (
     "reports:profit_and_loss",
     "reports:balance_sheet",
     "reports:reconciliation",
+    "reports:ar_ageing",
+    "reports:ap_ageing",
+    "reports:tax",
+    "reports:money_register",
 )
 ALL_SCREENS = ("reports:general_ledger", *STATEMENTS)
 

@@ -34,21 +34,47 @@ class AccountRequestForm(UIFormMixin, forms.ModelForm):
         "job_title": "What you do here, e.g. Accounts payable",
     }
 
+    #: The two data- attributes are the contract with static/js/auth.js:
+    #: `data-strength` asks it for the meter and the checklist of rules, and
+    #: `data-confirms` names the box this one has to agree with. They live on
+    #: the widget rather than in the template so the page cannot be rendered
+    #: without them, and so every template rendering this form gets the same
+    #: behaviour.
     password1 = forms.CharField(
         label="Password",
         strip=False,
-        widget=forms.PasswordInput(attrs={"autocomplete": "new-password", "class": "field"}),
+        widget=forms.PasswordInput(
+            attrs={
+                "autocomplete": "new-password",
+                "class": "field",
+                "placeholder": "Create a strong password",
+                "data-strength": "",
+            }
+        ),
     )
     password2 = forms.CharField(
         label="Confirm password",
         strip=False,
-        widget=forms.PasswordInput(attrs={"autocomplete": "new-password", "class": "field"}),
+        widget=forms.PasswordInput(
+            attrs={
+                "autocomplete": "new-password",
+                "class": "field",
+                "placeholder": "Type the same password again",
+                "data-confirms": "password1",
+            }
+        ),
         help_text="Typed twice, because a password nobody can reproduce is a lockout.",
     )
 
     class Meta:
         model = User
         fields = ["username", "full_name", "email", "job_title"]
+        #: AbstractUser's own help text — "150 characters or fewer. Letters,
+        #: digits and @/./+/-/_ only" — is a paragraph of rules under the first
+        #: box on the page, and none of them are the question being asked. The
+        #: placeholder shows the shape, and the validator says the rest in the
+        #: one case it matters: when the answer breaks it.
+        help_texts = {"username": ""}
 
     def clean_email(self):
         """

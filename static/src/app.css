@@ -3,6 +3,64 @@
 @tailwind utilities;
 
 /* ---------------------------------------------------------------------------
+   Type.
+
+   Inter v4, self-hosted. The stack used to be Aptos → Segoe UI → system-ui,
+   and neither of the first two exists outside Windows: the product rendered in
+   SF Pro on a Mac, Roboto on Android and Aptos on Windows, which is three
+   different sets of metrics and three different colours of grey text. It now
+   renders in one typeface everywhere, and that typeface arrives from this
+   origin — no Google Fonts request, for the same reason the Tailwind CDN
+   runtime was taken out.
+
+   One file per subset carries every weight and the optical-size axis, so the
+   whole product costs 73 kB of font and still has a real 100–900 range plus
+   `opsz`: at 44px the display cut tightens its spacing and thins its joins, at
+   13px the text cut opens up. `font-optical-sizing: auto` on <html> is what
+   turns that on; without it the variable font renders at one static optical
+   size and the display sizes look muddy.
+
+   Licence: SIL OFL 1.1, static/fonts/OFL.txt. Redistribution is permitted; the
+   licence file has to travel with the fonts, which is why it is committed too.
+--------------------------------------------------------------------------- */
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("../fonts/inter-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+    U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("../fonts/inter-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF,
+    U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020,
+    U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+/* The face the page is laid out in for the ~100ms before Inter arrives, with
+   its metrics overridden to match Inter's exactly. `font-display: swap` alone
+   shows the text immediately and then reflows the whole page when the real
+   font lands — every heading changes width and the layout jumps. Matched
+   metrics mean the swap is invisible: same line box, same wrap points, no
+   cumulative layout shift. The percentages are Inter-against-Arial and are not
+   guesses to be adjusted by eye. */
+@font-face {
+  font-family: "Inter Fallback";
+  src: local("Helvetica Neue"), local("Arial"), local("Liberation Sans");
+  size-adjust: 107.12%;
+  ascent-override: 90.49%;
+  descent-override: 22.56%;
+  line-gap-override: 0%;
+}
+
+/* ---------------------------------------------------------------------------
    Focus.
 
    Every interactive element previously used `outline-none` plus a 2px brand
@@ -60,14 +118,20 @@
   }
   .card-pad { @apply p-5 sm:p-6; }
   .card-title { @apply text-base font-bold text-ink; }
+  /* Uppercase runs the curve the other way: caps have no ascenders or
+     descenders to separate them, so they need air rather than tightening. */
   .eyebrow { @apply text-[11px] font-bold uppercase tracking-[0.14em] text-muted-fg; }
 
   /* Section headings inside forms and detail cards. Same look as .eyebrow but
      applied to real heading elements, so the page is navigable by heading. */
   .section-heading { @apply text-[11px] font-bold uppercase tracking-[0.14em] text-muted-fg; }
 
-  .display { @apply font-black tracking-[-0.04em]; }
-  .display-xl { @apply font-black leading-[1.05] tracking-[-0.06em]; }
+  /* -0.04em was set against a typeface that is not on this machine and was
+     never on most of them. Inter's curve flattens out around -0.022em at
+     display sizes; -0.028em is that plus a deliberate tightening, which is
+     what gives a headline its set-by-hand look without the letters touching. */
+  .display { @apply font-black tracking-[-0.028em]; }
+  .display-xl { @apply font-black leading-[1.03] tracking-[-0.034em]; }
 
   .field {
     @apply block h-10 w-full rounded-xl2 border border-input-line bg-white px-3 text-sm text-ink placeholder:text-muted-fg focus:border-ink;
@@ -75,6 +139,7 @@
   /* aria-invalid is set by the a11y_field tag, so the styling and the
      programmatic state can never disagree. */
   .field[aria-invalid="true"] { @apply border-danger-strong bg-red-50/40; }
+  /* tracking(14) = -0.006em, inherited from body — nothing to add here. */
   .label { @apply mb-1.5 block text-sm font-semibold text-ink; }
   .label-optional { @apply ml-1 text-xs font-normal text-muted-fg; }
   .help { @apply mt-1 text-[13px] leading-5 text-muted-fg; }
@@ -549,34 +614,94 @@
    * of their own rather than the application's: there is no navigation to show
    * before authentication and no company context to read.
    */
-  .auth-body { @apply bg-white font-sans text-ink antialiased; }
+  /* Not white. The panel is white, and a white card on a white page has only
+     its border to be seen by; on this faint grey the card is a card. */
+  /* Not white. The panel is white, and a white card on a white page has only
+     its border to be seen by; on this faint grey the card is a card. */
+  /* Proportional figures, against the ledger's tabular default: there are two
+     numbers on these pages — "256-bit" and "+2.5K" — and tabular widths set
+     them in a column that has nothing to line up with, which reads as a gap
+     rather than as typesetting. */
+  .auth-body {
+    @apply bg-[#f6f8f7] font-sans text-ink antialiased;
+    font-feature-settings: "calt" 1;
+  }
 
-  /* One centred column. The task is singular, so the page is too. min-h-dvh
-     rather than min-h-screen: on mobile Safari the toolbar makes 100vh taller
-     than the visible area, which would push the panel under the chrome. */
-  .auth-shell { @apply grid min-h-dvh place-items-center px-5 py-10 sm:py-14; }
-  .auth-column { @apply w-full max-w-[25rem]; }
+  /* Above the decoration, which is fixed behind everything at z-0. Both layers
+     are given a stacking position explicitly rather than relying on a negative
+     z-index and background propagation, which is correct until the day someone
+     puts a background on <html>. min-h-dvh rather than min-h-screen: on mobile
+     Safari the toolbar makes 100vh taller than the visible area, which would
+     push the panel under the chrome. */
+  .auth-shell {
+    @apply relative z-10 mx-auto flex min-h-dvh w-full max-w-[82rem] flex-col
+           justify-center gap-y-14 px-5 py-12 sm:py-16;
+  }
+
+  /* Three columns at xl, and the outer two are 1fr each — equal, so the form
+     column sits on the centre line of the viewport whatever the sides hold.
+     Sized columns (15.5rem and 20rem) put the form 36px left of centre, which
+     is exactly far enough to look like a mistake and not far enough to look
+     deliberate. */
+  .auth-stage {
+    @apply grid items-center gap-y-14 xl:grid-cols-[1fr_35rem_1fr] xl:gap-x-10;
+  }
+  .auth-column { @apply mx-auto w-full max-w-[35rem] xl:order-2; }
 
   .auth-lockup {
-    @apply mb-7 flex items-center justify-center gap-3 rounded-xl2 no-underline;
+    @apply mb-9 flex items-center justify-center gap-3.5 rounded-xl2 no-underline;
   }
   .auth-wordmark strong {
-    @apply block text-[15px] font-black tracking-[-.02em] text-ink;
+    @apply block text-[19px] font-black leading-tight tracking-[-.016em] text-ink;
   }
   .auth-wordmark small {
-    @apply block text-[10px] font-semibold uppercase tracking-[.16em] text-muted-fg;
+    @apply block text-[10.5px] font-semibold uppercase tracking-[.16em] text-muted-fg;
   }
 
-  /* The panel is the only element on the page, so a bounded surface is the
-     honest affordance rather than card-by-reflex: it says where the task
-     starts and stops. The shadow is close and quiet — this is a work tool
-     signing someone in, not a product page. */
-  /* On a white page the panel cannot be told apart by its fill, so the edge
-     does the work: a hairline border and no shadow. A drop shadow between two
-     identical whites reads as grubbiness rather than lift. */
+  /* The reassurance in the corner of the page rather than in the form's way.
+     Below lg it goes: at that width it would either crowd the lockup or push
+     the whole task down a line, and it is reassurance, not instruction. */
+  .auth-corner { @apply absolute right-6 top-9 hidden items-center gap-2.5 lg:flex; }
+  .auth-corner .icon { @apply h-[22px] w-[22px] text-brand-accent; }
+  .auth-corner strong { @apply block text-[13px] font-bold leading-5 text-brand-deep; }
+  .auth-corner small { @apply block text-xs leading-4 text-muted-fg; }
+
+  /* A greeting, on the pages that greet. */
+  .auth-eyebrow { @apply text-center text-[15px] font-bold tracking-[-.009em] text-ink; }
+
+  /* One glyph saying which of the six pages this is, on the pages that label
+     rather than greet. The halo is a wider ring of the same tint, so the mark
+     sits in the page rather than on it. */
+  /* A mint disc, not brand-tint: #edf9f1 was picked to read on white, and the
+     page is no longer white — against #f6f8f7 it vanished and left the glyph
+     floating. This is the same hue carried far enough to still be a disc. */
+  .auth-badge {
+    @apply mx-auto grid h-12 w-12 place-items-center rounded-full bg-[#e0f5e9]
+           text-brand-accent ring-8 ring-[#ecfaf2];
+  }
+  .auth-badge .icon { @apply h-[22px] w-[22px]; }
+
+  /* The accent word is <em> with the italics taken off: it is emphasis, and it
+     should still be emphasis with the stylesheet gone. */
+  .auth-heading {
+    @apply display mt-3 text-center text-[2.125rem] leading-[1.05] tracking-[-.028em]
+           sm:text-[3rem];
+  }
+  /* A glyph needs more air under it than a line of type does. */
+  .auth-badge + .auth-heading { @apply mt-6; }
+  .auth-heading em { @apply not-italic text-brand-accent; }
+  .auth-intro {
+    @apply mx-auto mt-3.5 max-w-[32rem] text-center text-[15px] leading-[1.6]
+           tracking-[-.009em] text-muted-fg;
+  }
+
+  /* The panel is where the task is, so it is the one bounded surface on the
+     page: it says where the work starts and stops. It carries a shadow again
+     now that the page behind it is not white. */
   .auth-panel {
-    @apply relative overflow-hidden rounded-2xl border border-line bg-white
-           px-6 py-7 sm:px-8 sm:py-9;
+    @apply relative mt-8 overflow-hidden rounded-[20px] border border-line bg-white
+           p-6 shadow-[0_2px_4px_rgba(7,26,47,.03),0_26px_60px_-26px_rgba(7,26,47,.16)]
+           sm:p-10;
   }
   /* The beam: two sides of an entry settling level, which is the one thing
      that is true of this product and almost nothing else. It survives from the
@@ -594,35 +719,39 @@
     );
   }
 
-  .auth-heading { @apply display text-[1.75rem] leading-tight tracking-[-.03em]; }
-  .auth-intro { @apply mt-2 text-sm leading-6 text-muted-fg; }
-  .auth-form { @apply mt-6 space-y-4; }
+  .auth-form { @apply space-y-[22px]; }
 
-  /* The row that carries the label and its escape hatch, so "forgotten your
+  /* The row that carries the label and its escape hatch, so "forgot your
      password?" sits where the problem is felt rather than at the foot of the
-     page. */
-  .auth-label-row { @apply mb-1.5 flex items-baseline justify-between gap-3; }
+     page. Underlined on hover only: at rest it is one of two things on the
+     line and does not need to shout over the label. */
+  .auth-label-row { @apply mb-2 flex items-baseline justify-between gap-3; }
   .auth-label-row .label { @apply mb-0; }
   .auth-label-row a {
-    @apply text-[13px] font-semibold text-brand-deep underline underline-offset-2;
+    @apply text-[13.5px] font-semibold text-brand-deep no-underline
+           underline-offset-2 hover:underline;
   }
 
   /* An aside about the process rather than the form, so it sits outside the
      panel — and in the flow, where a screen reader and a phone both reach it. */
   .auth-note {
     @apply mt-4 flex items-start gap-2.5 rounded-xl2 border border-line
-           bg-white px-4 py-3 text-[13px] leading-5 text-muted-fg;
+           bg-white/80 px-4 py-3 text-[13px] leading-5 text-muted-fg;
   }
   .auth-note .icon { @apply mt-px h-4 w-4 shrink-0 text-brand-deep; }
 
-  .auth-footer { @apply mt-6 space-y-2 text-center text-sm text-muted-fg; }
+  .auth-footer { @apply mt-7 space-y-2 text-center text-sm text-muted-fg; }
+  /* brand-deep rather than the heading's brand-accent: this is 14px, so it owes
+     4.5:1 (7.0:1) where the 44px heading owes 3:1. */
   .auth-footer a { @apply font-semibold text-brand-deep underline underline-offset-2; }
 
-  /* The shield sits inline rather than as a flex item: when the sentence wraps
-     to two lines on a phone, a flex icon detaches to the far left of a centred
-     block. Inline, it stays with the words it belongs to. */
-  .auth-legal { @apply mt-8 text-center text-xs leading-5 text-muted-fg; }
-  .auth-legal .icon { @apply mr-1.5 inline-block h-3.5 w-3.5 align-[-2px]; }
+  /* The submit: full width, because there is only ever one thing to do here.
+     The arrow leans on hover — the whole of the motion this page has. */
+  .auth-submit { @apply h-[52px] w-full rounded-[12px] text-[15px] tracking-[-.009em]; }
+  .auth-submit .icon { @apply h-[18px] w-[18px] transition-transform; }
+  .auth-submit:hover .icon { @apply translate-x-0.5; }
+  /* The busy state swaps the label for a spinner, and the arrow goes with it. */
+  .auth-submit.is-busy .icon { @apply text-white; }
 
   /* An icon inside the box, and room made for it. A password field also holds
      the reveal button, so it gets room on the right as well.
@@ -638,21 +767,19 @@
      would stretch the button down the whole side of the card. */
   .auth-field { @apply relative; }
   .auth-control { @apply relative; }
-  .auth-field .field { @apply h-11 pl-11; }
+  .auth-field .field { @apply h-[46px] rounded-[12px] pl-11 text-[15px] tracking-[-.009em]; }
   .auth-field-icon {
-    @apply pointer-events-none absolute inset-y-0 left-3.5 flex w-4
+    @apply pointer-events-none absolute inset-y-0 left-4 flex w-4
            items-center text-muted-fg;
   }
   .auth-field-icon .icon { @apply h-4 w-4; }
-  /* Optically symmetrical with the icon opposite it. The left icon's centre
-     sits 22px in (14px inset + half of a 16px glyph); this button is 40px wide,
-     so a 2px inset puts its centre at 22px too. It was 4px, which read as
-     jammed against the border while the lock had room.
+  /* Optically symmetrical with the icon opposite it: the left icon's centre
+     sits 24px in (16px inset + half of a 16px glyph), and a 44px-wide button
+     held 2px off the edge centres at 24px too.
 
-     The hit area stays the full 44px height; background-clip keeps the hover
-     tint inside the padding so it never touches the field's own border. */
+     The hit area stays the full height of the field. */
   .auth-reveal {
-    @apply absolute inset-y-0 right-0.5 grid w-10 place-items-center rounded-xl2
+    @apply absolute inset-y-0 right-0.5 grid w-11 place-items-center rounded-[10px]
            bg-transparent text-muted-fg transition-colors hover:text-ink;
   }
   /* A reveal button that is not inside .auth-control was put there by an older
@@ -665,45 +792,111 @@
   .auth-control:has(.auth-reveal) .field { @apply pr-12; }
 
   /* Password strength, shown while a new password is being chosen. */
-  .auth-meter { @apply mt-2; }
-  .auth-meter-track { @apply flex gap-1; }
+  .auth-meter { @apply mt-2.5; }
+  .auth-meter-track { @apply flex gap-1.5; }
   .auth-meter-track span {
-    @apply h-1 flex-1 rounded-full bg-muted-bg transition-colors;
+    @apply h-1.5 flex-1 rounded-full bg-muted-bg transition-colors;
   }
   .auth-meter[data-score="1"] .auth-meter-track span:nth-child(-n+1) { @apply bg-danger-strong; }
   .auth-meter[data-score="2"] .auth-meter-track span:nth-child(-n+2) { @apply bg-amber-600; }
   .auth-meter[data-score="3"] .auth-meter-track span:nth-child(-n+3) { @apply bg-amber-500; }
-  .auth-meter[data-score="4"] .auth-meter-track span { @apply bg-brand-deep; }
-  .auth-meter-label { @apply mt-1.5 block text-[13px] text-muted-fg; }
+  .auth-meter[data-score="4"] .auth-meter-track span { @apply bg-brand-accent; }
+  .auth-meter-label { @apply mt-2 block text-[13px] text-muted-fg; }
 
-  /* The rules the server actually applies, ticked as they are met. Grey until
-     the box has something in it, so an untouched form is not a wall of red. */
-  .auth-rules { @apply mt-3 space-y-1.5; }
-  .auth-rules li { @apply flex items-center gap-2 text-[13px] leading-5 text-muted-fg; }
+  /* The rules the server actually applies, ticked as they are met. A pale green
+     dot until the box has something in it, so an untouched form is neither a
+     wall of red nor a row of ticks it has not earned. */
+  .auth-rules { @apply mt-3.5 space-y-2; }
+  .auth-rules li { @apply flex items-center gap-2.5 text-[13px] leading-5 text-muted-fg; }
   .auth-rules .icon {
-    @apply h-3.5 w-3.5 shrink-0 rounded-full bg-muted-bg p-0.5 text-transparent
+    @apply h-4 w-4 shrink-0 rounded-full bg-brand/25 p-0.5 text-transparent
            transition-colors;
   }
   .auth-rules li.is-met { @apply text-ink; }
   .auth-rules li.is-met .icon { @apply bg-brand-deep text-white; }
 
   /* Live confirmation that two password boxes agree. */
-  .auth-match { @apply mt-1.5 text-[13px] leading-5; }
+  .auth-match { @apply mt-2 text-[13px] leading-5; }
   .auth-match.is-ok { @apply font-medium text-brand-deep; }
   .auth-match.is-bad { @apply font-medium text-danger-strong; }
 
   /* "Keep me signed in", beside the submit rather than lost above it. */
-  .auth-remember { @apply flex items-start gap-2.5 pt-1; }
+  .auth-remember { @apply flex items-start gap-3 pt-1; }
   /* @tailwindcss/forms replaces the native control (appearance:none) and paints
      a checked box with background-color:currentColor, defaulting the colour to
      blue-600. So the brand colour has to arrive as `color`; `accent-color` is
      ignored the moment the control stops being native. The focus ring is the
      plugin's too, and was blue for the same reason. */
   .auth-remember input {
-    @apply mt-0.5 h-4 w-4 shrink-0 rounded text-brand-deep focus:ring-brand-deep;
+    @apply mt-px h-[18px] w-[18px] shrink-0 rounded-[5px] border-input-line
+           text-brand-accent focus:ring-brand-deep;
   }
-  .auth-remember label { @apply text-sm font-medium text-ink; }
-  .auth-remember .help { @apply mt-0.5; }
+  .auth-remember label { @apply text-sm font-semibold text-ink; }
+  .auth-remember .help { @apply mt-1; }
+
+  /* ------------------------------------------------ what the product is -- */
+  /* The left column at xl. Sized and pushed to the outside of its 1fr track so
+     it sits against the page's margin the way the illustration sits against
+     the other one — the track itself stays 1fr, because that is what holds the
+     form on the centre line. */
+  .auth-aside {
+    @apply mx-auto w-full max-w-[35rem]
+           xl:order-1 xl:max-w-[16.5rem] xl:justify-self-start;
+  }
+  /* A page with nothing to say here still holds the track at xl, and drops out
+     below it rather than leaving the stage's row gap under the form. */
+  .auth-aside.is-empty { @apply hidden xl:block; }
+  .auth-points { @apply grid gap-7 sm:grid-cols-3 xl:grid-cols-1 xl:gap-9; }
+  .auth-points li { @apply flex items-start gap-3.5; }
+  .auth-point-icon {
+    @apply grid h-11 w-11 shrink-0 place-items-center rounded-[14px] border border-line
+           bg-white text-brand-accent shadow-[0_6px_18px_rgba(7,26,47,.05)];
+  }
+  .auth-point-icon .icon { @apply h-5 w-5; }
+  .auth-point-title { @apply text-[13.5px] font-bold text-ink; }
+  .auth-point-body { @apply mt-1 text-[13px] leading-[1.55] tracking-[-.003em] text-muted-fg; }
+
+  /* Decoration, and hidden outright below xl: there is no room beside a form
+     that is by then the whole page, and nothing is lost with it gone. */
+  .auth-art { @apply hidden xl:order-3 xl:block xl:max-w-[25rem] xl:justify-self-end; }
+  .auth-art svg { @apply h-auto w-full; }
+
+  /* ---------------------------------------------------- under the fold -- */
+  /* The line the reset and sign-in pages close on. The shield sits inline
+     rather than as a flex item: when the sentence wraps on a phone, a flex icon
+     detaches to the far left of a centred block. Inline, it stays with the
+     words it belongs to. */
+  .auth-privacy { @apply text-center text-[13px] leading-[1.85] tracking-[-.003em] text-muted-fg; }
+  .auth-privacy .icon { @apply mr-1.5 inline-block h-4 w-4 align-[-3px] text-muted-fg; }
+
+  /* The same promise with room to be read, on the page where someone is
+     handing over their details for the first time. */
+  .auth-trust {
+    @apply mx-auto flex w-full max-w-[58rem] flex-col items-start gap-6 rounded-[16px]
+           border border-line bg-muted-bg/70 px-6 py-5
+           sm:flex-row sm:items-center sm:justify-between;
+  }
+  .auth-trust-say { @apply flex items-start gap-4; }
+  .auth-trust-icon {
+    @apply grid h-11 w-11 shrink-0 place-items-center rounded-[13px] bg-brand-accent
+           text-white shadow-[0_8px_20px_rgba(22,163,74,.28)];
+  }
+  .auth-trust-icon .icon { @apply h-5 w-5; }
+  .auth-trust-title { @apply text-[13.5px] font-bold text-ink; }
+  .auth-trust-body { @apply mt-1 text-[13px] leading-[1.55] tracking-[-.003em] text-muted-fg; }
+  .auth-trust-proof { @apply w-full text-center sm:w-auto sm:text-right; }
+  .auth-avatars { @apply flex items-center justify-center sm:justify-end; }
+  .auth-avatars > span {
+    @apply -ml-2 grid h-9 w-9 place-items-center rounded-full border-2 border-white
+           bg-canvas text-[11px] font-bold text-muted-fg first:ml-0;
+  }
+  /* A pill rather than a circle: "+2.5K" is five characters and will not fit
+     in a 36px round badge at a size anyone can read. */
+  .auth-avatars > .auth-avatars-count {
+    @apply w-auto min-w-[2.25rem] rounded-full bg-brand-deep px-2 text-[10px]
+           tracking-tight text-white;
+  }
+  .auth-trust-proof p { @apply mt-2 text-xs font-medium text-muted-fg; }
 
   /* Ink is invisible against the navy sidebar and the navy panels. */
   .on-dark { --focus-ring: #ffffff; --focus-ring-offset: #071a2f; }
@@ -714,13 +907,39 @@
   .scroll-region:focus-visible { outline: 3px solid var(--focus-ring); outline-offset: -3px; }
 }
 
-html { scroll-behavior: smooth; }
-body { font-feature-settings: "tnum" 1, "ss01" 1; }
+/* `font-optical-sizing: auto` is what makes the opsz axis in the variable font
+   do anything at all. Without it every size is drawn at one optical size, and
+   a 48px heading gets the ink traps and open spacing meant for 13px body text
+   — which is exactly the muddy look that reads as "default font". */
+html { scroll-behavior: smooth; font-optical-sizing: auto; }
+
+/* Figures line up in a column, which is the whole point of tabular figures in
+   a ledger, and 104 places in the templates already ask for them explicitly.
+
+   `ss01` has gone. It was chosen when the stack was Aptos, and a stylistic-set
+   number means a different substitution in every typeface — shipping one whose
+   effect nobody has looked at is how a product ends up with glyphs it never
+   chose. `calt` is Inter's contextual alternates and is the one it asks for.
+
+   The tracking is Inter's own dynamic metric at this size, not a taste: the
+   typeface publishes tracking(s) = -0.0223 + 0.185·e^(-0.1745·s), which at the
+   14px base gives -0.006em. Every size below re-evaluates that curve rather
+   than inheriting one number, because a single tracking value across a type
+   scale is loose at the top and cramped at the bottom. */
+body { font-feature-settings: "tnum" 1, "calt" 1; letter-spacing: -0.006em; }
 .logo-mark { display: flex; width: 32px; height: 32px; align-items: flex-end; gap: 3px; border-radius: 9px; background: #39d889; padding: 7px; }
 .logo-mark i { display: block; width: 4px; border-radius: 3px; background: #071a2f; }
 .logo-mark i:nth-child(1) { height: 9px; }
 .logo-mark i:nth-child(2) { height: 15px; }
 .logo-mark i:nth-child(3) { height: 12px; }
+/* The mark is the whole identity on the auth pages, so it is drawn a size up
+   there — without touching the 32px version the application sidebar uses. */
+.auth-lockup .logo-mark { width: 44px; height: 44px; border-radius: 13px; gap: 4px; padding: 9px; }
+.auth-lockup .logo-mark i { width: 5px; }
+.auth-lockup .logo-mark i:nth-child(1) { height: 12px; }
+.auth-lockup .logo-mark i:nth-child(2) { height: 21px; }
+.auth-lockup .logo-mark i:nth-child(3) { height: 16px; }
+.auth-ring-mark .logo-mark { width: 34px; height: 34px; border-radius: 10px; padding: 7px; }
 .company-switcher { display: flex; align-items: center; gap: 9px; margin-top: 10px; border: 1px solid rgba(255,255,255,.08); border-radius: 12px; background: rgba(255,255,255,.04); padding: 8px; }
 .welcome-strip { position: relative; display: flex; min-height: 166px; align-items: center; justify-content: space-between; gap: 28px; overflow: hidden; border-radius: 20px; background: #071a2f; padding: 28px 32px; color: #fff; box-shadow: 0 20px 50px rgba(7,26,47,.12); }
 .welcome-strip::after { position: absolute; top: -100px; right: 14%; width: 310px; height: 310px; border: 1px solid rgba(57,216,137,.13); border-radius: 50%; box-shadow: 0 0 0 44px rgba(57,216,137,.025), 0 0 0 88px rgba(57,216,137,.018); content: ""; pointer-events: none; }
@@ -733,6 +952,43 @@ body { font-feature-settings: "tnum" 1, "ss01" 1; }
 .cashflow-panel { overflow: hidden; border-radius: 20px; background: #071a2f; padding: 24px; box-shadow: 0 20px 48px rgba(7,26,47,.12); }
 .surface { border: 1px solid rgba(203,216,213,.72); border-radius: 18px; background: rgba(255,255,255,.96); box-shadow: 0 1px 2px rgba(7,26,47,.025), 0 10px 30px rgba(7,26,47,.035); }
 .module-hero { display: flex; min-height: 132px; align-items: center; justify-content: space-between; gap: 24px; border: 1px solid #dde8e4; border-radius: 20px; background: linear-gradient(125deg,#fff 0%,#f3faf7 100%); padding: 25px 28px; box-shadow: 0 8px 30px rgba(7,26,47,.025); }
+
+/* The auth pages' backdrop: fields of colour, a dot field, drawn arcs, and on
+   the sign-in page a ring with the mark resting on it. Every part of it is
+   inert — pointer-events: none, aria-hidden on the wrapper — so it can be
+   removed without the pages losing anything they need. */
+.auth-decor { position: fixed; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; }
+.auth-blob { position: absolute; border-radius: 50%; filter: blur(70px); }
+.auth-blob-a { top: -150px; right: -90px; width: 470px; height: 470px; background: rgba(57,216,137,.16); }
+.auth-blob-b { bottom: -190px; left: -130px; width: 540px; height: 540px; background: rgba(57,216,137,.13); }
+.auth-blob-c { top: 44%; right: 5%; width: 300px; height: 300px; background: rgba(57,216,137,.09); }
+/* The sign-in page's one field of colour is barely a colour: a soft white lift
+   in the top left, where the request page puts green. */
+.auth-blob-soft { top: 150px; left: 210px; width: 260px; height: 260px; background: rgba(255,255,255,.9); filter: blur(46px); }
+/* Masked from its own centre outwards, so the grid fades rather than ending on
+   a hard square edge. */
+.auth-dotfield {
+  position: absolute; width: 280px; height: 280px;
+  background-image: radial-gradient(rgba(31,116,71,.3) 1.4px, transparent 1.5px);
+  background-size: 17px 17px;
+  -webkit-mask-image: radial-gradient(closest-side, #000, transparent);
+  mask-image: radial-gradient(closest-side, #000, transparent);
+}
+.auth-dotfield-top { top: 30px; left: 20px; }
+.auth-dotfield-mid { top: 38%; left: 10px; width: 230px; height: 230px; }
+/* The ring the mark rests on, bottom left of the sign-in page. */
+.auth-ring {
+  position: absolute; bottom: -170px; left: -70px; width: 420px; height: 420px;
+  border: 1px solid rgba(7,26,47,.06); border-radius: 50%;
+}
+.auth-ring-mark {
+  position: absolute; bottom: 232px; left: 118px;
+  display: grid; place-items: center; width: 64px; height: 64px;
+  border-radius: 20px; background: #fff;
+  box-shadow: 0 14px 34px rgba(7,26,47,.10), 0 2px 6px rgba(7,26,47,.04);
+}
+.auth-lines { position: absolute; inset: 0; width: 100%; height: 100%; }
+
 
 /* Backdrop behind the off-canvas sidebar on small screens. */
 .nav-scrim { position: fixed; inset: 0; z-index: 30; background: rgba(7,26,47,.5); }

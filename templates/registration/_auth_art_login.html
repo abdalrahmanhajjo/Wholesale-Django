@@ -1,0 +1,63 @@
+{% comment %}
+The illustration beside the sign-in form: the balance a person signs in to see,
+resting on the same plinth of bars the request page uses. Drawn rather than
+photographed, so it weighs nothing, stays sharp at any size and needs no request.
+
+Decoration in full — aria-hidden, and hidden below xl, where the form column is
+the whole page. The figures on the card are a drawing of a dashboard, not
+anybody's balance; nothing here is read from the database.
+
+Geometry is a plain isometric projection, x running right-down and y left-down
+at 30°, z straight up, with each solid drawn back face to front so the light
+reads as coming from the upper left. The card is the same projection reduced to
+one plane, which is why it is a rotate plus a skew rather than a flat rectangle.
+{% endcomment %}
+<div class="auth-art" aria-hidden="true">
+  <svg viewBox="86 96 330 380" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <filter id="lart-soft" x="-40%" y="-40%" width="180%" height="180%">
+        <feGaussianBlur stdDeviation="13"/>
+      </filter>
+      <linearGradient id="lart-glass" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="#ffffff" stop-opacity=".96"/>
+        <stop offset="1" stop-color="#f2f7f5" stop-opacity=".72"/>
+      </linearGradient>
+    </defs>
+
+    <ellipse cx="250" cy="450" rx="112" ry="27" fill="#0f3d28" opacity=".08" filter="url(#lart-soft)"/>
+
+    <polygon points="141.9,393.6 250.0,456.0 250.0,443.0 141.9,380.6" fill="#e5e5e5" stroke="#e5e5e5" stroke-width="5" stroke-linejoin="round"/>
+    <polygon points="358.1,393.6 250.0,456.0 250.0,443.0 358.1,380.6" fill="#d6d6d6" stroke="#d6d6d6" stroke-width="5" stroke-linejoin="round"/>
+    <polygon points="250.0,318.2 358.1,380.6 250.0,443.0 141.9,380.6" fill="#f7f7f7" stroke="#f7f7f7" stroke-width="5" stroke-linejoin="round"/>
+    <polygon points="132.9,380.6 250.0,448.2 250.0,435.2 132.9,367.6" fill="#f0f0f0" stroke="#f0f0f0" stroke-width="5" stroke-linejoin="round"/>
+    <polygon points="367.1,380.6 250.0,448.2 250.0,435.2 367.1,367.6" fill="#e5e5e5" stroke="#e5e5e5" stroke-width="5" stroke-linejoin="round"/>
+    <polygon points="250.0,300.0 367.1,367.6 250.0,435.2 132.9,367.6" fill="#ffffff" stroke="#ffffff" stroke-width="5" stroke-linejoin="round"/>
+
+    <polygon points="205.4,343.9 223.0,354.1 223.0,326.8 205.4,316.6" fill="#b9dec9" stroke="#b9dec9" stroke-width="4" stroke-linejoin="round"/>
+    <polygon points="240.5,343.9 223.0,354.1 223.0,326.8 240.5,316.6" fill="#a3c3b1" stroke="#a3c3b1" stroke-width="4" stroke-linejoin="round"/>
+    <polygon points="223.0,306.5 240.5,316.6 223.0,326.8 205.4,316.6" fill="#cdf0dd" stroke="#cdf0dd" stroke-width="4" stroke-linejoin="round"/>
+    <polygon points="227.9,356.9 245.5,367.1 245.5,322.9 227.9,312.7" fill="#9cd6b7" stroke="#9cd6b7" stroke-width="4" stroke-linejoin="round"/>
+    <polygon points="263.1,356.9 245.5,367.1 245.5,322.9 263.1,312.7" fill="#89bda1" stroke="#89bda1" stroke-width="4" stroke-linejoin="round"/>
+    <polygon points="245.5,302.6 263.1,312.7 245.5,322.9 227.9,312.7" fill="#b2e9cb" stroke="#b2e9cb" stroke-width="4" stroke-linejoin="round"/>
+    <polygon points="250.5,369.9 268.0,380.1 268.0,316.4 250.5,306.2" fill="#76ca9f" stroke="#76ca9f" stroke-width="4" stroke-linejoin="round"/>
+    <polygon points="285.6,369.9 268.0,380.1 268.0,316.4 285.6,306.2" fill="#68b28c" stroke="#68b28c" stroke-width="4" stroke-linejoin="round"/>
+    <polygon points="268.0,296.1 285.6,306.2 268.0,316.4 250.5,306.2" fill="#8edeb5" stroke="#8edeb5" stroke-width="4" stroke-linejoin="round"/>
+    <polygon points="273.0,382.9 290.5,393.1 290.5,311.2 273.0,301.0" fill="#4ec085" stroke="#4ec085" stroke-width="4" stroke-linejoin="round"/>
+    <polygon points="308.1,382.9 290.5,393.1 290.5,311.2 308.1,301.0" fill="#44a976" stroke="#44a976" stroke-width="4" stroke-linejoin="round"/>
+    <polygon points="290.5,290.9 308.1,301.0 290.5,311.2 273.0,301.0" fill="#68d49d" stroke="#68d49d" stroke-width="4" stroke-linejoin="round"/>
+
+    {% comment %}The card, tilted into the same plane the bars stand in.{% endcomment %}
+    <g transform="translate(118 118) rotate(9) skewY(6)">
+      <rect x="0" y="0" width="228" height="132" rx="18"
+            fill="url(#lart-glass)" stroke="#e4ece9" stroke-width="1.5"/>
+      <text x="22" y="36" font-family="Aptos, Segoe UI, system-ui, sans-serif"
+            font-size="13" fill="#54636f">Total Balance</text>
+      <text x="22" y="72" font-family="Aptos, Segoe UI, system-ui, sans-serif"
+            font-size="27" font-weight="800" fill="#07172b" letter-spacing="-.8">$24,780.00</text>
+      <text x="22" y="94" font-family="Aptos, Segoe UI, system-ui, sans-serif"
+            font-size="12" font-weight="700" fill="#16a34a">+12.5% from last month</text>
+      <path d="M22 118c16-7 22 5 34 2s16-14 27-15 17 11 28 8 15-13 26-14 17 6 29 3 18-11 20-12"
+            stroke="#4bd27d" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </g>
+  </svg>
+</div>

@@ -18,3 +18,12 @@ Pillow==12.3.*
 # taking the site down over a feature most deployments will not use.
 stripe==13.2.*
 
+# --- serving -------------------------------------------------------------
+# The WSGI server. `manage.py runserver` is a development tool and says so in
+# its own startup banner; it is single-threaded and does not belong in front of
+# real users.
+gunicorn==23.0.*
+# Lets the application serve its own static files with correct cache headers,
+# so a deployment needs no second process to be correct. Harmless behind nginx
+# or a CDN, which will simply answer first.
+whitenoise==6.12.*

@@ -12,10 +12,15 @@ from django.contrib.auth import views as auth_views
 from django.urls import include, path, reverse_lazy
 
 from apps.accounts import views as account_views
+from apps.core import health as core_health
 from apps.core import views as core_views
 
 urlpatterns = [
     path("", core_views.dashboard, name="dashboard"),
+    # Probes for the load balancer. Unauthenticated by necessity - see the
+    # module docstring for what they are careful not to say.
+    path("healthz/", core_health.healthz, name="healthz"),
+    path("readyz/", core_health.readyz, name="readyz"),
     # ACC-001: Django's session authentication, with our own templates.
     path("login/", account_views.SignInView.as_view(), name="login"),
     path("logout/", auth_views.LogoutView.as_view(), name="logout"),

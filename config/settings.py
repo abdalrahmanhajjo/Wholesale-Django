@@ -108,6 +108,10 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    # Directly after SecurityMiddleware and before everything else, which is
+    # what WhiteNoise documents: a static file should not be paying for session
+    # loading, authentication and message middleware on its way out.
+    "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",  # ACC-007
@@ -181,10 +185,13 @@ database_config.update(
     {
         "ATOMIC_REQUESTS": False,
         "CONN_MAX_AGE": env_int("DB_CONN_MAX_AGE", 60),
-        # A health check adds a network round trip to every DB-using request.
-        # Keep it opt-in for the high-latency hosted database; the short max age
-        # already limits exposure to stale connections.
-        "CONN_HEALTH_CHECKS": env_bool("DB_CONN_HEALTH_CHECKS", False),
+        # A health check costs one extra round trip on the first query of each
+        # request. That is real money against a remote database, but the pooler
+        # does drop connections, and reusing a dead one is not a slow request -
+        # it is a 500 for whoever made it. Off in development, where the churn
+        # does not happen and the round trip is the whole cost; on by default
+        # once DEBUG is off, and still overridable per environment.
+        "CONN_HEALTH_CHECKS": env_bool("DB_CONN_HEALTH_CHECKS", not DEBUG),
     }
 )
 test_database_name = env("DJANGO_TEST_DATABASE_NAME")
@@ -356,7 +363,11 @@ if not DEBUG:
             "BACKEND": "django.core.files.storage.FileSystemStorage",
         },
         "staticfiles": {
-            "BACKEND": ("django.contrib.staticfiles.storage.ManifestStaticFilesStorage"),
+            # WhiteNoise's manifest storage, which is Django's own plus gzip
+            # and brotli copies made once at collectstatic rather than per
+            # request. The manifest half is the important half: it fingerprints
+            # every file so it can be cached forever and still change instantly.
+            "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
         },
     }
     if env_bool("DJANGO_BEHIND_HTTPS_PROXY", False):

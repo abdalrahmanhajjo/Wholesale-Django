@@ -1,13 +1,29 @@
 """Catalog screens: units, categories and products."""
 
+from django.contrib import messages
+from django.db import transaction
 from django.db.models import Count, Q
-from django.urls import reverse_lazy
-from django.views.generic import CreateView, UpdateView
+from django.shortcuts import get_object_or_404, redirect
+from django.urls import reverse, reverse_lazy
+from django.views.generic import CreateView, DetailView, UpdateView, View
 
-from apps.catalog.forms import ProductCategoryForm, ProductForm, UnitOfMeasureForm
-from apps.catalog.models import Product, ProductCategory, ProductType, UnitOfMeasure
+from apps.catalog.forms import (
+    ProductCategoryForm,
+    ProductForm,
+    ProductPriceForm,
+    UnitOfMeasureForm,
+)
+from apps.catalog.models import (
+    Product,
+    ProductCategory,
+    ProductPrice,
+    ProductType,
+    UnitOfMeasure,
+)
+from apps.core import audit
 from apps.core.list_views import BooleanFilter, ChoiceFilter, Column, FilteredListView
 from apps.core.mixins import ActionPermissionMixin, AuditedFormMixin
+from apps.core.models import AuditEvent
 from apps.core.permissions import EXPORT_DATA, MANAGE_CONFIGURATION
 
 
@@ -197,8 +213,10 @@ class ProductCreateView(AuditedFormMixin, ActionPermissionMixin, CreateView):
     form_class = ProductForm
     template_name = "catalog/product_form.html"
     required_permission = MANAGE_CONFIGURATION
-    success_url = reverse_lazy("catalog:product_list")
     extra_context = {"page_title": "New product", "cancel_url": "/catalog/products/"}
+
+    def get_success_url(self):
+        return reverse("catalog:product_detail", args=[self.object.pk])
 
 
 class ProductUpdateView(AuditedFormMixin, ActionPermissionMixin, UpdateView):
@@ -206,10 +224,102 @@ class ProductUpdateView(AuditedFormMixin, ActionPermissionMixin, UpdateView):
     form_class = ProductForm
     template_name = "catalog/product_form.html"
     required_permission = MANAGE_CONFIGURATION
-    success_url = reverse_lazy("catalog:product_list")
     extra_context = {"cancel_url": "/catalog/products/"}
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
         ctx["page_title"] = f"Edit {self.object.sku}"
         return ctx
+
+    def get_success_url(self):
+        return reverse("catalog:product_detail", args=[self.object.pk])
+
+
+class ProductDetailView(ActionPermissionMixin, DetailView):
+    model = Product
+    template_name = "catalog/product_detail.html"
+    required_permission = "catalog.view_product"
+    context_object_name = "product"
+
+    def get_queryset(self):
+        return (
+            super()
+            .get_queryset()
+            .select_related(
+                "category",
+                "unit",
+                "default_sales_tax_code",
+                "default_purchase_tax_code",
+                "preferred_vendor",
+                "revenue_account",
+                "cogs_account",
+                "inventory_account",
+                "expense_account",
+            )
+            .prefetch_related("prices__currency")
+        )
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        ctx.update(
+            page_title=self.object.name,
+            page_subtitle=f"Product {self.object.sku}",
+            audit_events=AuditEvent.objects.filter(
+                content_type__app_label="catalog",
+                content_type__model="product",
+                object_id=self.object.pk,
+            ).select_related("user")[:20],
+        )
+        return ctx
+
+
+# ---------------------------------------------------------------------------
+# Price list (CFG-011)
+# ---------------------------------------------------------------------------
+class ProductPriceCreateView(AuditedFormMixin, ActionPermissionMixin, CreateView):
+    model = ProductPrice
+    form_class = ProductPriceForm
+    template_name = "core/settings_form.html"
+    required_permission = MANAGE_CONFIGURATION
+    extra_context = {"page_title": "New price"}
+
+    def get_product(self):
+        return get_object_or_404(Product, pk=self.kwargs["product_pk"])
+
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        kwargs["product"] = self.get_product()
+        return kwargs
+
+    def form_valid(self, form):
+        form.instance.product = self.get_product()
+        return super().form_valid(form)
+
+    def get_success_url(self):
+        return reverse("catalog:product_detail", args=[self.object.product_id])
+
+
+class ProductPriceUpdateView(AuditedFormMixin, ActionPermissionMixin, UpdateView):
+    model = ProductPrice
+    form_class = ProductPriceForm
+    template_name = "core/settings_form.html"
+    required_permission = MANAGE_CONFIGURATION
+    extra_context = {"page_title": "Edit price"}
+
+    def get_success_url(self):
+        return reverse("catalog:product_detail", args=[self.object.product_id])
+
+
+class ProductPriceDeleteView(ActionPermissionMixin, View):
+    """POST-only. A price list entry is configuration, not a posted document."""
+
+    required_permission = MANAGE_CONFIGURATION
+
+    def post(self, request, pk):
+        price = get_object_or_404(ProductPrice, pk=pk)
+        product_id = price.product_id
+        with transaction.atomic():
+            audit.record_delete(request, price)
+            price.delete()
+        messages.success(request, "Price removed.")
+        return redirect("catalog:product_detail", pk=product_id)

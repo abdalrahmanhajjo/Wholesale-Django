@@ -1,10 +1,17 @@
 """Catalog forms (CFG-011, GL-010)."""
 
 from django import forms
+from django.db.models import Q
 
-from apps.catalog.models import Product, ProductCategory, ProductType, UnitOfMeasure
+from apps.catalog.models import (
+    Product,
+    ProductCategory,
+    ProductPrice,
+    ProductType,
+    UnitOfMeasure,
+)
 from apps.core.form_ui import UIFormMixin
-from apps.core.models import TaxApplicability, TaxCode
+from apps.core.models import Currency, TaxApplicability, TaxCode
 from apps.ledger.models import Account, AccountType
 from apps.parties.models import Vendor
 
@@ -259,6 +266,72 @@ class ProductForm(UIFormMixin, forms.ModelForm):
                     name,
                     f"{account.code} is {AccountType(account.account_type).label.lower()}. "
                     f"This must be {AccountType(expected).label.lower()}.",
+                )
+
+        return cleaned
+
+
+class ProductPriceForm(UIFormMixin, forms.ModelForm):
+    """
+    A dated price for one product, kind, currency and minimum quantity.
+
+    The schema allows two entries whose date ranges overlap, which would make
+    "what does this cost today?" ambiguous. We refuse the overlap here so the
+    lookup in `apps.catalog.pricing` always has exactly one answer.
+    """
+
+    class Meta:
+        model = ProductPrice
+        fields = ["kind", "currency", "price", "min_quantity", "valid_from", "valid_to"]
+        widgets = {
+            "valid_from": forms.DateInput(attrs={"type": "date"}),
+            "valid_to": forms.DateInput(attrs={"type": "date"}),
+        }
+
+    def __init__(self, *args, product=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.product = product or self.instance.product
+        self.fields["currency"].queryset = Currency.objects.filter(is_active=True)
+        self.fields["valid_to"].help_text = "Leave empty for an open-ended price."
+        self.fields["min_quantity"].help_text = "Applies from this quantity upwards."
+
+    def clean(self):
+        cleaned = super().clean()
+        price = cleaned.get("price")
+        valid_from = cleaned.get("valid_from")
+        valid_to = cleaned.get("valid_to")
+
+        # product_price_nonneg.
+        if price is not None and price < 0:
+            self.add_error("price", "A price cannot be negative.")
+
+        # product_price_dates_ordered.
+        if valid_from and valid_to and valid_to < valid_from:
+            self.add_error("valid_to", "The end date cannot be before the start date.")
+
+        # Not in the schema: two prices covering the same day, for the same
+        # kind, currency and minimum quantity, have no defined winner.
+        if valid_from and self.product:
+            clash = ProductPrice.objects.filter(
+                product=self.product,
+                kind=cleaned.get("kind"),
+                currency=cleaned.get("currency"),
+                min_quantity=cleaned.get("min_quantity"),
+            )
+            if self.instance.pk:
+                clash = clash.exclude(pk=self.instance.pk)
+            # Two ranges overlap unless one ends before the other starts.
+            clash = clash.filter(Q(valid_to__isnull=True) | Q(valid_to__gte=valid_from))
+            if valid_to:
+                clash = clash.filter(valid_from__lte=valid_to)
+            existing = clash.order_by("valid_from").first()
+            if existing:
+                self.add_error(
+                    "valid_from",
+                    f"{existing.currency_id} {existing.price} already covers this period "
+                    f"(from {existing.valid_from}"
+                    f"{f' to {existing.valid_to}' if existing.valid_to else ', open ended'}). "
+                    f"Close that price first, or use a different minimum quantity.",
                 )
 
         return cleaned

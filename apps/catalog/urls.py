@@ -23,5 +23,17 @@ urlpatterns = [
     ),
     path("products/", views.ProductListView.as_view(), name="product_list"),
     path("products/new/", views.ProductCreateView.as_view(), name="product_create"),
+    path("products/<int:pk>/", views.ProductDetailView.as_view(), name="product_detail"),
     path("products/<int:pk>/edit/", views.ProductUpdateView.as_view(), name="product_edit"),
+    path(
+        "products/<int:product_pk>/prices/new/",
+        views.ProductPriceCreateView.as_view(),
+        name="price_create",
+    ),
+    path("prices/<int:pk>/edit/", views.ProductPriceUpdateView.as_view(), name="price_edit"),
+    path(
+        "prices/<int:pk>/delete/",
+        views.ProductPriceDeleteView.as_view(),
+        name="price_delete",
+    ),
 ]

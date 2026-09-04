@@ -118,7 +118,10 @@ def unseed(apps, schema_editor):
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("core", "0008_humanise_help_text"),
+        # Renumbered from 0009 when this branch met dev: dev had already taken
+        # 0009 and 0010 for the sales-return permissions, and renumbering keeps
+        # core on a single line rather than leaving a merge node behind.
+        ("core", "0010_grant_sales_return_permissions"),
         ("ledger", "0005_alter_accountmapping_key"),
         ("payments", "0005_payment_fee_base_payment_fee_txn_and_more"),
     ]

@@ -169,7 +169,7 @@ def _stripe_method() -> PaymentMethod:
     if method is None:
         raise ValidationError(
             "No active STRIPE payment method is configured. It is seeded by "
-            "core.0009_seed_stripe_settlement - run: python manage.py migrate"
+            "core.0011_seed_stripe_settlement - run: python manage.py migrate"
         )
     return method
 

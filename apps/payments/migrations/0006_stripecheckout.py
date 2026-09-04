@@ -10,7 +10,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('core', '0009_seed_stripe_settlement'),
+        ("core", "0011_seed_stripe_settlement"),
         ('payments', '0005_payment_fee_base_payment_fee_txn_and_more'),
         ('sales', '0002_humanise_help_text'),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),

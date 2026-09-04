@@ -36,24 +36,57 @@ def _mapped_account(key: str) -> Account:
 
 def payment_required_mappings(payment: Payment) -> tuple[str, ...]:
     if payment.direction == PaymentDirection.RECEIPT:
-        return (MappingKey.CUSTOMER_ADVANCE,)
-    return (MappingKey.VENDOR_ADVANCE,)
+        keys = [MappingKey.CUSTOMER_ADVANCE]
+    else:
+        keys = [MappingKey.VENDOR_ADVANCE]
+    # Gated on the base amount, not the transaction amount, because that is the
+    # test the builder applies before it emits the line — and the engine rejects
+    # a required mapping the journal turns out never to use.
+    if payment.fee_base > ZERO:
+        keys.append(MappingKey.MERCHANT_FEE)
+    return tuple(keys)
 
 
 def build_payment_journal(payment: Payment, *, user) -> JournalDraft:
-    """Post cash/bank once; an unapplied payment initially becomes an advance."""
+    """Post cash/bank once; an unapplied payment initially becomes an advance.
+
+    A processor fee splits the cash side without touching the advance. The party
+    is settled for the gross either way — that is what clears their balance — so
+    only the money that genuinely moved reaches the money account, and the
+    difference lands in expense.
+
+    The base-currency fee is subtracted from (or added to) ``amount_base``
+    rather than re-derived from the net at the exchange rate. Converting the net
+    separately can round a quantum away from the gross and leave the journal
+    a hundredth of a cent out of balance.
+    """
     cash_account = payment.money_account.gl_account
     description = f"{payment.get_direction_display()} {payment.number}"
+    has_fee = payment.fee_base > ZERO
+    fee_description = f"Processor fee on {payment.number}"
 
     if payment.direction == PaymentDirection.RECEIPT:
         lines = (
             JournalLineDraft(
                 account=cash_account,
                 description=description,
-                debit_base=payment.amount_base,
-                debit_txn=payment.amount_txn,
+                debit_base=payment.amount_base - payment.fee_base,
+                debit_txn=payment.amount_txn - payment.fee_txn,
                 customer=payment.customer,
                 money_account=payment.money_account,
+            ),
+            *(
+                (
+                    JournalLineDraft(
+                        account=_mapped_account(MappingKey.MERCHANT_FEE),
+                        description=fee_description,
+                        debit_base=payment.fee_base,
+                        debit_txn=payment.fee_txn,
+                        customer=payment.customer,
+                    ),
+                )
+                if has_fee
+                else ()
             ),
             JournalLineDraft(
                 account=_mapped_account(MappingKey.CUSTOMER_ADVANCE),
@@ -73,11 +106,24 @@ def build_payment_journal(payment: Payment, *, user) -> JournalDraft:
                 debit_txn=payment.amount_txn,
                 vendor=payment.vendor,
             ),
+            *(
+                (
+                    JournalLineDraft(
+                        account=_mapped_account(MappingKey.MERCHANT_FEE),
+                        description=fee_description,
+                        debit_base=payment.fee_base,
+                        debit_txn=payment.fee_txn,
+                        vendor=payment.vendor,
+                    ),
+                )
+                if has_fee
+                else ()
+            ),
             JournalLineDraft(
                 account=cash_account,
                 description=description,
-                credit_base=payment.amount_base,
-                credit_txn=payment.amount_txn,
+                credit_base=payment.amount_base + payment.fee_base,
+                credit_txn=payment.amount_txn + payment.fee_txn,
                 vendor=payment.vendor,
                 money_account=payment.money_account,
             ),

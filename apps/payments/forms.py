@@ -15,6 +15,7 @@ from apps.payments.models import Payment, PaymentDirection
 class PaymentForm(UIFormMixin, forms.ModelForm):
     placeholders = {
         "amount_txn": "0.00",
+        "fee_txn": "0.00",
         "exchange_rate": "1.000000",
         "reference": "Cheque number or transfer reference",
         "narration": "What this payment settles",
@@ -33,6 +34,7 @@ class PaymentForm(UIFormMixin, forms.ModelForm):
             "currency",
             "exchange_rate",
             "amount_txn",
+            "fee_txn",
             "method",
             "money_account",
             "reference",
@@ -73,6 +75,10 @@ class PaymentForm(UIFormMixin, forms.ModelForm):
         self.fields["customer"].required = False
         self.fields["vendor"].required = False
         self.fields["money_account"].required = False
+        # Most payments carry no fee, so an empty box means zero rather than
+        # forcing everyone to type a 0 on every cash receipt they enter.
+        self.fields["fee_txn"].required = False
+        self.fields["fee_txn"].label = "Processor fee"
 
     def clean(self):
         cleaned = super().clean()
@@ -82,6 +88,25 @@ class PaymentForm(UIFormMixin, forms.ModelForm):
         method = cleaned.get("method")
         account = cleaned.get("money_account")
         reference = (cleaned.get("reference") or "").strip()
+        fee = cleaned.get("fee_txn")
+        amount = cleaned.get("amount_txn")
+
+        if fee is None:
+            fee = Decimal("0")
+            cleaned["fee_txn"] = fee
+        if fee < 0:
+            self.add_error("fee_txn", "A fee cannot be negative.")
+        elif (
+            fee
+            and amount is not None
+            and direction == PaymentDirection.RECEIPT
+            and fee >= amount
+        ):
+            self.add_error(
+                "fee_txn",
+                "The fee has to be smaller than the receipt - a fee equal to the "
+                "whole amount would mean no money arrived at all.",
+            )
 
         if direction == PaymentDirection.RECEIPT:
             if not customer:

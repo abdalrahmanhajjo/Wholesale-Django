@@ -56,6 +56,13 @@
         <div><dt class="eyebrow">Exchange rate</dt><dd class="mt-1 text-xl tabular-nums">{{ payment.exchange_rate }}</dd></div>
         <div><dt class="eyebrow">Base amount</dt><dd class="mt-1 text-xl font-semibold tabular-nums">{{ payment.amount_base|money:base_currency }}</dd></div>
         <div><dt class="eyebrow">Allocated</dt><dd class="mt-1 text-sm tabular-nums">{{ payment.allocated_txn|money:payment.currency_id }}</dd></div>
+        {% if payment.fee_txn %}
+          <div><dt class="eyebrow">Processor fee</dt>
+            <dd class="mt-1 text-sm tabular-nums">{{ payment.fee_txn|money:payment.currency_id }}</dd></div>
+          <div><dt class="eyebrow">{% if payment.direction == "RECEIPT" %}Cash received{% else %}Cash paid out{% endif %}</dt>
+            {# The party is settled for the full amount either way; this is only what moved. #}
+            <dd class="mt-1 text-sm tabular-nums">{{ payment.net_cash_txn|money:payment.currency_id }}</dd></div>
+        {% endif %}
         <div><dt class="eyebrow">Unallocated advance</dt><dd class="mt-1 text-sm tabular-nums">{{ payment.unallocated_txn|money:payment.currency_id }}</dd></div>
       </dl>
       {% if payment.narration %}<div class="mt-5 border-t border-line pt-4"><p class="eyebrow">Narration</p><p class="mt-1 whitespace-pre-line text-sm">{{ payment.narration }}</p></div>{% endif %}

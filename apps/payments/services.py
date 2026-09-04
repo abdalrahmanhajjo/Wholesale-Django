@@ -79,6 +79,9 @@ def _apply_derived_values(payment):
     payment.amount_base = (payment.amount_txn * payment.exchange_rate).quantize(
         MONEY_QUANTUM, rounding=ROUND_HALF_UP
     )
+    payment.fee_base = (payment.fee_txn * payment.exchange_rate).quantize(
+        MONEY_QUANTUM, rounding=ROUND_HALF_UP
+    )
     payment.unallocated_txn = payment.amount_txn - payment.allocated_txn
 
 

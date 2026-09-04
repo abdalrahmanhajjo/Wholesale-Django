@@ -2,9 +2,11 @@
 
 from django import forms
 
-from apps.catalog.models import ProductCategory, UnitOfMeasure
+from apps.catalog.models import Product, ProductCategory, ProductType, UnitOfMeasure
 from apps.core.form_ui import UIFormMixin
+from apps.core.models import TaxApplicability, TaxCode
 from apps.ledger.models import Account, AccountType
+from apps.parties.models import Vendor
 
 
 class UnitOfMeasureForm(UIFormMixin, forms.ModelForm):
@@ -126,6 +128,130 @@ class ProductCategoryForm(UIFormMixin, forms.ModelForm):
             node = node.parent
 
         # An account override must be of the right kind.
+        for name, expected in self.ACCOUNT_TYPES.items():
+            account = cleaned.get(name)
+            if account and account.account_type != expected:
+                self.add_error(
+                    name,
+                    f"{account.code} is {AccountType(account.account_type).label.lower()}. "
+                    f"This must be {AccountType(expected).label.lower()}.",
+                )
+
+        return cleaned
+
+
+class ProductForm(UIFormMixin, forms.ModelForm):
+    """
+    CFG-011. Four database constraints and two business rules are mirrored here
+    so a wrong combination produces a sentence rather than an IntegrityError.
+    """
+
+    #: Which account type each override must point at.
+    ACCOUNT_TYPES = {
+        "revenue_account": AccountType.INCOME,
+        "cogs_account": AccountType.EXPENSE,
+        "inventory_account": AccountType.ASSET,
+        "expense_account": AccountType.EXPENSE,
+    }
+
+    autocomplete_fields = ["category", "unit", "preferred_vendor"]
+
+    class Meta:
+        model = Product
+        fields = [
+            "sku",
+            "name",
+            "description",
+            "barcode",
+            "category",
+            "unit",
+            "product_type",
+            "is_inventory",
+            "sales_price",
+            "purchase_price",
+            "default_sales_tax_code",
+            "default_purchase_tax_code",
+            "preferred_vendor",
+            "reorder_level",
+            "max_discount_percent",
+            "revenue_account",
+            "cogs_account",
+            "inventory_account",
+            "expense_account",
+            "is_active",
+        ]
+        widgets = {"description": forms.Textarea(attrs={"rows": 3})}
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self.fields["category"].queryset = ProductCategory.objects.filter(
+            is_active=True
+        ).order_by("code")
+        self.fields["unit"].queryset = UnitOfMeasure.objects.filter(is_active=True).order_by(
+            "code"
+        )
+        self.fields["preferred_vendor"].queryset = Vendor.objects.filter(
+            is_active=True
+        ).order_by("code")
+
+        # A sales tax code cannot be used on a purchase, and vice versa.
+        active_tax = TaxCode.objects.filter(is_active=True).order_by("code")
+        self.fields["default_sales_tax_code"].queryset = active_tax.filter(
+            applies_to__in=[TaxApplicability.SALES, TaxApplicability.BOTH]
+        )
+        self.fields["default_purchase_tax_code"].queryset = active_tax.filter(
+            applies_to__in=[TaxApplicability.PURCHASE, TaxApplicability.BOTH]
+        )
+
+        # GL-010: only a postable, active account can receive a posting.
+        postable = Account.objects.filter(is_active=True, is_postable=True).order_by("code")
+        for name in self.ACCOUNT_TYPES:
+            self.fields[name].queryset = postable
+            self.fields[name].help_text = "Optional. Overrides the category and the mapping."
+
+    def clean_sku(self):
+        sku = (self.cleaned_data["sku"] or "").strip().upper()
+        clash = Product.objects.filter(sku__iexact=sku)
+        if self.instance.pk:
+            clash = clash.exclude(pk=self.instance.pk)
+        if clash.exists():
+            raise forms.ValidationError(
+                f"SKU “{sku}” is already used by {clash.first().name}."
+            )
+        return sku
+
+    def clean(self):
+        cleaned = super().clean()
+        product_type = cleaned.get("product_type")
+        is_inventory = cleaned.get("is_inventory")
+
+        # product_nonstock_not_inventory: only a stocked item carries inventory.
+        if is_inventory and product_type and product_type != ProductType.STOCK:
+            self.add_error(
+                "is_inventory",
+                f"A {ProductType(product_type).label.lower()} does not carry stock, "
+                f"so it cannot be an inventory item (SAL-010).",
+            )
+
+        # product_prices_nonneg and product_reorder_nonneg.
+        for field, label in (
+            ("sales_price", "sales price"),
+            ("purchase_price", "purchase price"),
+            ("reorder_level", "reorder level"),
+        ):
+            value = cleaned.get(field)
+            if value is not None and value < 0:
+                self.add_error(field, f"The {label} cannot be negative.")
+
+        # product_max_discount_range.
+        discount = cleaned.get("max_discount_percent")
+        if discount is not None and not 0 <= discount <= 100:
+            self.add_error(
+                "max_discount_percent", "The maximum discount must be between 0 and 100."
+            )
+
+        # Each account override must be of the right kind.
         for name, expected in self.ACCOUNT_TYPES.items():
             account = cleaned.get(name)
             if account and account.account_type != expected:

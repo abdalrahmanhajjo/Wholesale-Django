@@ -159,6 +159,14 @@ a click that takes a second looks like a click that did nothing.
 
         <p class="nav-group" id="nav-catalog">Catalog</p>
         <ul aria-labelledby="nav-catalog">
+                    {% if perms.catalog.view_product %}
+            <li>
+              <a href="{% url 'catalog:product_list' %}"
+                 class="nav-link {% if '/catalog/products/' in request.path %}nav-link-active{% endif %}"
+                 {% if '/catalog/products/' in request.path %}aria-current="page"{% endif %}>Products</a>
+            </li>
+          {% endif %}
+          
           {% if perms.catalog.view_productcategory %}
             <li>
               <a href="{% url 'catalog:category_list' %}"

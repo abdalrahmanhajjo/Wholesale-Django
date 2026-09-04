@@ -173,6 +173,9 @@ class Product(TimeStampedModel):
     def __str__(self):
         return f"{self.sku} {self.name}"
 
+    def get_absolute_url(self):
+        return reverse("catalog:product_edit", args=[self.pk])
+
 
 class PriceKind(models.TextChoices):
     SALES = "SALES", "Sales"

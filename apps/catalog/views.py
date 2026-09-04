@@ -4,9 +4,9 @@ from django.db.models import Count, Q
 from django.urls import reverse_lazy
 from django.views.generic import CreateView, UpdateView
 
-from apps.catalog.forms import ProductCategoryForm, UnitOfMeasureForm
-from apps.catalog.models import ProductCategory, UnitOfMeasure
-from apps.core.list_views import BooleanFilter, Column, FilteredListView
+from apps.catalog.forms import ProductCategoryForm, ProductForm, UnitOfMeasureForm
+from apps.catalog.models import Product, ProductCategory, ProductType, UnitOfMeasure
+from apps.core.list_views import BooleanFilter, ChoiceFilter, Column, FilteredListView
 from apps.core.mixins import ActionPermissionMixin, AuditedFormMixin
 from apps.core.permissions import EXPORT_DATA, MANAGE_CONFIGURATION
 
@@ -137,4 +137,79 @@ class ProductCategoryUpdateView(AuditedFormMixin, ActionPermissionMixin, UpdateV
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
         ctx["page_title"] = f"Edit {self.object.code}"
+        return ctx
+
+
+# ---------------------------------------------------------------------------
+# Products (CFG-011)
+# ---------------------------------------------------------------------------
+class ProductListView(FilteredListView):
+    model = Product
+    page_title = "Products"
+    page_subtitle = "Everything you buy and sell."
+    default_ordering = "sku"
+    paginate_by = 25
+    create_url_name = "catalog:product_create"
+    create_label = "New product"
+
+    columns = [
+        Column("sku", "SKU", sortable=True, link=True, css="font-mono text-xs"),
+        Column("name", "Name", sortable=True),
+        Column("category", "Category"),
+        Column("unit", "Unit", css="font-mono text-xs"),
+        Column("get_product_type_display", "Type", sortable=True, order_by="product_type"),
+        Column("is_inventory", "Stocked", align="center"),
+        Column("sales_price", "Sales price", align="right", money=True, sortable=True),
+        Column("is_active", "Active", badge=True, align="center"),
+    ]
+
+    search_fields = ["sku", "name", "barcode", "description"]
+    trigram_search_fields = ["name"]
+
+    filters = [
+        ChoiceFilter("product_type", "Type", ProductType.choices),
+        BooleanFilter(
+            "is_inventory", "Stock", true_label="Stocked", false_label="Not stocked"
+        ),
+        BooleanFilter("is_active", "Status", true_label="Active", false_label="Inactive"),
+    ]
+    export_permission = EXPORT_DATA
+    export_filename = "products"
+
+    def get_queryset(self):
+        return super().get_queryset().select_related("category", "unit")
+
+    def get_summary(self):
+        totals = Product.objects.aggregate(
+            total=Count("id"),
+            active=Count("id", filter=Q(is_active=True)),
+            stocked=Count("id", filter=Q(is_inventory=True, is_active=True)),
+        )
+        return [
+            ("Products", totals["total"]),
+            ("Active", totals["active"]),
+            ("Stocked", totals["stocked"]),
+        ]
+
+
+class ProductCreateView(AuditedFormMixin, ActionPermissionMixin, CreateView):
+    model = Product
+    form_class = ProductForm
+    template_name = "catalog/product_form.html"
+    required_permission = MANAGE_CONFIGURATION
+    success_url = reverse_lazy("catalog:product_list")
+    extra_context = {"page_title": "New product", "cancel_url": "/catalog/products/"}
+
+
+class ProductUpdateView(AuditedFormMixin, ActionPermissionMixin, UpdateView):
+    model = Product
+    form_class = ProductForm
+    template_name = "catalog/product_form.html"
+    required_permission = MANAGE_CONFIGURATION
+    success_url = reverse_lazy("catalog:product_list")
+    extra_context = {"cancel_url": "/catalog/products/"}
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        ctx["page_title"] = f"Edit {self.object.sku}"
         return ctx

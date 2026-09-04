@@ -8,4 +8,13 @@ Keeping compilation out of the browser removes the Tailwind Play CDN runtime
 from every Django page and makes the interface independent of third parties.
 Both the application shell and sign-in page include this partial.
 {% endcomment %}
+{% comment %}
+The font is fetched by the stylesheet, which the browser only parses after it
+has downloaded it — so without this the face is discovered one round trip late
+and the first paint is the fallback. Preloading it in parallel with the CSS is
+the difference between the heading arriving in Inter and arriving in Arial and
+changing. crossorigin is required even same-origin: fonts are always fetched in
+CORS mode, and a preload whose mode does not match is fetched twice.
+{% endcomment %}
+<link rel="preload" href="{% static 'fonts/inter-latin.woff2' %}" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="{% static 'css/app.css' %}">

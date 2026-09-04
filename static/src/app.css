@@ -215,7 +215,97 @@
     @apply mt-5 border-t border-white/[.06] px-3 pb-1 pt-5 text-[10px]
            font-bold uppercase tracking-[0.16em] text-nav-muted/90;
   }
-  .nav-group:first-child { @apply mt-0 border-t-0 pt-1; }
+  .nav-section:first-of-type > summary.nav-group,
+  .nav-group-static:first-child { @apply mt-0 border-t-0 pt-1; }
+
+  /* ------------------------------------------------- collapsible sections */
+  /* <details>/<summary> rather than a div and a click handler: the element
+     already owns the disclosure, the keyboard and the expanded-state
+     announcement, and find-in-page can still reach a closed one. */
+  .nav-section > summary {
+    @apply flex cursor-pointer list-none items-center justify-between rounded-lg
+           transition-colors hover:text-nav-fg;
+  }
+  .nav-section > summary::-webkit-details-marker { display: none; }
+  .nav-section > summary:focus-visible {
+    @apply outline-none ring-2 ring-brand/70 ring-offset-2 ring-offset-sidebar;
+  }
+  .nav-group-caret { @apply text-nav-muted/70 transition-transform duration-200; }
+  .nav-section[open] > summary .nav-group-caret { @apply rotate-90; }
+
+  /* Height cannot be animated from `auto`, and a fixed max-height either clips
+     a long section or overshoots a short one. A grid row from 0fr to 1fr
+     animates to the content's own height, whatever that is. */
+  .nav-section-body {
+    @apply grid;
+    grid-template-rows: 1fr;
+  }
+  .nav-section:not([open]) .nav-section-body { grid-template-rows: 0fr; }
+  .nav-section-body > * { @apply min-h-0 overflow-hidden; }
+
+  .nav-subgroup {
+    @apply px-3 pb-1 pt-3 text-[10px] font-semibold uppercase
+           tracking-[.12em] text-nav-muted/70;
+  }
+  .nav-rows { @apply space-y-px; }
+  .nav-empty { @apply px-3 py-6 text-center text-xs text-nav-muted; }
+
+  /* --------------------------------------------------------- sidebar search */
+  .nav-search {
+    @apply mt-3 flex items-center gap-2 rounded-xl border border-white/10
+           bg-black/20 px-3 transition-colors focus-within:border-brand/40;
+  }
+  .nav-search .icon { @apply text-nav-muted; }
+  .nav-search-input {
+    @apply min-h-[38px] w-full border-0 bg-transparent p-0 text-sm text-white
+           placeholder:text-nav-muted focus:outline-none focus:ring-0;
+  }
+  .nav-search-input::-webkit-search-cancel-button { @apply hidden; }
+  .nav-kbd {
+    @apply rounded border border-white/15 px-1.5 py-0.5 font-mono text-[10px]
+           text-nav-muted;
+  }
+
+  /* ------------------------------------------------------- collapse control */
+  .nav-collapse-btn {
+    @apply ml-auto hidden h-8 w-8 shrink-0 place-items-center rounded-lg
+           text-nav-muted transition-colors hover:bg-white/10 hover:text-white
+           lg:grid;
+  }
+  .nav-collapse-btn .icon { @apply rotate-180 transition-transform duration-200; }
+
+  /* ----------------------------------------------------------- collapsed ---
+     Desktop only. The drawer on small screens is a different mechanism and
+     must not inherit any of this. */
+  @screen lg {
+    .sidebar-collapsed { width: 76px; }
+    .sidebar-collapsed .nav-brand-text,
+    .sidebar-collapsed .company-switcher span:not(:first-child),
+    .sidebar-collapsed .nav-search,
+    .sidebar-collapsed .nav-label,
+    .sidebar-collapsed .nav-group span,
+    .sidebar-collapsed .nav-subgroup,
+    .sidebar-collapsed .nav-group-caret,
+    .sidebar-collapsed .nav-user-text,
+    .sidebar-collapsed .nav-signout-label { @apply hidden; }
+    .sidebar-collapsed .nav-collapse-btn .icon { @apply rotate-0; }
+    .sidebar-collapsed .nav-link,
+    .sidebar-collapsed .company-switcher { @apply justify-center px-0; }
+    /* A closed section would hide its rows entirely, and there are no labels
+       left to click to reopen it. */
+    .sidebar-collapsed .nav-section-body { grid-template-rows: 1fr; }
+    .sidebar-collapsed .nav-group { @apply mx-3 h-0 overflow-hidden p-0; }
+
+    /* Label as a tooltip, from the same attribute the search filter reads. */
+    .sidebar-collapsed .nav-link::after {
+      content: attr(data-label);
+      @apply pointer-events-none absolute left-full z-50 ml-2 hidden
+             whitespace-nowrap rounded-lg bg-navy-2 px-2.5 py-1.5 text-xs
+             font-medium text-white shadow-lg ring-1 ring-white/10;
+    }
+    .sidebar-collapsed .nav-link:hover::after,
+    .sidebar-collapsed .nav-link:focus-visible::after { @apply block; }
+  }
 
   /* Sidebar rows are 40px and sit against a dark ground, so the page-wide
      focus ring is both too tight and too dim here. */

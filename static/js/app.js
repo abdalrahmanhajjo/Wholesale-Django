@@ -196,3 +196,141 @@
 
   syncHidden();
 })();
+
+/* =========================================================== sidebar nav ===
+ * Three small behaviours on the navigation: filtering it, collapsing sections,
+ * and collapsing the whole sidebar.
+ *
+ * All three degrade to nothing without JavaScript. The sections are
+ * <details>, so they still open and close; the search box filters nothing and
+ * the rows stay visible; the sidebar stays at full width. Nothing here is the
+ * only way to reach a page.
+ * ========================================================================= */
+(function () {
+  "use strict";
+
+  var nav = document.querySelector("[data-nav]");
+  if (!nav) return;
+
+  var STORE_SECTIONS = "lw.nav.closed";
+  var STORE_COLLAPSED = "lw.nav.collapsed";
+
+  // Private-mode browsers throw on access rather than returning null.
+  function read(key, fallback) {
+    try {
+      var raw = window.localStorage.getItem(key);
+      return raw === null ? fallback : JSON.parse(raw);
+    } catch (e) { return fallback; }
+  }
+  function write(key, value) {
+    try { window.localStorage.setItem(key, JSON.stringify(value)); } catch (e) {}
+  }
+
+  /* ---------------------------------------------------- section memory --- */
+  var sections = Array.prototype.slice.call(nav.querySelectorAll("[data-nav-section]"));
+  var closed = read(STORE_SECTIONS, []);
+  if (!Array.isArray(closed)) closed = [];
+
+  sections.forEach(function (section) {
+    var key = section.getAttribute("data-nav-section");
+    // A section holding the current page opens regardless of what was stored:
+    // remembering a closed section is useful, hiding where you are is not.
+    var hasActive = !!section.querySelector(".nav-link-active");
+    if (!hasActive && closed.indexOf(key) !== -1) section.open = false;
+
+    section.addEventListener("toggle", function () {
+      var at = closed.indexOf(key);
+      if (section.open && at !== -1) closed.splice(at, 1);
+      else if (!section.open && at === -1) closed.push(key);
+      write(STORE_SECTIONS, closed);
+    });
+  });
+
+  /* ----------------------------------------------------------- filter --- */
+  var search = document.getElementById("nav-search");
+  var empty = nav.querySelector("[data-nav-empty]");
+  var rows = Array.prototype.slice.call(nav.querySelectorAll("[data-nav-item]"));
+
+  // Sections that are not collapsible still have a header and rows that must
+  // disappear together, so the template wraps them.
+  var loose = Array.prototype.slice.call(nav.querySelectorAll("[data-nav-block]"));
+
+  function matchesIn(root) {
+    return Array.prototype.slice.call(root.querySelectorAll("[data-nav-item]"))
+      .some(function (row) { return !row.parentNode.hidden; });
+  }
+
+  function filter(term) {
+    term = term.trim().toLowerCase();
+    var any = false;
+
+    // The <li> is hidden rather than the <a>, so the row leaves the flow
+    // instead of leaving a gap behind it.
+    rows.forEach(function (row) {
+      var hit = !term || row.getAttribute("data-label").toLowerCase().indexOf(term) !== -1;
+      row.parentNode.hidden = !hit;
+      if (hit) any = true;
+    });
+
+    // A section with nothing left in it should go rather than sit there as an
+    // empty header; one that still has a match has to be open to show it.
+    sections.forEach(function (section) {
+      var live = matchesIn(section);
+      section.hidden = !!term && !live;
+      if (term && live) section.open = true;
+    });
+
+    loose.forEach(function (block) {
+      block.hidden = !!term && !matchesIn(block);
+    });
+
+    if (empty) empty.hidden = !term || any;
+  }
+
+  if (search) {
+    search.addEventListener("input", function () { filter(search.value); });
+    search.addEventListener("keydown", function (event) {
+      if (event.key === "Escape") {
+        search.value = "";
+        filter("");
+        search.blur();
+      }
+    });
+
+    // "/" focuses the box, the convention everywhere text is searched. Not
+    // when the user is already typing somewhere.
+    document.addEventListener("keydown", function (event) {
+      if (event.key !== "/" || event.metaKey || event.ctrlKey || event.altKey) return;
+      var el = document.activeElement;
+      var typing = el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable);
+      if (typing) return;
+      event.preventDefault();
+      search.focus();
+      search.select();
+    });
+  }
+
+  /* -------------------------------------------------- collapse sidebar --- */
+  var sidebar = document.getElementById("sidebar");
+  var collapseBtn = document.getElementById("sidebar-collapse");
+
+  function applyCollapsed(on) {
+    if (!sidebar) return;
+    sidebar.classList.toggle("sidebar-collapsed", on);
+    if (collapseBtn) {
+      collapseBtn.setAttribute("aria-expanded", String(!on));
+      collapseBtn.setAttribute("aria-label", on ? "Expand navigation" : "Collapse navigation");
+    }
+    // Nothing to type into while the box is hidden.
+    if (on && search) { search.value = ""; filter(""); }
+  }
+
+  if (collapseBtn && sidebar) {
+    applyCollapsed(read(STORE_COLLAPSED, false) === true);
+    collapseBtn.addEventListener("click", function () {
+      var on = !sidebar.classList.contains("sidebar-collapsed");
+      applyCollapsed(on);
+      write(STORE_COLLAPSED, on);
+    });
+  }
+})();

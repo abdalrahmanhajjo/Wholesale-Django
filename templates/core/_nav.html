@@ -1,0 +1,42 @@
+{% comment %}
+The sidebar's navigation, rendered from apps/core/navigation.py.
+
+This template knows about sections, rows and active state, and nothing about
+any particular module — adding a screen is an entry in that file, not markup
+here.
+
+Collapsible sections are <details>/<summary>. That is deliberate: the element
+already handles the disclosure, the keyboard, and the announcement of expanded
+state, and browsers find text inside a closed one when the user searches the
+page. A div with a click handler would need all of that rebuilding, worse.
+{% endcomment %}
+<nav class="flex-1 overflow-y-auto px-3 pb-6" aria-label="Primary navigation" data-nav>
+
+  <p class="nav-empty" data-nav-empty hidden>No menu item matches that.</p>
+
+  {% for section in nav_sections %}
+    {% if section.collapsible %}
+      <details class="nav-section" data-nav-section="{{ section.key }}"
+               {% if section.has_active %}open{% endif %}>
+        <summary class="nav-group">
+          <span>{{ section.label }}</span>
+          <svg class="icon nav-group-caret" aria-hidden="true"><use href="#i-chevron-right"></use></svg>
+        </summary>
+        <div class="nav-section-body">
+          {% include "core/_nav_rows.html" with items=section.items %}
+          {% for group in section.subgroups %}
+            <p class="nav-subgroup">{{ group.label }}</p>
+            {% include "core/_nav_rows.html" with items=group.items %}
+          {% endfor %}
+        </div>
+      </details>
+    {% else %}
+      {# Overview is one row; a control to hide one row is noise. Wrapped so
+         the search filter can hide the header and its row together. #}
+      <div class="nav-static-section" data-nav-block>
+        <p class="nav-group nav-group-static">{{ section.label }}</p>
+        {% include "core/_nav_rows.html" with items=section.items %}
+      </div>
+    {% endif %}
+  {% endfor %}
+</nav>

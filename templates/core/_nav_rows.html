@@ -1,0 +1,20 @@
+{% comment %}
+One run of navigation rows. Separate from _nav.html only so a section and a
+subgroup render their rows through the same code.
+
+`data-label` carries the text for the search filter and for the tooltip the
+collapsed sidebar shows, so neither has to read the DOM back out.
+{% endcomment %}
+<ul class="nav-rows">
+  {% for item in items %}
+    <li>
+      <a href="{% url item.url_name %}"
+         class="nav-link{% if item.active %} nav-link-active{% endif %}"
+         data-nav-item data-label="{{ item.label }}"
+         {% if item.active %}aria-current="page"{% endif %}>
+        <svg class="icon" aria-hidden="true"><use href="#i-{{ item.icon }}"></use></svg>
+        <span class="nav-label">{{ item.label }}</span>
+      </a>
+    </li>
+  {% endfor %}
+</ul>

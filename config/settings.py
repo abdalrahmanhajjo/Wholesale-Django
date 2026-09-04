@@ -136,6 +136,7 @@ TEMPLATES = [
                 # The company name and base currency appear in the shell of
                 # every page, so they cannot be one view's responsibility.
                 "apps.core.context.company",
+                "apps.core.context.navigation",
             ]
         },
     }

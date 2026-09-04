@@ -1,13 +1,17 @@
 """Payment register, posting, allocation, reversal, voucher, and detail screens."""
 
+import logging
 from decimal import Decimal
 
 from django.contrib import messages
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.db.models import Count, Q, Sum
+from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect
+from django.utils.decorators import method_decorator
 from django.views import View
+from django.views.decorators.csrf import csrf_exempt
 from django.views.generic import CreateView, DetailView, UpdateView
 
 from apps.core import audit
@@ -21,16 +25,18 @@ from apps.core.permissions import (
     REVERSE_DOCUMENT,
 )
 from apps.ledger.services.exceptions import PostingError
-from apps.payments import allocation, reversal, services
+from apps.payments import allocation, reversal, services, stripe_gateway, stripe_service
 from apps.payments.forms import (
     PaymentAllocationHeaderForm,
     PaymentAllocationLineFormSet,
     PaymentForm,
     ReversalForm,
 )
-from apps.payments.models import Allocation, Payment, PaymentDirection
+from apps.payments.models import Allocation, Payment, PaymentDirection, StripeCheckout
 from apps.purchases.models import PurchaseBill
 from apps.sales.models import SalesInvoice
+
+logger = logging.getLogger(__name__)
 
 
 def _form_data(form):
@@ -520,3 +526,119 @@ class PaymentVoucherView(BackLinkMixin, ActionPermissionMixin, DetailView):
             (row.fx_gain_loss_base for row in context["allocations"]), Decimal("0")
         )
         return context
+
+
+# ---------------------------------------------------------------------------
+# Stripe (PAY-013)
+# ---------------------------------------------------------------------------
+class InvoiceStripeChargeView(ActionPermissionMixin, View):
+    """Create a Stripe payment link for one posted invoice, for staff to send.
+
+    Staff-initiated on purpose. The link is generated here and handed to
+    whoever is dealing with the customer; nothing in this application is exposed
+    to the customer, and no route but the webhook below is reachable without a
+    login.
+    """
+
+    required_permission = POST_PAYMENT
+    http_method_names = ["post"]
+
+    def post(self, request, pk):
+        invoice = get_object_or_404(SalesInvoice, pk=pk)
+        try:
+            checkout = stripe_service.start_checkout(invoice, user=request.user)
+        except ValidationError as exc:
+            messages.error(request, _error_message(exc))
+        else:
+            audit.record_action(
+                request,
+                AuditAction.CREATE,
+                invoice,
+                stripe_session=checkout.session_id,
+                amount_txn=str(checkout.amount_txn),
+            )
+            messages.success(
+                request,
+                f"Payment link ready for {invoice.number}. Send it to the "
+                "customer - it is shown on this page until it is paid or expires.",
+            )
+        return redirect("sales:invoice_detail", pk=invoice.pk)
+
+
+class StripeSettleRetryView(ActionPermissionMixin, View):
+    """Try again to post a receipt for a checkout the customer already paid.
+
+    The button behind this exists because the webhook deliberately refuses to
+    fail: when the ledger would not take the entry - a closed period, a missing
+    rate - it records why and moves on. This is how someone finishes the job
+    once they have fixed the cause.
+    """
+
+    required_permission = POST_PAYMENT
+    http_method_names = ["post"]
+
+    def post(self, request, pk):
+        checkout = get_object_or_404(StripeCheckout.objects.select_related("invoice"), pk=pk)
+        checkout = stripe_service.post_settled_checkout(checkout)
+        if checkout.payment_id:
+            messages.success(
+                request,
+                f"{checkout.payment.number} posted and applied to "
+                f"{checkout.invoice.number}.",
+            )
+        else:
+            messages.error(
+                request,
+                checkout.settlement_error or "The receipt still could not be posted.",
+            )
+        return redirect("sales:invoice_detail", pk=checkout.invoice_id)
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class StripeWebhookView(View):
+    """Stripe's callback. The only route in this project without a login.
+
+    Three deliberate choices, each of which has a failure mode behind it:
+
+    * **CSRF exempt, but not unauthenticated.** Stripe cannot hold a CSRF
+      token. The signature check in the gateway is the authentication, and it
+      is not optional - with no signing secret configured every request is
+      refused rather than trusted.
+    * **The body is a notification, not evidence.** Nothing here reads an
+      amount out of the payload. The session id is used to go and ask Stripe
+      what happened, so a forged body that somehow passed the signature check
+      still could not invent a payment.
+    * **200 for anything a retry cannot fix.** Stripe retries non-2xx for days
+      and then disables the endpoint. A closed fiscal period is not Stripe's
+      problem to solve, so it is recorded and acknowledged; only a genuinely
+      transient failure gets a 5xx and asks to be sent again.
+    """
+
+    http_method_names = ["post"]
+
+    def post(self, request):
+        signature = request.headers.get("Stripe-Signature", "")
+        try:
+            event = stripe_gateway.verify_webhook(request.body, signature)
+        except stripe_gateway.StripeUnavailable as exc:
+            # Not configured to receive callbacks at all.
+            logger.warning("Stripe webhook rejected: %s", exc)
+            return HttpResponse("Stripe webhooks are not configured.", status=503)
+        except Exception as exc:
+            # Bad signature, replayed timestamp, or an unparseable body. Never
+            # echo any of it back; a probe learns nothing from a bare 400.
+            logger.warning("Stripe webhook signature rejected: %s", exc)
+            return HttpResponse("Invalid signature.", status=400)
+
+        try:
+            outcome = stripe_service.handle_event(event)
+        except stripe_service.UnknownStripeSession as exc:
+            logger.warning("Stripe webhook for unknown session: %s", exc)
+            return HttpResponse("Unknown session; ignored.", status=200)
+        except stripe_service.StripeSettlementError as exc:
+            # Could not reach Stripe to confirm. Ask to be told again.
+            logger.warning("Stripe settlement deferred: %s", exc)
+            return HttpResponse("Could not confirm with Stripe.", status=503)
+
+        logger.info("Stripe webhook handled: %s", outcome)
+        return HttpResponse("ok", status=200)

@@ -260,6 +260,31 @@ PASSWORD_RESET_TIMEOUT = int(env("DJANGO_PASSWORD_RESET_TIMEOUT") or 60 * 60 * 3
 SESSION_ENGINE = "django.contrib.sessions.backends.cached_db"
 
 # ---------------------------------------------------------------------------
+# Stripe (PAY-013).
+#
+# Off unless a secret key is present, which is what makes it safe to ship to
+# deployments that will never use it. Nothing here has a default: a card
+# integration running against somebody else's guessed-at key is worse than one
+# that is plainly switched off.
+#
+# STRIPE_WEBHOOK_SECRET is what separates a real Stripe callback from anyone on
+# the internet who found the URL, so the webhook refuses every request when it
+# is unset rather than trusting the body.
+# ---------------------------------------------------------------------------
+# Whether Stripe is on is derived from this key wherever it is asked, by
+# stripe_gateway.is_enabled() - not cached into a second setting that could then
+# disagree with it.
+STRIPE_SECRET_KEY = env("STRIPE_SECRET_KEY")
+STRIPE_WEBHOOK_SECRET = env("STRIPE_WEBHOOK_SECRET")
+# Stripe has to be told where to send the customer back to, and it needs an
+# absolute URL. In development that is the runserver; a deployment sets it to
+# the public origin. No trailing slash.
+STRIPE_RETURN_ORIGIN = env("STRIPE_RETURN_ORIGIN", "http://127.0.0.1:8000").rstrip("/")
+# A checkout link should not stay payable forever. Stripe's own limit is 24
+# hours and its minimum is 30 minutes.
+STRIPE_SESSION_MINUTES = env_int("STRIPE_SESSION_MINUTES", 720)
+
+# ---------------------------------------------------------------------------
 # Locale (CFG-001, NFR-018). The company row carries the business timezone and
 # base currency; these are the framework defaults behind it.
 # ---------------------------------------------------------------------------

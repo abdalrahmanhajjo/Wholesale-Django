@@ -226,7 +226,7 @@ class MalformedParameterTests(TestCase):
     def test_a_non_numeric_stock_lookup_is_ignored(self):
         response = self.client.get(
             "/settings/check/",
-            {"rule": "stock-available", "product": "abc", "warehouse": "def", "value": "1"},
+            {"rule": "stock", "product": "abc", "warehouse": "def", "value": "1"},
         )
         self.assertEqual(response.status_code, 200)
 

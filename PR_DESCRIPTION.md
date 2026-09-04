@@ -1,51 +1,62 @@
-# Fix: zero-value lines crashing purchase bill / vendor debit note posting
+# Day 8 buffer: three-way match indicator, low-stock view
 
-Found while manually testing the purchase-returns/debit-notes PR after it
-landed on `dev`: posting a vendor debit note with a line that had no unit
-price set crashed with a raw `IntegrityError` (`journal_line_debit_xor_credit`)
-instead of a clean message. The same latent bug existed in `post_purchase_bill`
-— it just hadn't been hit yet, since every existing test happened to use a
-non-zero price.
+Day 8 is buffer/polish. Two small additions, both read-only (no new
+migrations, no change to posting):
 
-## What's wrong and why
+## Three-way match indicator (purchases)
 
-A journal line can never have both its debit and credit sides at zero — the
-database enforces that unconditionally. But nothing stopped a document line
-with `unit_price = 0` (or a resulting `taxable_base_txn` of exactly zero) from
-reaching the posting service, which then tried to write a journal line with
-both sides at zero for that line. The database is right to reject it; the
-services just weren't guarding against it, so the clerk got a 500 instead of
-a clear explanation.
+`PurchaseOrderLine` already tracked `quantity_received` and `quantity_billed`
+(PUR-003 / PUR-012) but nothing surfaced them — a buyer had to compare
+numbers by eye across the order, its receipts and its bills. The PO detail
+screen now shows a **Match** badge per line, plus the received/billed
+quantities themselves:
 
-## What's fixed
+- **Not received** — nothing received or billed yet.
+- **Partial** — received or billed, but short of the ordered qty (minus
+  anything cancelled).
+- **Matched** — received and billed in full.
+- **Over-billed** — billed more than received. Shouldn't happen given the
+  posting guards, but if it ever does, it's now visible instead of silent.
+- **Cancelled** — the line's ordered qty was fully cancelled.
 
-- **`post_purchase_bill`** and **`post_vendor_debit_note`**: skip writing a
-  journal line for any line whose `taxable_base_txn` is zero — it has nothing
-  to book, same reasoning already used for the tax line (`if line.tax_txn:`).
-  This doesn't affect the document's total or BR-006 balance, since a
-  zero-value line was already contributing zero either way.
-- Both services now also refuse to post a document whose **total** is zero,
-  with a clear `ValidationError` instead of crashing on the final
-  Accounts-Payable line.
-- **`VendorDebitNoteLineForm`** now rejects a `$0` unit price outright, with
-  a clear field error. `PurchaseBillLineForm` was deliberately *not* given
-  the same form-level block — a free/bonus line at $0 is a real scenario for
-  a bill, so that side is only guarded at the service level, not blocked at
-  entry.
+`match_status` is a plain model property (`apps/purchases/models.py`) — no
+new field, no migration — computed from quantities the model already had.
+Covered by `apps/purchases/tests/test_three_way_match.py`, a DB-free
+`SimpleTestCase` since the property only reads in-memory fields.
+
+## Low-stock view (inventory)
+
+Inventory valuation already summarised a "Below reorder level" count but
+had no screen to act on it. Added `LowStockListView`
+(`apps/inventory/views.py`, `/inventory/stock/low/`) — the same
+`StockBalance` rows as inventory valuation, filtered to
+`quantity_on_hand <= product.reorder_level`, with a warehouse filter and
+CSV export like every other list screen. Linked from the Inventory nav.
+
+## Bug fixes
+
+Checked `post_goods_receipt`, `post_stock_transfer` and
+`post_stock_adjustment` against the same zero-value-line crash class fixed
+in the previous PR (a journal line can't have both sides at zero). All
+three already guard at the document-total level (`if total_cost > ZERO`,
+etc.), so no fix was needed there. No other reported blockers to fix as of
+this PR — will fold in anything teammates flag before Day 8 wraps.
 
 ## Files touched
-Modified: `apps/purchases/services.py`, `apps/purchases/forms.py`,
-`apps/purchases/tests/test_purchase_returns_debit_notes.py` (a pre-existing
-lint fix — `assert` → `self.assertEqual` — caught by `ruff check` while
-working on this).
+Modified: `apps/purchases/models.py`, `apps/inventory/views.py`,
+`apps/inventory/urls.py`, `templates/base.html`,
+`templates/purchases/purchase_order_detail.html`.
+New: `apps/purchases/tests/test_three_way_match.py`.
 
-No new migrations.
+No new migrations (`manage.py makemigrations purchases inventory --check`
+— no changes detected).
 
 ## Testing
-- `python manage.py test apps.purchases apps.inventory` — **70/70 pass**
-  (65 from before + 5 new since the last report), run against the real
-  Supabase database.
-- Manually reproduced the original crash (a debit note line with
-  `unit_price=0`), confirmed it now returns a clean form error instead of a
-  500, and confirmed a corrected line posts successfully.
+- `apps.purchases.tests.test_three_way_match` — 7/7 pass (no DB).
+- `manage.py check` — clean.
 - `ruff check` / `ruff format` — clean.
+- Did **not** run the full `apps.purchases apps.inventory` suite this
+  round: the test database is the shared Supabase instance (via Supavisor),
+  and it had a stale connection blocking recreation — didn't want to keep
+  terminating backends on a database teammates may also be using. Worth
+  running before merge once it's clear to do so.

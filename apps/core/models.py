@@ -13,6 +13,7 @@ from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
 from django.contrib.postgres.constraints import ExclusionConstraint
 from django.contrib.postgres.fields import DateRangeField, RangeBoundary, RangeOperators
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.validators import MinValueValidator
 from django.db import models
 from django.db.models import F, Func, Q
@@ -46,6 +47,25 @@ class DateRangeInclusive(Func):
 #   RATE   - 18,8  exchange rates
 #   PCT    - 9,4   percentages
 # ---------------------------------------------------------------------------
+#: Largest company logo accepted. Django's ImageField already proves the upload
+#: is a real image, but it puts no ceiling on how big a real image may be, and
+#: the file is written to disk and then served on every printed document.
+MAX_LOGO_BYTES = 2 * 1024 * 1024
+
+
+def validate_logo_size(file):
+    """Reject an oversized logo with a message that says what to do about it."""
+    if file and file.size > MAX_LOGO_BYTES:
+        raise DjangoValidationError(
+            "That logo is %(actual).1f MB. The limit is %(limit)d MB - resize it "
+            "and try again.",
+            params={
+                "actual": file.size / (1024 * 1024),
+                "limit": MAX_LOGO_BYTES // (1024 * 1024),
+            },
+        )
+
+
 MONEY = {"max_digits": 18, "decimal_places": 4}
 QTY = {"max_digits": 18, "decimal_places": 4}
 COST = {"max_digits": 18, "decimal_places": 6}
@@ -418,7 +438,13 @@ class Company(TimeStampedModel):
     state = models.CharField(max_length=100, blank=True)
     postal_code = models.CharField(max_length=20, blank=True)
     country = models.CharField(max_length=100, blank=True)
-    logo = models.ImageField(upload_to="company/", null=True, blank=True)
+    logo = models.ImageField(
+        upload_to="company/",
+        null=True,
+        blank=True,
+        validators=[validate_logo_size],
+        help_text="Shown on printed documents. PNG or JPEG, up to 2 MB.",
+    )
 
     base_currency = models.ForeignKey(Currency, on_delete=models.PROTECT, related_name="+")
     fiscal_year_start_month = models.PositiveSmallIntegerField(default=1)

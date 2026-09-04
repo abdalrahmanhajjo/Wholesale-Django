@@ -237,3 +237,71 @@ class AuthPageRenderTests(TestCase):
             with self.subTest(page=route, links_to=expected):
                 body = self.client.get(reverse(route)).content.decode()
                 self.assertIn(f'href="{reverse(expected)}"', body)
+
+
+class DocumentHeadTests(TestCase):
+    """Every auth page declares its charset and viewport, inside the head.
+
+    These are asserted here rather than left to an editor's HTML linter. The
+    linter reads the *template*, where a `{% comment %}` block sits above
+    `<html>`; an HTML parser treats that as body text, opens an implied
+    `<body>`, and then reports the metas that follow as being in the wrong
+    place. It cannot reach the right answer, because the file it is reading is
+    not the document that gets served.
+
+    The rule it is trying to enforce is a real one, so it is checked against
+    what the browser actually receives.
+    """
+
+    #: Every page built on registration/_auth_base.html.
+    PAGES = (
+        "login",
+        "signup",
+        "signup_done",
+        "password_reset",
+        "password_reset_done",
+        "password_reset_complete",
+    )
+
+    def head_of(self, name):
+        response = self.client.get(reverse(name))
+        self.assertEqual(response.status_code, 200, f"{name} did not render")
+        html = response.content.decode()
+        start, end = html.find("<head"), html.find("</head>")
+        self.assertNotEqual(start, -1, f"{name} rendered no <head>")
+        self.assertGreater(end, start, f"{name} rendered no closing </head>")
+        return html, html[start:end]
+
+    def test_the_charset_is_declared_inside_the_head(self):
+        for name in self.PAGES:
+            with self.subTest(page=name):
+                _, head = self.head_of(name)
+                self.assertIn('<meta charset="utf-8">', head)
+
+    def test_the_viewport_is_declared_inside_the_head(self):
+        for name in self.PAGES:
+            with self.subTest(page=name):
+                _, head = self.head_of(name)
+                self.assertIn('name="viewport"', head)
+
+    def test_neither_meta_falls_into_the_body(self):
+        """The specific claim the linter makes, tested against real output."""
+        for name in self.PAGES:
+            with self.subTest(page=name):
+                html, _ = self.head_of(name)
+                body_at = html.find("<body")
+                self.assertGreater(body_at, 0, f"{name} rendered no <body>")
+                for meta in ("<meta charset", 'name="viewport"'):
+                    at = html.find(meta)
+                    self.assertGreater(at, 0, f"{name} is missing {meta}")
+                    self.assertLess(at, body_at, f"{name}: {meta} landed after <body>")
+
+    def test_the_doctype_comes_first(self):
+        """A Django comment above it renders to nothing, so it must still lead."""
+        for name in self.PAGES:
+            with self.subTest(page=name):
+                html = self.client.get(reverse(name)).content.decode()
+                self.assertTrue(
+                    html.lstrip().lower().startswith("<!doctype html>"),
+                    f"{name} does not begin with a doctype",
+                )

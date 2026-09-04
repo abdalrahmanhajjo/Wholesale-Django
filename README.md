@@ -436,6 +436,21 @@ These are placeholders (BRD §14.4) and will change. Don't hard-code them.
 
 ## Troubleshooting
 
+**"'charset' meta element should be specified in the '<head>'"** — from
+webhint, via the Edge Tools editor extension, and it is wrong. It reads the
+template rather than the page: a `{% comment %}` block above `<html>` is body
+text to an HTML parser, so it opens an implied `<body>` and reports everything
+after it as misplaced. 72 of the 76 files under `templates/` are fragments with
+no `<html>` at all, so document-level hints cannot be evaluated there in
+principle.
+
+Those two hints are switched off in `.hintrc`. The rule itself is real, so it
+is checked where it can be answered — `DocumentHeadTests` in
+`apps/accounts/tests/test_auth_pages.py` renders all six auth pages and asserts
+the charset and viewport are present and ahead of `<body>`. To lint the real
+thing, point webhint at a running URL rather than at the template directory.
+
+
 **`connection refused` on migrate** — PostgreSQL isn't running, or `PGPORT` in
 `.env` is wrong. macOS: `brew services start postgresql`. Linux:
 `sudo systemctl start postgresql`.

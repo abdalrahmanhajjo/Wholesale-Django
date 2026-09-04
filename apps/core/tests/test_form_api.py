@@ -238,6 +238,32 @@ class MalformedParameterTests(TestCase):
         )
         self.assertEqual(response.status_code, 200)
 
+    def test_the_stock_check_answers_at_all(self):
+        """It did not: it imported a model that does not exist.
+
+        `stock_available` imported StockOnHand from apps.inventory.models,
+        where the model is called StockBalance, so every call raised
+        ImportError and returned a 500. Nothing covered it, and the malformed-
+        parameter test above found it by accident. This one asks the question
+        directly, so it cannot come back quietly.
+        """
+        from apps.inventory.models import StockBalance
+
+        balance = StockBalance.objects.select_related("product", "warehouse").first()
+        if balance is None:
+            self.skipTest("No stock balances to ask about.")
+        response = self.client.get(
+            "/settings/check/",
+            {
+                "rule": "stock",
+                "product": balance.product_id,
+                "warehouse": balance.warehouse_id,
+                "value": "1",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("level", json.loads(response.content))
+
     def test_a_non_numeric_prefill_id_is_a_404_not_a_500(self):
         response = self.client.get("/settings/suggest/customer/not-a-number/prefill/")
         self.assertEqual(response.status_code, 404)

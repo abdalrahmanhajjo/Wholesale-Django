@@ -199,9 +199,9 @@ def stock_available(request):
     policy the posting engine enforces (BR-017); this only tells the person
     entering the line what they are about to ask for.
     """
-    from apps.inventory.models import StockOnHand
+    from apps.inventory.models import StockBalance
 
-    if not request.user.has_perm("inventory.view_stockonhand"):
+    if not request.user.has_perm("inventory.view_stockbalance"):
         raise PermissionDenied("You do not have permission to check stock.")
     product = _optional_id(request.GET.get("product"))
     warehouse = _optional_id(request.GET.get("warehouse"))
@@ -213,8 +213,8 @@ def stock_available(request):
     except (TypeError, ValueError):
         return _ok()
 
-    row = StockOnHand.objects.filter(product_id=product, warehouse_id=warehouse).first()
-    on_hand = float(row.quantity) if row else 0.0
+    row = StockBalance.objects.filter(product_id=product, warehouse_id=warehouse).first()
+    on_hand = float(row.quantity_on_hand) if row else 0.0
     if wanted_qty <= on_hand:
         return _ok(f"{on_hand:,.4g} in stock.")
     return {

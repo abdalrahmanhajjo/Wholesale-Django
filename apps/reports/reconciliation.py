@@ -89,7 +89,7 @@ def subledger_reconciliation() -> tuple[ControlAccountCheck, ...]:
     )
 
 
-def unevaluated_control_types() -> tuple[str, ...]:
+def unevaluated_control_types(checks=None) -> tuple[str, ...]:
     """Control types the view returned no row for at all.
 
     v_subledger_reconciliation builds each row from v_control_account_balance,
@@ -100,13 +100,12 @@ def unevaluated_control_types() -> tuple[str, ...]:
 
     Naming the gap is the honest half of a reconciliation: "agrees" and "was not
     examined" are very different statements to put in front of an accountant.
+
+    Pass an already-fetched result to avoid a second round trip. The argument
+    exists because the obvious call pattern - ask for the checks, then ask what
+    was missing - otherwise queries the view twice for one answer.
     """
-    seen = {check.control_type for check in subledger_reconciliation()}
+    if checks is None:
+        checks = subledger_reconciliation()
+    seen = {check.control_type for check in checks}
     return tuple(sorted(set(CONTROL_LABELS) - seen))
-
-
-def everything_reconciles() -> bool:
-    """True only when every control type was examined and every one agreed."""
-    return not unevaluated_control_types() and all(
-        check.reconciles for check in subledger_reconciliation()
-    )

@@ -37,9 +37,13 @@ BUCKET_LABELS = {
 
 AR, AP = "AR", "AP"
 
+#: The statement is stored whole rather than assembled from a function name.
+#: Interpolating even a trusted name means the next reader has to prove where it
+#: came from, and a `noqa` on the line keeps the linter quiet while they do.
+#: Two literals cannot be injected into at all.
 _SIDE = {
     AR: {
-        "function": "fn_ar_ageing",
+        "sql": "SELECT * FROM fn_ar_ageing(%s)",
         "party_label": "Customer",
         "noun": "customers",
         "title": "Receivables ageing",
@@ -47,7 +51,7 @@ _SIDE = {
         "party_url": "parties:customer_detail",
     },
     AP: {
-        "function": "fn_ap_ageing",
+        "sql": "SELECT * FROM fn_ap_ageing(%s)",
         "party_label": "Vendor",
         "noun": "vendors",
         "title": "Payables ageing",
@@ -173,10 +177,8 @@ class AgeingReport:
 
 
 def _rows(side: str, as_of: date) -> list[AgeingItem]:
-    function = _SIDE[side]["function"]
     with connection.cursor() as cursor:
-        # The function name comes from the table above, never from a request.
-        cursor.execute(f"SELECT * FROM {function}(%s)", [as_of])  # noqa: S608
+        cursor.execute(_SIDE[side]["sql"], [as_of])
         return [
             AgeingItem(
                 party_id=row[0],

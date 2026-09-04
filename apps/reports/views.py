@@ -344,12 +344,13 @@ class ReconciliationView(StatementView):
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
+        checks = reconciliation.subledger_reconciliation()
         ctx.update(
             {
-                "checks": reconciliation.subledger_reconciliation(),
+                "checks": checks,
                 "unevaluated": [
                     reconciliation.CONTROL_LABELS[key]
-                    for key in reconciliation.unevaluated_control_types()
+                    for key in reconciliation.unevaluated_control_types(checks)
                 ],
                 "tolerance": reconciliation.TOLERANCE,
                 "page_title": "Subledger reconciliation",
@@ -366,7 +367,8 @@ class ReconciliationView(StatementView):
         writer.writerow(
             ["Control", "Account", "GL balance", "Subledger", "Difference", "Reconciles"]
         )
-        for check in reconciliation.subledger_reconciliation():
+        checks = reconciliation.subledger_reconciliation()
+        for check in checks:
             writer.writerow(
                 [
                     check.label,
@@ -377,7 +379,7 @@ class ReconciliationView(StatementView):
                     "yes" if check.reconciles else "NO",
                 ]
             )
-        for key in reconciliation.unevaluated_control_types():
+        for key in reconciliation.unevaluated_control_types(checks):
             writer.writerow(
                 [
                     reconciliation.CONTROL_LABELS[key],

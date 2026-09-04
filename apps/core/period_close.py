@@ -22,7 +22,6 @@ calendar by reopening a period that a closed one sits after.
 """
 
 from dataclasses import dataclass
-from datetime import date
 
 from django.core.exceptions import ValidationError
 from django.db import transaction
@@ -78,6 +77,11 @@ UNPOSTED_SOURCES = (
 BLOCKER = "blocker"
 WARNING = "warning"
 
+#: How many unposted documents to enumerate before saying "at least". The
+#: checklist needs to know *whether* there is a backlog and roughly how big;
+#: it does not need every row of one.
+UNPOSTED_SAMPLE_CAP = 500
+
 
 @dataclass(frozen=True, slots=True)
 class Check:
@@ -116,10 +120,6 @@ class Checklist:
     @property
     def can_close(self) -> bool:
         return not self.blockers
-
-    @property
-    def is_clean(self) -> bool:
-        return all(check.passed for check in self.checks)
 
 
 # ---------------------------------------------------------------------------
@@ -204,7 +204,7 @@ def _subledger_reconciles(period: FiscalPeriod) -> Check:
 
     checks = subledger_reconciliation()
     broken = [check for check in checks if not check.reconciles]
-    unevaluated = unevaluated_control_types()
+    unevaluated = unevaluated_control_types(checks)
     if not broken and not unevaluated:
         return Check(
             key="subledger",
@@ -240,23 +240,44 @@ def _unposted_documents(period: FiscalPeriod) -> Check:
     A warning, because a draft can legitimately be abandoned - but an
     unnoticed one is revenue or cost that silently lands in a later period.
     """
-    from django.apps import apps as django_apps
+    from collections import Counter
 
-    outstanding = []
+    from django.apps import apps as django_apps
+    from django.db.models import CharField, Value
+
+    # One query rather than twelve. Counting each document type separately is
+    # the obvious way to write this and costs twelve round trips - about four
+    # seconds against a database in another region, on a screen someone opens
+    # to decide something. A UNION of the twelve gives one.
+    parts = []
+    urls = {}
     for app_label, model_name, date_field, label, url_name in UNPOSTED_SOURCES:
         try:
             model = django_apps.get_model(app_label, model_name)
         except LookupError:  # pragma: no cover - a module removed from the build
             continue
-        count = model.objects.filter(
-            status__in=UNPOSTED_STATES,
-            **{
-                f"{date_field}__gte": period.start_date,
-                f"{date_field}__lte": period.end_date,
-            },
-        ).count()
-        if count:
-            outstanding.append((count, label, url_name))
+        urls[label] = url_name
+        parts.append(
+            model.objects.filter(
+                status__in=UNPOSTED_STATES,
+                **{
+                    f"{date_field}__gte": period.start_date,
+                    f"{date_field}__lte": period.end_date,
+                },
+            )
+            .annotate(source=Value(label, output_field=CharField()))
+            .values("source")
+        )
+
+    rows = []
+    if parts:
+        # Bounded: this returns a row per unposted document, and a period with a
+        # genuine backlog should not pull all of it across the wire to say so.
+        combined = parts[0].union(*parts[1:], all=True)
+        rows = list(combined[: UNPOSTED_SAMPLE_CAP + 1])
+    capped = len(rows) > UNPOSTED_SAMPLE_CAP
+    counts = Counter(row["source"] for row in rows[:UNPOSTED_SAMPLE_CAP])
+    outstanding = [(count, label, urls.get(label, "")) for label, count in counts.items()]
 
     if not outstanding:
         return Check(
@@ -266,7 +287,12 @@ def _unposted_documents(period: FiscalPeriod) -> Check:
             severity=WARNING,
             detail="No drafts, submissions or approvals are waiting.",
         )
-    detail = ", ".join(f"{count} {label.lower()}" for count, label, _ in outstanding)
+    # "sales invoices (3)" rather than "3 sales invoices", so a count of one
+    # does not read as "1 payments". Every label here is plural; pluralising
+    # them back down would need a singular form per row for no gain.
+    detail = ", ".join(f"{label.lower()} ({count})" for count, label, _ in outstanding)
+    if capped:
+        detail = f"at least {detail}"
     return Check(
         key="unposted",
         title="Everything dated in the period is posted",
@@ -371,13 +397,3 @@ def reopen_period(period: FiscalPeriod, *, user, reason: str) -> FiscalPeriod:
     locked.reopen_reason = reason
     locked.save(update_fields=["status", "reopened_at", "reopened_by", "reopen_reason"])
     return locked
-
-
-def next_period_to_close() -> FiscalPeriod | None:
-    """The earliest open period whose end has passed - the one usually wanted."""
-    return (
-        FiscalPeriod.objects.filter(status=PeriodStatus.OPEN, end_date__lt=date.today())
-        .select_related("fiscal_year")
-        .order_by("start_date")
-        .first()
-    )

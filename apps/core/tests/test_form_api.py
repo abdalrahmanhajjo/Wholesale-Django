@@ -195,3 +195,49 @@ class BusinessCheckTests(TestCase):
         self.assertEqual(
             self.client.get("/settings/check/?rule=customer-code&value=CHK-1").status_code, 403
         )
+
+
+class MalformedParameterTests(TestCase):
+    """Junk in a query parameter should be ignored, not raise.
+
+    These parameters reach the ORM as `pk=` / `*_id=` lookups. Django raises
+    ValueError on a non-numeric one rather than a validation error it would
+    turn into a 400, so `?exclude=abc` used to produce a 500. There was never an
+    injection here - the ORM refuses the value long before any SQL exists - but
+    a 500 is the wrong answer and it fills the logs with noise.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = make_user("malformed-user", OWNER_ADMIN)
+
+    def setUp(self):
+        self.client.force_login(self.user)
+
+    def test_a_non_numeric_exclude_is_ignored(self):
+        for value in ("abc", "1 OR 1=1", "../../etc/passwd", "%00", "1;DROP TABLE"):
+            with self.subTest(exclude=value):
+                response = self.client.get(
+                    "/settings/check/",
+                    {"rule": "customer-code", "value": "ANY-CODE", "exclude": value},
+                )
+                self.assertEqual(response.status_code, 200, f"{value!r} was not handled")
+
+    def test_a_non_numeric_stock_lookup_is_ignored(self):
+        response = self.client.get(
+            "/settings/check/",
+            {"rule": "stock-available", "product": "abc", "warehouse": "def", "value": "1"},
+        )
+        self.assertEqual(response.status_code, 200)
+
+    def test_a_valid_exclude_still_works(self):
+        """The guard must not have turned a working parameter into a no-op."""
+        response = self.client.get(
+            "/settings/check/",
+            {"rule": "customer-code", "value": "ANY-CODE", "exclude": "1"},
+        )
+        self.assertEqual(response.status_code, 200)
+
+    def test_a_non_numeric_prefill_id_is_a_404_not_a_500(self):
+        response = self.client.get("/settings/suggest/customer/not-a-number/prefill/")
+        self.assertEqual(response.status_code, 404)

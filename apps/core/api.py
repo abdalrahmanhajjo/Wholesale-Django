@@ -12,12 +12,31 @@ can skip the real check.
 """
 
 from django.contrib.auth.decorators import login_required
-from django.core.exceptions import PermissionDenied
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404
 from django.views.decorators.http import require_GET
 
 from apps.core.suggest import MIN_QUERY, build_registry
+
+
+def _optional_id(value):
+    """A row id from the query string, or None if it is not one.
+
+    These parameters reach the ORM as `pk=` / `*_id=` lookups, and Django
+    raises ValueError - not a validation error it would turn into a 400 - when
+    the value is not a number. `?exclude=abc` therefore produced a 500 rather
+    than being ignored. There is no injection here, since the ORM refuses the
+    value long before any SQL is built; it is a robustness gap, and a 500 is
+    both a worse answer and noise in the logs.
+    """
+    if value in (None, ""):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
 
 _REGISTRY = None
 
@@ -63,7 +82,14 @@ def prefill(request, kind, pk):
     suggester = _suggester(request, kind)
     if suggester.prefill is None:
         return JsonResponse({"values": {}, "notices": []})
-    obj = get_object_or_404(suggester.queryset(), pk=pk)
+    # `pk` arrives as a string because some of these records are keyed by a
+    # code rather than a number (a currency, for instance). A number-keyed
+    # model given a non-numeric one raises rather than missing, so the lookup
+    # failing for that reason is still just "no such record".
+    try:
+        obj = get_object_or_404(suggester.queryset(), pk=pk)
+    except (ValueError, ValidationError) as exc:
+        raise Http404("No such record.") from exc
     return JsonResponse(suggester.prefill(obj))
 
 
@@ -98,7 +124,7 @@ def _party_code_free(request, model, permission, label):
     code = (request.GET.get("value") or "").strip()
     if not code:
         return _ok()
-    exclude = request.GET.get("exclude") or None
+    exclude = _optional_id(request.GET.get("exclude"))
     clash = model.objects.filter(code__iexact=code)
     if exclude:
         clash = clash.exclude(pk=exclude)
@@ -138,7 +164,7 @@ def _similar_name(request, model, permission, noun):
     name = (request.GET.get("value") or "").strip()
     if len(name) < 4:
         return _ok()
-    exclude = request.GET.get("exclude") or None
+    exclude = _optional_id(request.GET.get("exclude"))
     matches = model.objects.filter(name__icontains=name)
     if exclude:
         matches = matches.exclude(pk=exclude)
@@ -177,8 +203,8 @@ def stock_available(request):
 
     if not request.user.has_perm("inventory.view_stockonhand"):
         raise PermissionDenied("You do not have permission to check stock.")
-    product = request.GET.get("product")
-    warehouse = request.GET.get("warehouse")
+    product = _optional_id(request.GET.get("product"))
+    warehouse = _optional_id(request.GET.get("warehouse"))
     wanted = request.GET.get("value")
     if not (product and warehouse and wanted):
         return _ok()

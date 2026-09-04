@@ -157,6 +157,24 @@ a click that takes a second looks like a click that did nothing.
           {% endif %}
         </ul>
 
+        <p class="nav-group" id="nav-catalog">Catalog</p>
+        <ul aria-labelledby="nav-catalog">
+          {% if perms.catalog.view_productcategory %}
+            <li>
+              <a href="{% url 'catalog:category_list' %}"
+                 class="nav-link {% if '/catalog/categories/' in request.path %}nav-link-active{% endif %}"
+                 {% if '/catalog/categories/' in request.path %}aria-current="page"{% endif %}>Categories</a>
+            </li>
+          {% endif %}
+          {% if perms.catalog.view_unitofmeasure %}
+            <li>
+              <a href="{% url 'catalog:unit_list' %}"
+                 class="nav-link {% if '/catalog/units/' in request.path %}nav-link-active{% endif %}"
+                 {% if '/catalog/units/' in request.path %}aria-current="page"{% endif %}>Units</a>
+            </li>
+          {% endif %}
+        </ul>
+
         <p class="nav-group" id="nav-finance">Finance</p>
         <ul aria-labelledby="nav-finance">
           <li><span class="nav-link-pending">Accounting <span class="nav-pending-tag">Soon</span></span></li>

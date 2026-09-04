@@ -166,19 +166,67 @@
 
   /* --------------------------------------------------------------- sidebar */
   .nav-link {
-    @apply flex min-h-[40px] items-center gap-3 rounded-xl px-3 text-sm font-medium text-nav-fg transition-all hover:bg-white/[.08] hover:text-white;
+    @apply relative flex min-h-[40px] items-center gap-3 rounded-xl px-3 text-sm
+           font-medium text-nav-fg transition-colors duration-200
+           hover:bg-white/[.06] hover:text-white;
   }
-  .nav-link-active { @apply bg-brand/[.14] font-semibold text-emerald-300; }
+  /* The icon carries the hover, not the row. A whole row that lightens reads as
+     a button; an icon that brightens and edges over reads as a pointer, which
+     is what a nav row is. */
+  .nav-link .icon {
+    @apply text-nav-muted transition-[color,transform] duration-200;
+  }
+  .nav-link:hover .icon { @apply translate-x-px text-white; }
+
+  /* Active: a rail on the left edge rather than a filled pill. The fill alone
+     had to be strong enough to read at a glance, which made every active row
+     shout; a 2px rail is unmistakable at any weight of tint, so the tint can
+     stay quiet. */
+  .nav-link-active {
+    @apply bg-brand/[.10] font-semibold text-emerald-300;
+  }
+  .nav-link-active::before {
+    content: "";
+    @apply absolute left-0 top-1/2 h-5 w-[2px] -translate-y-1/2 rounded-r
+           bg-brand;
+  }
+  .nav-link-active .icon,
+  .nav-link-active:hover .icon { @apply text-emerald-300; }
+  /* Already where you are: nothing to travel to. */
+  .nav-link-active:hover { @apply bg-brand/[.14] text-emerald-300; }
+  .nav-link-active:hover .icon { @apply translate-x-0; }
   /* Modules that exist in the model but have no screens yet. Announced as
      disabled and given a visible reason instead of a hover-only title. */
   .nav-link-pending {
-    @apply flex min-h-[40px] items-center justify-between gap-3 rounded-xl px-3 text-sm font-medium text-nav-muted;
+    @apply flex min-h-[40px] items-center gap-3 rounded-xl px-3 text-sm
+           font-medium text-nav-muted;
   }
+  .nav-link-pending .icon { @apply text-nav-muted/60; }
+  /* Pushes the tag to the far edge without justify-between, which would have
+     spread the icon away from its label too. */
+  .nav-link-pending .nav-pending-tag { @apply ml-auto; }
   .nav-pending-tag {
     @apply rounded-md border border-white/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-nav-muted;
   }
+  /* A hairline above the label rather than beneath it: the rule belongs to the
+     gap between groups, and drawing it under the words attaches it to the
+     wrong one. The first group in the list has no gap above it to divide. */
   .nav-group {
-    @apply px-3 pb-1 pt-5 text-[10px] font-bold uppercase tracking-[0.14em] text-nav-muted;
+    @apply mt-5 border-t border-white/[.06] px-3 pb-1 pt-5 text-[10px]
+           font-bold uppercase tracking-[0.16em] text-nav-muted/90;
+  }
+  .nav-group:first-child { @apply mt-0 border-t-0 pt-1; }
+
+  /* Sidebar rows are 40px and sit against a dark ground, so the page-wide
+     focus ring is both too tight and too dim here. */
+  .nav-link:focus-visible,
+  .nav-link-pending:focus-visible {
+    @apply outline-none ring-2 ring-brand/70 ring-offset-2 ring-offset-sidebar;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .nav-link .icon { @apply transition-none; }
+    .nav-link:hover .icon { @apply translate-x-0; }
   }
 
 

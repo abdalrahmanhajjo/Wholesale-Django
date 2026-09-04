@@ -75,7 +75,7 @@ a click that takes a second looks like a click that did nothing.
         <ul aria-labelledby="nav-overview">
           <li>
             <a href="{% url 'dashboard' %}" class="nav-link {% if request.resolver_match.url_name == 'dashboard' %}nav-link-active{% endif %}"
-               {% if request.resolver_match.url_name == 'dashboard' %}aria-current="page"{% endif %}>Dashboard</a>
+               {% if request.resolver_match.url_name == 'dashboard' %}aria-current="page"{% endif %}><svg class="icon" aria-hidden="true"><use href="#i-nav-dashboard"></use></svg><span>Dashboard</span></a>
           </li>
         </ul>
 
@@ -84,7 +84,7 @@ a click that takes a second looks like a click that did nothing.
           {% if perms.sales.view_salesorder %}
             <li>
               <a href="{% url 'sales:so_list' %}" class="nav-link {% if request.resolver_match.url_name|slice:':3' == 'so_' %}nav-link-active{% endif %}"
-                 {% if request.resolver_match.url_name|slice:':3' == 'so_' %}aria-current="page"{% endif %}>Sales orders</a>
+                 {% if request.resolver_match.url_name|slice:':3' == 'so_' %}aria-current="page"{% endif %}><svg class="icon" aria-hidden="true"><use href="#i-nav-sales-order"></use></svg><span>Sales orders</span></a>
             </li>
           {% endif %}
           {% comment %}
@@ -94,56 +94,56 @@ a click that takes a second looks like a click that did nothing.
           {% if perms.inventory.view_deliverynote %}
             <li>
               <a href="{% url 'sales:delivery_list' %}" class="nav-link {% if request.resolver_match.url_name|slice:':9' == 'delivery_' %}nav-link-active{% endif %}"
-                 {% if request.resolver_match.url_name|slice:':9' == 'delivery_' %}aria-current="page"{% endif %}>Deliveries</a>
+                 {% if request.resolver_match.url_name|slice:':9' == 'delivery_' %}aria-current="page"{% endif %}><svg class="icon" aria-hidden="true"><use href="#i-nav-delivery"></use></svg><span>Deliveries</span></a>
             </li>
           {% endif %}
           {% if perms.sales.view_salesinvoice %}
             <li>
               <a href="{% url 'sales:invoice_list' %}" class="nav-link {% if request.resolver_match.url_name|slice:':8' == 'invoice_' %}nav-link-active{% endif %}"
-                 {% if request.resolver_match.url_name|slice:':8' == 'invoice_' %}aria-current="page"{% endif %}>Invoices</a>
+                 {% if request.resolver_match.url_name|slice:':8' == 'invoice_' %}aria-current="page"{% endif %}><svg class="icon" aria-hidden="true"><use href="#i-nav-invoice"></use></svg><span>Invoices</span></a>
             </li>
           {% endif %}
           <li>
             <a href="{% url 'purchases:po_list' %}" class="nav-link {% if request.resolver_match.app_name == 'purchases' and request.resolver_match.url_name|slice:':3' == 'po_' %}nav-link-active{% endif %}"
-               {% if request.resolver_match.app_name == 'purchases' and request.resolver_match.url_name|slice:':3' == 'po_' %}aria-current="page"{% endif %}>Purchase orders</a>
+               {% if request.resolver_match.app_name == 'purchases' and request.resolver_match.url_name|slice:':3' == 'po_' %}aria-current="page"{% endif %}><svg class="icon" aria-hidden="true"><use href="#i-nav-purchase-order"></use></svg><span>Purchase orders</span></a>
           </li>
           <li>
             <a href="{% url 'purchases:bill_list' %}" class="nav-link {% if request.resolver_match.app_name == 'purchases' and request.resolver_match.url_name|slice:':5' == 'bill_' %}nav-link-active{% endif %}"
-               {% if request.resolver_match.app_name == 'purchases' and request.resolver_match.url_name|slice:':5' == 'bill_' %}aria-current="page"{% endif %}>Purchase bills</a>
+               {% if request.resolver_match.app_name == 'purchases' and request.resolver_match.url_name|slice:':5' == 'bill_' %}aria-current="page"{% endif %}><svg class="icon" aria-hidden="true"><use href="#i-nav-bill"></use></svg><span>Purchase bills</span></a>
           </li>
           <li>
             <a href="{% url 'purchases:pr_list' %}" class="nav-link {% if request.resolver_match.app_name == 'purchases' and request.resolver_match.url_name|slice:':3' == 'pr_' %}nav-link-active{% endif %}"
-               {% if request.resolver_match.app_name == 'purchases' and request.resolver_match.url_name|slice:':3' == 'pr_' %}aria-current="page"{% endif %}>Purchase returns</a>
+               {% if request.resolver_match.app_name == 'purchases' and request.resolver_match.url_name|slice:':3' == 'pr_' %}aria-current="page"{% endif %}><svg class="icon" aria-hidden="true"><use href="#i-nav-return"></use></svg><span>Purchase returns</span></a>
           </li>
           <li>
             <a href="{% url 'purchases:dbn_list' %}" class="nav-link {% if request.resolver_match.app_name == 'purchases' and request.resolver_match.url_name|slice:':4' == 'dbn_' %}nav-link-active{% endif %}"
-               {% if request.resolver_match.app_name == 'purchases' and request.resolver_match.url_name|slice:':4' == 'dbn_' %}aria-current="page"{% endif %}>Vendor debit notes</a>
+               {% if request.resolver_match.app_name == 'purchases' and request.resolver_match.url_name|slice:':4' == 'dbn_' %}aria-current="page"{% endif %}><svg class="icon" aria-hidden="true"><use href="#i-nav-debit-note"></use></svg><span>Vendor debit notes</span></a>
           </li>
           {% if perms.payments.view_payment %}
             <li>
               <a href="{% url 'payments:payment_list' %}" class="nav-link {% if request.resolver_match.app_name == 'payments' %}nav-link-active{% endif %}"
-                 {% if request.resolver_match.app_name == 'payments' %}aria-current="page"{% endif %}>Payments</a>
+                 {% if request.resolver_match.app_name == 'payments' %}aria-current="page"{% endif %}><svg class="icon" aria-hidden="true"><use href="#i-nav-payment"></use></svg><span>Payments</span></a>
             </li>
           {% endif %}
           <li>
             <a href="{% url 'inventory:gr_list' %}" class="nav-link {% if request.resolver_match.app_name == 'inventory' and request.resolver_match.url_name|slice:':3' == 'gr_' %}nav-link-active{% endif %}"
-               {% if request.resolver_match.app_name == 'inventory' and request.resolver_match.url_name|slice:':3' == 'gr_' %}aria-current="page"{% endif %}>Goods receipts</a>
+               {% if request.resolver_match.app_name == 'inventory' and request.resolver_match.url_name|slice:':3' == 'gr_' %}aria-current="page"{% endif %}><svg class="icon" aria-hidden="true"><use href="#i-nav-receipt"></use></svg><span>Goods receipts</span></a>
           </li>
           <li>
             <a href="{% url 'inventory:st_list' %}" class="nav-link {% if request.resolver_match.app_name == 'inventory' and request.resolver_match.url_name|slice:':3' == 'st_' %}nav-link-active{% endif %}"
-               {% if request.resolver_match.app_name == 'inventory' and request.resolver_match.url_name|slice:':3' == 'st_' %}aria-current="page"{% endif %}>Stock transfers</a>
+               {% if request.resolver_match.app_name == 'inventory' and request.resolver_match.url_name|slice:':3' == 'st_' %}aria-current="page"{% endif %}><svg class="icon" aria-hidden="true"><use href="#i-nav-transfer"></use></svg><span>Stock transfers</span></a>
           </li>
           <li>
             <a href="{% url 'inventory:sa_list' %}" class="nav-link {% if request.resolver_match.app_name == 'inventory' and request.resolver_match.url_name|slice:':3' == 'sa_' %}nav-link-active{% endif %}"
-               {% if request.resolver_match.app_name == 'inventory' and request.resolver_match.url_name|slice:':3' == 'sa_' %}aria-current="page"{% endif %}>Stock adjustments</a>
+               {% if request.resolver_match.app_name == 'inventory' and request.resolver_match.url_name|slice:':3' == 'sa_' %}aria-current="page"{% endif %}><svg class="icon" aria-hidden="true"><use href="#i-nav-adjust"></use></svg><span>Stock adjustments</span></a>
           </li>
           <li>
             <a href="{% url 'inventory:stock_ledger' %}" class="nav-link {% if request.resolver_match.url_name == 'stock_ledger' %}nav-link-active{% endif %}"
-               {% if request.resolver_match.url_name == 'stock_ledger' %}aria-current="page"{% endif %}>Stock ledger</a>
+               {% if request.resolver_match.url_name == 'stock_ledger' %}aria-current="page"{% endif %}><svg class="icon" aria-hidden="true"><use href="#i-nav-stock-ledger"></use></svg><span>Stock ledger</span></a>
           </li>
           <li>
             <a href="{% url 'inventory:stock_valuation' %}" class="nav-link {% if request.resolver_match.url_name == 'stock_valuation' %}nav-link-active{% endif %}"
-               {% if request.resolver_match.url_name == 'stock_valuation' %}aria-current="page"{% endif %}>Inventory valuation</a>
+               {% if request.resolver_match.url_name == 'stock_valuation' %}aria-current="page"{% endif %}><svg class="icon" aria-hidden="true"><use href="#i-nav-valuation"></use></svg><span>Inventory valuation</span></a>
           </li>
         </ul>
 
@@ -152,39 +152,39 @@ a click that takes a second looks like a click that did nothing.
           <ul aria-labelledby="nav-financials">
             <li>
               <a href="{% url 'reports:general_ledger' %}" class="nav-link {% if request.resolver_match.url_name == 'general_ledger' %}nav-link-active{% endif %}"
-                 {% if request.resolver_match.url_name == 'general_ledger' %}aria-current="page"{% endif %}>General ledger</a>
+                 {% if request.resolver_match.url_name == 'general_ledger' %}aria-current="page"{% endif %}><svg class="icon" aria-hidden="true"><use href="#i-nav-ledger"></use></svg><span>General ledger</span></a>
             </li>
             <li>
               <a href="{% url 'reports:trial_balance' %}" class="nav-link {% if request.resolver_match.url_name == 'trial_balance' %}nav-link-active{% endif %}"
-                 {% if request.resolver_match.url_name == 'trial_balance' %}aria-current="page"{% endif %}>Trial balance</a>
+                 {% if request.resolver_match.url_name == 'trial_balance' %}aria-current="page"{% endif %}><svg class="icon" aria-hidden="true"><use href="#i-nav-trial-balance"></use></svg><span>Trial balance</span></a>
             </li>
             <li>
               <a href="{% url 'reports:profit_and_loss' %}" class="nav-link {% if request.resolver_match.url_name == 'profit_and_loss' %}nav-link-active{% endif %}"
-                 {% if request.resolver_match.url_name == 'profit_and_loss' %}aria-current="page"{% endif %}>Profit and loss</a>
+                 {% if request.resolver_match.url_name == 'profit_and_loss' %}aria-current="page"{% endif %}><svg class="icon" aria-hidden="true"><use href="#i-nav-pnl"></use></svg><span>Profit and loss</span></a>
             </li>
             <li>
               <a href="{% url 'reports:balance_sheet' %}" class="nav-link {% if request.resolver_match.url_name == 'balance_sheet' %}nav-link-active{% endif %}"
-                 {% if request.resolver_match.url_name == 'balance_sheet' %}aria-current="page"{% endif %}>Balance sheet</a>
+                 {% if request.resolver_match.url_name == 'balance_sheet' %}aria-current="page"{% endif %}><svg class="icon" aria-hidden="true"><use href="#i-nav-balance-sheet"></use></svg><span>Balance sheet</span></a>
             </li>
             <li>
               <a href="{% url 'reports:ar_ageing' %}" class="nav-link {% if request.resolver_match.url_name == 'ar_ageing' %}nav-link-active{% endif %}"
-                 {% if request.resolver_match.url_name == 'ar_ageing' %}aria-current="page"{% endif %}>Receivables ageing</a>
+                 {% if request.resolver_match.url_name == 'ar_ageing' %}aria-current="page"{% endif %}><svg class="icon" aria-hidden="true"><use href="#i-nav-ar-ageing"></use></svg><span>Receivables ageing</span></a>
             </li>
             <li>
               <a href="{% url 'reports:ap_ageing' %}" class="nav-link {% if request.resolver_match.url_name == 'ap_ageing' %}nav-link-active{% endif %}"
-                 {% if request.resolver_match.url_name == 'ap_ageing' %}aria-current="page"{% endif %}>Payables ageing</a>
+                 {% if request.resolver_match.url_name == 'ap_ageing' %}aria-current="page"{% endif %}><svg class="icon" aria-hidden="true"><use href="#i-nav-ap-ageing"></use></svg><span>Payables ageing</span></a>
             </li>
             <li>
               <a href="{% url 'reports:tax' %}" class="nav-link {% if request.resolver_match.url_name == 'tax' %}nav-link-active{% endif %}"
-                 {% if request.resolver_match.url_name == 'tax' %}aria-current="page"{% endif %}>Tax report</a>
+                 {% if request.resolver_match.url_name == 'tax' %}aria-current="page"{% endif %}><svg class="icon" aria-hidden="true"><use href="#i-nav-tax"></use></svg><span>Tax report</span></a>
             </li>
             <li>
               <a href="{% url 'reports:money_register' %}" class="nav-link {% if request.resolver_match.url_name == 'money_register' %}nav-link-active{% endif %}"
-                 {% if request.resolver_match.url_name == 'money_register' %}aria-current="page"{% endif %}>Money register</a>
+                 {% if request.resolver_match.url_name == 'money_register' %}aria-current="page"{% endif %}><svg class="icon" aria-hidden="true"><use href="#i-nav-register"></use></svg><span>Money register</span></a>
             </li>
             <li>
               <a href="{% url 'reports:reconciliation' %}" class="nav-link {% if request.resolver_match.url_name == 'reconciliation' %}nav-link-active{% endif %}"
-                 {% if request.resolver_match.url_name == 'reconciliation' %}aria-current="page"{% endif %}>Reconciliation</a>
+                 {% if request.resolver_match.url_name == 'reconciliation' %}aria-current="page"{% endif %}><svg class="icon" aria-hidden="true"><use href="#i-nav-reconcile"></use></svg><span>Reconciliation</span></a>
             </li>
           </ul>
         {% endif %}
@@ -192,7 +192,7 @@ a click that takes a second looks like a click that did nothing.
           <ul aria-labelledby="nav-financials">
             <li>
               <a href="{% url 'core:fiscalperiod_list' %}" class="nav-link {% if request.resolver_match.url_name|slice:':6' == 'period' or request.resolver_match.url_name == 'fiscalperiod_list' %}nav-link-active{% endif %}"
-                 {% if request.resolver_match.url_name|slice:':6' == 'period' %}aria-current="page"{% endif %}>Period close</a>
+                 {% if request.resolver_match.url_name|slice:':6' == 'period' %}aria-current="page"{% endif %}><svg class="icon" aria-hidden="true"><use href="#i-lock"></use></svg><span>Period close</span></a>
             </li>
           </ul>
         {% endif %}
@@ -203,40 +203,40 @@ a click that takes a second looks like a click that did nothing.
             <li>
               <a href="{% url 'parties:customer_list' %}"
                  class="nav-link {% if request.resolver_match.url_name|slice:':8' == 'customer' %}nav-link-active{% endif %}"
-                 {% if request.resolver_match.url_name|slice:':8' == 'customer' %}aria-current="page"{% endif %}>Customers</a>
+                 {% if request.resolver_match.url_name|slice:':8' == 'customer' %}aria-current="page"{% endif %}><svg class="icon" aria-hidden="true"><use href="#i-nav-customers"></use></svg><span>Customers</span></a>
             </li>
           {% endif %}
           {% if perms.parties.view_vendor %}
             <li>
               <a href="{% url 'parties:vendor_list' %}"
                  class="nav-link {% if request.resolver_match.url_name|slice:':6' == 'vendor' %}nav-link-active{% endif %}"
-                 {% if request.resolver_match.url_name|slice:':6' == 'vendor' %}aria-current="page"{% endif %}>Vendors</a>
+                 {% if request.resolver_match.url_name|slice:':6' == 'vendor' %}aria-current="page"{% endif %}><svg class="icon" aria-hidden="true"><use href="#i-nav-vendors"></use></svg><span>Vendors</span></a>
             </li>
           {% endif %}
         </ul>
 
         <p class="nav-group" id="nav-finance">Finance</p>
         <ul aria-labelledby="nav-finance">
-          <li><span class="nav-link-pending">Accounting <span class="nav-pending-tag">Soon</span></span></li>
-          <li><span class="nav-link-pending">Reports <span class="nav-pending-tag">Soon</span></span></li>
+          <li><span class="nav-link-pending"><svg class="icon" aria-hidden="true"><use href="#i-nav-calculator"></use></svg><span>Accounting</span> <span class="nav-pending-tag">Soon</span></span></li>
+          <li><span class="nav-link-pending"><svg class="icon" aria-hidden="true"><use href="#i-nav-reports"></use></svg><span>Reports</span> <span class="nav-pending-tag">Soon</span></span></li>
         </ul>
 
         <p class="nav-group" id="nav-settings">Settings</p>
         <ul aria-labelledby="nav-settings">
-          <li><a href="{% url 'core:company_settings' %}" class="nav-link {% if '/settings/company/' in request.path %}nav-link-active{% endif %}" {% if '/settings/company/' in request.path %}aria-current="page"{% endif %}>Company</a></li>
-          <li><a href="{% url 'core:currency_list' %}" class="nav-link {% if '/settings/currencies/' in request.path %}nav-link-active{% endif %}" {% if '/settings/currencies/' in request.path %}aria-current="page"{% endif %}>Currencies</a></li>
-          <li><a href="{% url 'core:taxcode_list' %}" class="nav-link {% if '/settings/tax-codes/' in request.path %}nav-link-active{% endif %}" {% if '/settings/tax-codes/' in request.path %}aria-current="page"{% endif %}>Tax codes</a></li>
-          <li><a href="{% url 'core:paymentterm_list' %}" class="nav-link {% if '/settings/payment-terms/' in request.path %}nav-link-active{% endif %}" {% if '/settings/payment-terms/' in request.path %}aria-current="page"{% endif %}>Payment terms</a></li>
-          <li><a href="{% url 'core:sequence_list' %}" class="nav-link {% if '/settings/number-series/' in request.path %}nav-link-active{% endif %}" {% if '/settings/number-series/' in request.path %}aria-current="page"{% endif %}>Number series</a></li>
-          <li><a href="{% url 'core:fiscalperiod_list' %}" class="nav-link {% if '/settings/fiscal-periods/' in request.path %}nav-link-active{% endif %}" {% if '/settings/fiscal-periods/' in request.path %}aria-current="page"{% endif %}>Fiscal periods</a></li>
-          <li><a href="{% url 'core:account_list' %}" class="nav-link {% if '/settings/chart-of-accounts/' in request.path %}nav-link-active{% endif %}">Chart of accounts</a></li>
-        <li><a href="{% url 'core:mapping_list' %}" class="nav-link {% if '/settings/account-mappings/' in request.path %}nav-link-active{% endif %}">Account mappings</a></li>
+          <li><a href="{% url 'core:company_settings' %}" class="nav-link {% if '/settings/company/' in request.path %}nav-link-active{% endif %}" {% if '/settings/company/' in request.path %}aria-current="page"{% endif %}><svg class="icon" aria-hidden="true"><use href="#i-nav-company"></use></svg><span>Company</span></a></li>
+          <li><a href="{% url 'core:currency_list' %}" class="nav-link {% if '/settings/currencies/' in request.path %}nav-link-active{% endif %}" {% if '/settings/currencies/' in request.path %}aria-current="page"{% endif %}><svg class="icon" aria-hidden="true"><use href="#i-nav-currency"></use></svg><span>Currencies</span></a></li>
+          <li><a href="{% url 'core:taxcode_list' %}" class="nav-link {% if '/settings/tax-codes/' in request.path %}nav-link-active{% endif %}" {% if '/settings/tax-codes/' in request.path %}aria-current="page"{% endif %}><svg class="icon" aria-hidden="true"><use href="#i-nav-tax"></use></svg><span>Tax codes</span></a></li>
+          <li><a href="{% url 'core:paymentterm_list' %}" class="nav-link {% if '/settings/payment-terms/' in request.path %}nav-link-active{% endif %}" {% if '/settings/payment-terms/' in request.path %}aria-current="page"{% endif %}><svg class="icon" aria-hidden="true"><use href="#i-nav-terms"></use></svg><span>Payment terms</span></a></li>
+          <li><a href="{% url 'core:sequence_list' %}" class="nav-link {% if '/settings/number-series/' in request.path %}nav-link-active{% endif %}" {% if '/settings/number-series/' in request.path %}aria-current="page"{% endif %}><svg class="icon" aria-hidden="true"><use href="#i-nav-series"></use></svg><span>Number series</span></a></li>
+          <li><a href="{% url 'core:fiscalperiod_list' %}" class="nav-link {% if '/settings/fiscal-periods/' in request.path %}nav-link-active{% endif %}" {% if '/settings/fiscal-periods/' in request.path %}aria-current="page"{% endif %}><svg class="icon" aria-hidden="true"><use href="#i-nav-calendar"></use></svg><span>Fiscal periods</span></a></li>
+          <li><a href="{% url 'core:account_list' %}" class="nav-link {% if '/settings/chart-of-accounts/' in request.path %}nav-link-active{% endif %}"><svg class="icon" aria-hidden="true"><use href="#i-nav-coa"></use></svg><span>Chart of accounts</span></a></li>
+        <li><a href="{% url 'core:mapping_list' %}" class="nav-link {% if '/settings/account-mappings/' in request.path %}nav-link-active{% endif %}"><svg class="icon" aria-hidden="true"><use href="#i-nav-mapping"></use></svg><span>Account mappings</span></a></li>
         </ul>
 
         {% if user.is_staff %}
           <p class="nav-group" id="nav-system">System</p>
           <ul aria-labelledby="nav-system">
-            <li><a href="{% url 'admin:index' %}" class="nav-link">Django admin</a></li>
+            <li><a href="{% url 'admin:index' %}" class="nav-link"><svg class="icon" aria-hidden="true"><use href="#i-shield"></use></svg><span>Django admin</span></a></li>
           </ul>
         {% endif %}
       </nav>

@@ -7,9 +7,15 @@ from django.contrib.auth.models import Permission
 from django.test import TestCase
 from django.urls import reverse
 
+from apps.reports import reconciliation
 from apps.reports.tests.test_statements import TradingYearFixture
 
-STATEMENTS = ("reports:trial_balance", "reports:profit_and_loss", "reports:balance_sheet")
+STATEMENTS = (
+    "reports:trial_balance",
+    "reports:profit_and_loss",
+    "reports:balance_sheet",
+    "reports:reconciliation",
+)
 ALL_SCREENS = ("reports:general_ledger", *STATEMENTS)
 
 
@@ -157,3 +163,34 @@ class ExportTests(ReaderFixture, TestCase):
             with self.subTest(screen=name):
                 response = self.client.get(reverse(name), {"export": "csv"})
                 self.assertEqual(response.status_code, 403)
+
+
+class ReconciliationScreenTests(ReaderFixture, TestCase):
+    """GL-011 / RPT-021: the screen has to distinguish three states, not two."""
+
+    def test_it_renders_for_a_reader(self):
+        response = self.client.get(reverse("reports:reconciliation"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Subledger")
+
+    def test_a_control_account_with_no_ledger_activity_is_reported_as_unexamined(self):
+        """The view returns no row for it at all, which must not read as agreement."""
+        response = self.client.get(reverse("reports:reconciliation"))
+        checked = {check.control_type for check in response.context["checks"]}
+        unevaluated = response.context["unevaluated"]
+        # Whatever the data, every control type is accounted for one way or the
+        # other - nothing is silently missing from the page.
+        self.assertEqual(
+            len(checked) + len(unevaluated),
+            len(reconciliation.CONTROL_LABELS),
+        )
+
+    def test_the_export_names_the_unexamined_ones_too(self):
+        body = self._csv_body("reports:reconciliation")
+        for label in self.client.get(reverse("reports:reconciliation")).context["unevaluated"]:
+            self.assertIn(label, body)
+
+    def _csv_body(self, name):
+        response = self.client.get(reverse(name), {"export": "csv"})
+        self.assertEqual(response.status_code, 200)
+        return response.content.decode()

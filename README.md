@@ -252,6 +252,37 @@ Two behaviours that look wrong until you know why:
   statement would be out by exactly that amount. It shows as its own equity
   line and becomes zero on its own once the year is closed.
 
+### Closing a period (CFG-009, ACC-008, BR-020)
+
+**Financials → Period close**, or any row on the fiscal periods list. The screen
+runs a checklist and offers the button.
+
+The checklist separates two kinds of finding, and the distinction is the point:
+
+| | Meaning | Effect |
+|---|---|---|
+| **Blocks closing** | the arithmetic is wrong | close is refused |
+| **Needs a decision** | somebody has to judge it | close is allowed, and the acknowledgement is kept |
+
+Blockers are an open earlier period and a trial balance that does not balance.
+Neither is a matter of opinion, and no reason text makes closing over them
+right. Warnings are unposted documents dated in the period and a control
+account that disagrees with its subledger — both serious, both frequently
+older than the period being closed, and making them blockers means one
+historical mistake freezes the calendar until somebody unpicks it.
+
+A reason is required either way. It is the only lasting record of who signed
+the period off, and it is kept on the period alongside who and when.
+
+**Reopening** needs its own permission, its own reason, and goes in reverse
+order — reopening March while April is closed would let a new entry change an
+opening balance that has already been signed off. A `LOCKED` period never
+reopens; that is the difference between locked and closed.
+
+Enforcement is not only in this code. `wams_journal_period_check()` rejects any
+journal entry aimed at a closed period at the database level, so a period that
+is closed is closed to everything, not merely to the screens.
+
 ## Pending accountant sign-off
 
 These are placeholders (BRD §14.4) and will change. Don't hard-code them.

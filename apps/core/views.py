@@ -5,13 +5,17 @@ Role-aware dashboard and audited configuration screens backed by Django ORM.
 """
 
 from django.conf import settings
+from django.contrib import messages
 from django.contrib.auth.decorators import login_required, permission_required
 from django.core.cache import cache
+from django.core.exceptions import ValidationError
 from django.db.models import Count, Q, Sum
-from django.shortcuts import render
+from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse_lazy
-from django.views.generic import CreateView, UpdateView
+from django.views import View
+from django.views.generic import CreateView, DetailView, UpdateView
 
+from apps.core import audit, period_close
 from apps.core.forms import (
     AccountForm,
     AccountMappingForm,
@@ -19,6 +23,8 @@ from apps.core.forms import (
     CurrencyForm,
     DocumentSequenceForm,
     PaymentTermForm,
+    PeriodCloseForm,
+    PeriodReopenForm,
     TaxCodeForm,
 )
 from apps.core.list_views import (
@@ -30,6 +36,7 @@ from apps.core.list_views import (
 )
 from apps.core.mixins import ActionPermissionMixin, AuditedFormMixin, BackLinkMixin
 from apps.core.models import (
+    AuditAction,
     Company,
     Currency,
     DocumentSequence,
@@ -43,9 +50,11 @@ from apps.core.models import (
     TaxTreatment,
 )
 from apps.core.permissions import (
+    CLOSE_PERIOD,
     EXPORT_DATA,
     MANAGE_CHART_OF_ACCOUNTS,
     MANAGE_CONFIGURATION,
+    REOPEN_PERIOD,
 )
 from apps.ledger.models import (
     Account,
@@ -429,15 +438,12 @@ class FiscalPeriodListView(FilteredListView):
     model = FiscalPeriod
     required_permission = "core.view_fiscalperiod"
     page_title = "Fiscal periods"
-    page_subtitle = (
-        "Posting windows. Closing and reopening happen through the accounting "
-        "workflow, not from this screen (CFG-009, ACC-008)."
-    )
+    page_subtitle = "Posting windows. Open one to run its close checklist (CFG-009, ACC-008)."
     default_ordering = "start_date"
     paginate_by = 50
 
     columns = [
-        Column("name", "Period", sortable=True),
+        Column("name", "Period", sortable=True, link=True),
         Column("fiscal_year", "Year", sortable=True),
         Column("period_no", "No.", align="right"),
         Column("start_date", "Starts", sortable=True),
@@ -605,3 +611,107 @@ class AccountMappingUpdateView(AuditedFormMixin, ActionPermissionMixin, UpdateVi
         ctx = super().get_context_data(**kwargs)
         ctx["page_title"] = f"Edit {self.object.get_key_display()}"
         return ctx
+
+
+# ---------------------------------------------------------------------------
+# Period close (CFG-009, ACC-008, BR-020)
+# ---------------------------------------------------------------------------
+class PeriodCloseView(BackLinkMixin, ActionPermissionMixin, DetailView):
+    """The checklist for one period, and the button that signs it off.
+
+    Read access is the view permission; closing needs CLOSE_PERIOD and
+    reopening needs REOPEN_PERIOD, both checked on the actions rather than
+    here, so somebody without either can still see why a period is not ready.
+    """
+
+    model = FiscalPeriod
+    template_name = "core/period_close.html"
+    context_object_name = "period"
+    required_permission = "core.view_fiscalperiod"
+    back_url_name = "core:fiscalperiod_list"
+    back_label = "Back to periods"
+
+    def get_queryset(self):
+        return super().get_queryset().select_related("fiscal_year", "closed_by", "reopened_by")
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        report = period_close.checklist(self.object)
+        ctx.update(
+            {
+                "page_title": f"Close {self.object.name}",
+                "page_subtitle": (
+                    f"{self.object.start_date} to {self.object.end_date} · "
+                    f"{self.object.get_status_display()}"
+                ),
+                "checklist": report,
+                "close_form": PeriodCloseForm(warnings=report.warnings),
+                "reopen_form": PeriodReopenForm(),
+                "can_close": self.request.user.has_perm(CLOSE_PERIOD),
+                "can_reopen": self.request.user.has_perm(REOPEN_PERIOD),
+            }
+        )
+        return ctx
+
+
+class PeriodCloseActionView(ActionPermissionMixin, View):
+    required_permission = CLOSE_PERIOD
+    http_method_names = ["post"]
+
+    def post(self, request, pk):
+        period = get_object_or_404(FiscalPeriod, pk=pk)
+        # Recomputed here so the acknowledgement matches what is true now, not
+        # what was true when the page was drawn.
+        report = period_close.checklist(period)
+        form = PeriodCloseForm(request.POST, warnings=report.warnings)
+        if not form.is_valid():
+            for error in form.errors.values():
+                messages.error(request, "; ".join(error))
+            return redirect("core:period_close", pk=pk)
+        try:
+            closed = period_close.close_period(
+                period, user=request.user, reason=form.cleaned_data["reason"]
+            )
+        except ValidationError as exc:
+            for message in exc.messages:
+                messages.error(request, message)
+        else:
+            audit.record_action(
+                request,
+                AuditAction.CLOSE_PERIOD,
+                closed,
+                reason=closed.close_reason,
+                warnings_acknowledged=len(report.warnings),
+            )
+            messages.success(request, f"{closed.name} is closed.")
+        return redirect("core:period_close", pk=pk)
+
+
+class PeriodReopenActionView(ActionPermissionMixin, View):
+    required_permission = REOPEN_PERIOD
+    http_method_names = ["post"]
+
+    def post(self, request, pk):
+        period = get_object_or_404(FiscalPeriod, pk=pk)
+        form = PeriodReopenForm(request.POST)
+        if not form.is_valid():
+            messages.error(request, "A reason is required to reopen a period.")
+            return redirect("core:period_close", pk=pk)
+        try:
+            reopened = period_close.reopen_period(
+                period, user=request.user, reason=form.cleaned_data["reason"]
+            )
+        except ValidationError as exc:
+            for message in exc.messages:
+                messages.error(request, message)
+        else:
+            audit.record_action(
+                request,
+                AuditAction.REOPEN_PERIOD,
+                reopened,
+                reason=reopened.reopen_reason,
+            )
+            messages.success(
+                request, f"{reopened.name} is open again. Close it when the change is made."
+            )
+        return redirect("core:period_close", pk=pk)

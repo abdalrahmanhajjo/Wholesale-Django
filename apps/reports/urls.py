@@ -11,4 +11,5 @@ urlpatterns = [
     path("trial-balance/", views.TrialBalanceView.as_view(), name="trial_balance"),
     path("profit-and-loss/", views.ProfitAndLossView.as_view(), name="profit_and_loss"),
     path("balance-sheet/", views.BalanceSheetView.as_view(), name="balance_sheet"),
+    path("reconciliation/", views.ReconciliationView.as_view(), name="reconciliation"),
 ]

@@ -166,6 +166,18 @@ a click that takes a second looks like a click that did nothing.
               <a href="{% url 'reports:balance_sheet' %}" class="nav-link {% if request.resolver_match.url_name == 'balance_sheet' %}nav-link-active{% endif %}"
                  {% if request.resolver_match.url_name == 'balance_sheet' %}aria-current="page"{% endif %}>Balance sheet</a>
             </li>
+            <li>
+              <a href="{% url 'reports:reconciliation' %}" class="nav-link {% if request.resolver_match.url_name == 'reconciliation' %}nav-link-active{% endif %}"
+                 {% if request.resolver_match.url_name == 'reconciliation' %}aria-current="page"{% endif %}>Reconciliation</a>
+            </li>
+          </ul>
+        {% endif %}
+        {% if perms.core.view_fiscalperiod %}
+          <ul aria-labelledby="nav-financials">
+            <li>
+              <a href="{% url 'core:fiscalperiod_list' %}" class="nav-link {% if request.resolver_match.url_name|slice:':6' == 'period' or request.resolver_match.url_name == 'fiscalperiod_list' %}nav-link-active{% endif %}"
+                 {% if request.resolver_match.url_name|slice:':6' == 'period' %}aria-current="page"{% endif %}>Period close</a>
+            </li>
           </ul>
         {% endif %}
 

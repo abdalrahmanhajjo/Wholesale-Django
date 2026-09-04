@@ -28,7 +28,7 @@ from apps.core.mixins import ActionPermissionMixin
 from apps.core.models import AuditAction
 from apps.core.permissions import EXPORT_DATA, VIEW_FINANCIAL_REPORTS
 from apps.ledger.models import Account, JournalLine, JournalType
-from apps.reports import services
+from apps.reports import reconciliation, services
 from apps.reports.forms import AsOfForm, DateRangeForm, open_periods
 
 
@@ -320,3 +320,65 @@ class BalanceSheetView(StatementView):
         writer.writerow(
             ["", "TOTAL LIABILITIES AND EQUITY", _money(report.total_liabilities_and_equity)]
         )
+
+
+# ---------------------------------------------------------------------------
+# Subledger reconciliation (GL-011, RPT-021)
+# ---------------------------------------------------------------------------
+class ReconciliationView(StatementView):
+    """Control accounts beside the subledgers that are supposed to explain them.
+
+    No date control: the underlying view compares the ledger as it stands with
+    the documents as they stand, and those two should agree at every instant
+    rather than only at a period end.
+    """
+
+    template_name = "reports/reconciliation.html"
+    export_filename = "subledger-reconciliation"
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        ctx.update(
+            {
+                "checks": reconciliation.subledger_reconciliation(),
+                "unevaluated": [
+                    reconciliation.CONTROL_LABELS[key]
+                    for key in reconciliation.unevaluated_control_types()
+                ],
+                "tolerance": reconciliation.TOLERANCE,
+                "page_title": "Subledger reconciliation",
+                "page_subtitle": (
+                    "Whether each control account still agrees with the documents behind it."
+                ),
+            }
+        )
+        return ctx
+
+    def write_csv(self, writer):
+        writer.writerow(["Subledger reconciliation"])
+        writer.writerow([])
+        writer.writerow(
+            ["Control", "Account", "GL balance", "Subledger", "Difference", "Reconciles"]
+        )
+        for check in reconciliation.subledger_reconciliation():
+            writer.writerow(
+                [
+                    check.label,
+                    check.account_code,
+                    _money(check.gl_balance),
+                    _money(check.subledger_balance),
+                    _money(check.difference),
+                    "yes" if check.reconciles else "NO",
+                ]
+            )
+        for key in reconciliation.unevaluated_control_types():
+            writer.writerow(
+                [
+                    reconciliation.CONTROL_LABELS[key],
+                    "",
+                    "",
+                    "",
+                    "",
+                    "not examined - no ledger activity",
+                ]
+            )

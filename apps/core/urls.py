@@ -41,6 +41,22 @@ urlpatterns = [
         name="sequence_edit",
     ),
     path("fiscal-periods/", views.FiscalPeriodListView.as_view(), name="fiscalperiod_list"),
+    # CFG-009 / ACC-008. The checklist screen, and the two actions it offers.
+    path(
+        "fiscal-periods/<int:pk>/close/",
+        views.PeriodCloseView.as_view(),
+        name="period_close",
+    ),
+    path(
+        "fiscal-periods/<int:pk>/close/confirm/",
+        views.PeriodCloseActionView.as_view(),
+        name="period_close_confirm",
+    ),
+    path(
+        "fiscal-periods/<int:pk>/reopen/",
+        views.PeriodReopenActionView.as_view(),
+        name="period_reopen",
+    ),
     path("chart-of-accounts/", views.AccountListView.as_view(), name="account_list"),
     path("chart-of-accounts/new/", views.AccountCreateView.as_view(), name="account_create"),
     path(

@@ -1,0 +1,98 @@
+{% extends "reports/_statement_shell.html" %}
+{% comment %}
+RPT-013. One cash or bank account's movements, in order, with the balance each
+one left behind.
+
+The opening balance is its own row rather than a note, because a register that
+starts at zero when the account did not is the fastest way to make someone
+think money is missing.
+{% endcomment %}
+
+{% block date_controls %}
+  {% include "core/_form_field.html" with field=form.money_account %}
+  {% include "core/_form_field.html" with field=form.date_from %}
+  {% include "core/_form_field.html" with field=form.date_to %}
+{% endblock %}
+
+{% block period_link %}?money_account={{ form.money_account.value|default:'' }}&date_from={{ period.start_date|date:"Y-m-d" }}&date_to={{ period.end_date|date:"Y-m-d" }}{% endblock %}
+
+{% block statement %}
+{% if not report %}
+  <div class="card card-pad">
+    <p class="text-sm text-muted-fg">No money accounts are configured yet.</p>
+  </div>
+{% else %}
+  <div class="mb-4 grid gap-3 sm:grid-cols-4">
+    <div class="card card-pad">
+      <p class="eyebrow">Opening</p>
+      <p class="mt-1 text-xl font-semibold tabular-nums">{{ report.opening_balance|floatformat:2 }}</p>
+    </div>
+    <div class="card card-pad">
+      <p class="eyebrow">In</p>
+      <p class="mt-1 text-xl font-semibold tabular-nums text-brand-deep">{{ report.total_in|floatformat:2 }}</p>
+    </div>
+    <div class="card card-pad">
+      <p class="eyebrow">Out</p>
+      <p class="mt-1 text-xl font-semibold tabular-nums">{{ report.total_out|floatformat:2 }}</p>
+    </div>
+    <div class="card card-pad">
+      <p class="eyebrow">Closing</p>
+      <p class="mt-1 text-xl font-semibold tabular-nums">{{ report.closing_balance|floatformat:2 }}</p>
+    </div>
+  </div>
+
+  <div class="card overflow-x-auto">
+    <table class="w-full text-sm">
+      <caption class="sr-only">
+        Money account register from {{ report.date_from }} to {{ report.date_to }}
+      </caption>
+      <thead>
+        <tr class="border-b border-line bg-muted-bg text-[11px] font-bold uppercase text-muted-fg">
+          <th scope="col" class="px-4 py-2 text-left">Date</th>
+          <th scope="col" class="px-4 py-2 text-left">Entry</th>
+          <th scope="col" class="px-4 py-2 text-left">Description</th>
+          <th scope="col" class="px-4 py-2 text-right">In</th>
+          <th scope="col" class="px-4 py-2 text-right">Out</th>
+          <th scope="col" class="px-4 py-2 text-right">Balance</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr class="border-b border-line bg-muted-bg/50">
+          <td colspan="5" class="px-4 py-2 text-xs font-semibold uppercase text-muted-fg">
+            Opening balance at {{ report.date_from|date:"j M Y" }}
+          </td>
+          <td class="px-4 py-2 text-right tabular-nums font-semibold">{{ report.opening_balance|floatformat:2 }}</td>
+        </tr>
+        {% for entry in report.entries %}
+          <tr class="border-b border-line">
+            <td class="px-4 py-2 whitespace-nowrap">{{ entry.entry_date|date:"j M Y" }}</td>
+            <td class="px-4 py-2">
+              {# Drill-down: the general ledger searches on entry number. #}
+              <a href="{% url 'reports:general_ledger' %}?q={{ entry.entry_number|urlencode }}"
+                 class="font-mono text-xs underline underline-offset-2 hover:text-brand">{{ entry.entry_number }}</a>
+            </td>
+            <td class="px-4 py-2">{{ entry.description|default:"—" }}</td>
+            <td class="px-4 py-2 text-right tabular-nums">{% if entry.money_in %}{{ entry.money_in|floatformat:2 }}{% endif %}</td>
+            <td class="px-4 py-2 text-right tabular-nums">{% if entry.money_out %}{{ entry.money_out|floatformat:2 }}{% endif %}</td>
+            <td class="px-4 py-2 text-right tabular-nums font-medium">{{ entry.balance|floatformat:2 }}</td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="6" class="px-4 py-10 text-center text-sm text-muted-fg">
+            Nothing moved through this account in the chosen range.
+          </td></tr>
+        {% endfor %}
+      </tbody>
+      <tfoot>
+        <tr class="border-t-2 border-line bg-muted-bg font-semibold">
+          <td colspan="3" class="px-4 py-2 text-right text-xs uppercase text-muted-fg">
+            Closing at {{ report.date_to|date:"j M Y" }}
+          </td>
+          <td class="px-4 py-2 text-right tabular-nums">{{ report.total_in|floatformat:2 }}</td>
+          <td class="px-4 py-2 text-right tabular-nums">{{ report.total_out|floatformat:2 }}</td>
+          <td class="px-4 py-2 text-right tabular-nums text-brand-deep">{{ report.closing_balance|floatformat:2 }}</td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+{% endif %}
+{% endblock %}

@@ -337,6 +337,89 @@ region as the database - `ap-northeast-2` for the current project. Everything
 else in this section is worth doing; this is worth doing first.
 
 ---
+### Financial statements (RPT-001..RPT-005)
+
+Four screens under **Financials**, gated on `view_financial_reports`:
+
+| Screen | Answers | Spans |
+|---|---|---|
+| General ledger | every posted line and its source document | filtered |
+| Trial balance | opening, movement, closing per account | a range |
+| Profit and loss | what was earned and what it cost | a range |
+| Balance sheet | what is owned and owed | a date |
+
+All three statements come from `fn_trial_balance` and nothing else. That is
+deliberate: they are three presentations of the same balances, and computing
+them from three queries is how a balance sheet ends up disagreeing with its own
+trial balance. Anything added here should go through
+`apps/reports/services.py:account_balances` rather than writing a fourth
+definition of "balance".
+
+Two behaviours that look wrong until you know why:
+
+- **Reversed entries are included.** The ledger is append-only, so reversing
+  entry A writes a second entry B with the opposite lines and leaves A's lines
+  in place. Filtering to `status = 'POSTED'` would drop A but keep B and leave
+  every report short by the reversal.
+- **The balance sheet carries the year's result.** Until a closing entry moves
+  income and expense into reserves, the profit sits in the P&L accounts and the
+  statement would be out by exactly that amount. It shows as its own equity
+  line and becomes zero on its own once the year is closed.
+
+### The other reports (RPT-006, RPT-007, RPT-008, RPT-013)
+
+| Screen | Answers | Drill-down |
+|---|---|---|
+| Receivables ageing | who owes us, and how late | invoice, customer |
+| Payables ageing | who we owe, and how late | bill, vendor |
+| Tax report | tax charged on sales, incurred on purchases | — |
+| Money register | one cash or bank account, movement by movement | journal entry |
+
+Inventory valuation already lives under Inventory → Inventory valuation
+(`v_inventory_valuation`), so it is not duplicated here.
+
+**Ageing is single-currency, deliberately.** `fn_ar_ageing` and `fn_ap_ageing`
+return each document in its own currency with no base equivalent, and a total
+that adds dollars to euros would be worse than no total on a report whose whole
+job is to be totalled and chased. So currency is a filter, and anything open in
+another currency is counted and named underneath — choosing a currency never
+hides money.
+
+**The tax report does not net the two sides.** A return is filed as output tax
+and input tax; the amount payable is a consequence of those two rather than a
+figure in its own right. Non-recoverable input tax is carried separately,
+because it is a cost rather than something to reclaim.
+
+### Closing a period (CFG-009, ACC-008, BR-020)
+
+**Financials → Period close**, or any row on the fiscal periods list. The screen
+runs a checklist and offers the button.
+
+The checklist separates two kinds of finding, and the distinction is the point:
+
+| | Meaning | Effect |
+|---|---|---|
+| **Blocks closing** | the arithmetic is wrong | close is refused |
+| **Needs a decision** | somebody has to judge it | close is allowed, and the acknowledgement is kept |
+
+Blockers are an open earlier period and a trial balance that does not balance.
+Neither is a matter of opinion, and no reason text makes closing over them
+right. Warnings are unposted documents dated in the period and a control
+account that disagrees with its subledger — both serious, both frequently
+older than the period being closed, and making them blockers means one
+historical mistake freezes the calendar until somebody unpicks it.
+
+A reason is required either way. It is the only lasting record of who signed
+the period off, and it is kept on the period alongside who and when.
+
+**Reopening** needs its own permission, its own reason, and goes in reverse
+order — reopening March while April is closed would let a new entry change an
+opening balance that has already been signed off. A `LOCKED` period never
+reopens; that is the difference between locked and closed.
+
+Enforcement is not only in this code. `wams_journal_period_check()` rejects any
+journal entry aimed at a closed period at the database level, so a period that
+is closed is closed to everything, not merely to the screens.
 
 ## Pending accountant sign-off
 

@@ -1,0 +1,86 @@
+{% extends "reports/_statement_shell.html" %}
+{% comment %}
+RPT-003. Opening, movement and closing for every account with activity.
+
+The out-of-balance banner is the reason this screen exists at all. Debits
+equalling credits is enforced by the posting engine and again by a database
+trigger, so it should be impossible to see - which is exactly why it is worth
+saying loudly if it ever happens.
+{% endcomment %}
+
+{% block date_controls %}
+  {% include "core/_form_field.html" with field=form.date_from %}
+  {% include "core/_form_field.html" with field=form.date_to %}
+{% endblock %}
+
+{% block period_link %}?date_from={{ period.start_date|date:"Y-m-d" }}&date_to={{ period.end_date|date:"Y-m-d" }}{% endblock %}
+
+{% block statement %}
+{% if not report.is_balanced %}
+  <div class="card card-pad mb-4 border-danger/40 bg-danger/5">
+    <p class="text-xs font-bold uppercase text-danger">The ledger does not balance</p>
+    <p class="mt-1 text-sm">
+      Debits exceed credits by {{ report.out_of_balance_by|floatformat:4 }}. Every journal is
+      checked twice before it is written, so this means the ledger has been changed by
+      something other than the posting engine. Stop and investigate before relying on any
+      figure on this page.
+    </p>
+  </div>
+{% endif %}
+
+<div class="card overflow-x-auto">
+  <table class="w-full text-sm">
+    <caption class="sr-only">Trial balance from {{ report.date_from }} to {{ report.date_to }}</caption>
+    <thead>
+      <tr class="border-b border-line bg-muted-bg text-[11px] font-bold uppercase text-muted-fg">
+        <th scope="col" class="px-4 py-2 text-left">Code</th>
+        <th scope="col" class="px-4 py-2 text-left">Account</th>
+        <th scope="col" class="px-4 py-2 text-right">Opening Dr</th>
+        <th scope="col" class="px-4 py-2 text-right">Opening Cr</th>
+        <th scope="col" class="px-4 py-2 text-right">Period Dr</th>
+        <th scope="col" class="px-4 py-2 text-right">Period Cr</th>
+        <th scope="col" class="px-4 py-2 text-right">Closing Dr</th>
+        <th scope="col" class="px-4 py-2 text-right">Closing Cr</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in report.rows %}
+        <tr class="border-b border-line">
+          <td class="px-4 py-2 font-mono text-xs">{{ row.code }}</td>
+          <td class="px-4 py-2">{{ row.name }}</td>
+          <td class="px-4 py-2 text-right tabular-nums">{{ row.opening_debit|floatformat:2 }}</td>
+          <td class="px-4 py-2 text-right tabular-nums">{{ row.opening_credit|floatformat:2 }}</td>
+          <td class="px-4 py-2 text-right tabular-nums">{{ row.period_debit|floatformat:2 }}</td>
+          <td class="px-4 py-2 text-right tabular-nums">{{ row.period_credit|floatformat:2 }}</td>
+          <td class="px-4 py-2 text-right tabular-nums font-medium">{{ row.closing_debit|floatformat:2 }}</td>
+          <td class="px-4 py-2 text-right tabular-nums font-medium">{{ row.closing_credit|floatformat:2 }}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="8" class="px-4 py-10 text-center text-sm text-muted-fg">
+          Nothing was posted in this range.
+        </td></tr>
+      {% endfor %}
+    </tbody>
+    {% if report.rows %}
+      <tfoot>
+        <tr class="border-t-2 border-line bg-muted-bg font-semibold">
+          <td colspan="2" class="px-4 py-2 text-right text-xs uppercase text-muted-fg">Totals</td>
+          <td class="px-4 py-2 text-right tabular-nums">{{ report.opening_debit|floatformat:2 }}</td>
+          <td class="px-4 py-2 text-right tabular-nums">{{ report.opening_credit|floatformat:2 }}</td>
+          <td class="px-4 py-2 text-right tabular-nums">{{ report.period_debit|floatformat:2 }}</td>
+          <td class="px-4 py-2 text-right tabular-nums">{{ report.period_credit|floatformat:2 }}</td>
+          <td class="px-4 py-2 text-right tabular-nums text-brand-deep">{{ report.closing_debit|floatformat:2 }}</td>
+          <td class="px-4 py-2 text-right tabular-nums text-brand-deep">{{ report.closing_credit|floatformat:2 }}</td>
+        </tr>
+      </tfoot>
+    {% endif %}
+  </table>
+</div>
+
+{% if report.is_balanced and report.rows %}
+  <p class="mt-3 flex items-center gap-1.5 text-xs text-muted-fg">
+    <svg class="icon text-brand" aria-hidden="true"><use href="#i-check"></use></svg>
+    Debits equal credits in all three columns.
+  </p>
+{% endif %}
+{% endblock %}

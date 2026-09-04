@@ -410,3 +410,61 @@ class AccountMappingForm(StyledModelForm):
             self.fields["key"].choices = [
                 (value, label) for value, label in MappingKey.choices if value not in taken
             ]
+
+
+class PeriodCloseForm(UIFormMixin, forms.Form):
+    """Why this period is being signed off, and an acknowledgement of anything unresolved.
+
+    The acknowledgement box only appears when there is something to acknowledge.
+    A confirmation that is always present is one nobody reads; one that appears
+    only when the checklist found something is a question, and gets answered.
+    """
+
+    reason = forms.CharField(
+        label="Reason",
+        max_length=500,
+        widget=forms.Textarea(
+            attrs={
+                "rows": 3,
+                "class": "field",
+                "placeholder": "What was reviewed, and by whom",
+            }
+        ),
+        help_text="Kept against the period as the record of who signed it off.",
+    )
+    acknowledge = forms.BooleanField(
+        required=False,
+        label="I have reviewed the warnings above and am closing anyway",
+    )
+
+    def __init__(self, *args, warnings=(), **kwargs):
+        super().__init__(*args, **kwargs)
+        self.warnings = tuple(warnings)
+        if not self.warnings:
+            del self.fields["acknowledge"]
+
+    def clean_acknowledge(self):
+        acknowledged = self.cleaned_data.get("acknowledge")
+        if self.warnings and not acknowledged:
+            raise forms.ValidationError(
+                "The checklist found something unresolved. Confirm you have looked at "
+                "it before closing."
+            )
+        return acknowledged
+
+
+class PeriodReopenForm(UIFormMixin, forms.Form):
+    """Reopening changes figures other people may already have quoted."""
+
+    reason = forms.CharField(
+        label="Reason for reopening",
+        max_length=500,
+        widget=forms.Textarea(
+            attrs={
+                "rows": 3,
+                "class": "field",
+                "placeholder": "What has to change, and why it cannot wait for an open period",
+            }
+        ),
+        help_text="Kept against the period. Reopening is rare and worth explaining.",
+    )

@@ -40,7 +40,15 @@ module.exports = {
         "nav-muted": "#8fa0b0",
         danger: "#dc2626",
         // #dc2626 on red-50 is 4.41:1, so message bodies use the darker step.
-        "danger-strong": "#b91c1c"
+        "danger-strong": "#b91c1c",
+        // A third state, for findings that need a decision rather than a fix -
+        // a close checklist where everything is either fine or fatal teaches
+        // people to click through the fatal ones. Split for the same reason as
+        // danger: #d97706 measures 3.19:1 on white, enough for a border or an
+        // icon but not for text, while #b45309 is 5.02:1 on white and 4.57:1
+        // on muted-bg, so it carries the words.
+        warning: "#d97706",
+        "warning-strong": "#b45309"
       },
       fontFamily: {
         // Inter is self-hosted (see the @font-face block at the top of

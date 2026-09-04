@@ -599,8 +599,20 @@ class FiscalPeriod(models.Model):
     def __str__(self):
         return self.name
 
+    def get_absolute_url(self):
+        return reverse("core:period_close", args=[self.pk])
+
     def contains(self, d):
         return self.start_date <= d <= self.end_date
+
+    @property
+    def is_open(self):
+        return self.status == PeriodStatus.OPEN
+
+    @property
+    def can_be_reopened(self):
+        """LOCKED is permanent; that is the difference between it and CLOSED."""
+        return self.status == PeriodStatus.CLOSED
 
 
 # ---------------------------------------------------------------------------

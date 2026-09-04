@@ -223,6 +223,121 @@ Available to query directly — Member 4 builds screens on top of these.
 **Functions:** `fn_trial_balance(from, to)`, `fn_ar_ageing(as_of)`,
 `fn_ap_ageing(as_of)`, `fn_stock_card(product, warehouse, from, to)`
 
+## Card payments with Stripe (PAY-013)
+
+**Off by default.** With no `STRIPE_SECRET_KEY` the integration is invisible: no
+button on the invoice screen, and the webhook refuses everything. Nothing else
+in the application changes, and a Stripe receipt can still be entered by hand
+using the seeded `STRIPE` payment method.
+
+### How it works
+
+Staff-initiated, not customer-facing. A user opens a posted invoice, clicks
+**Create payment link**, and sends the link on to the customer by whatever
+channel they already use. When the customer pays, Stripe calls back and the
+receipt posts itself against the invoice.
+
+The webhook at `/payments/stripe/webhook/` is the **only** route in this project
+reachable without logging in. Its authentication is the Stripe signature; with
+no `STRIPE_WEBHOOK_SECRET` set, every request to it is rejected rather than
+trusted.
+
+### Switching it on
+
+```bash
+# 1. Keys, in .env — test keys for development, never a live key in git
+STRIPE_SECRET_KEY=sk_test_...
+STRIPE_RETURN_ORIGIN=http://127.0.0.1:8000
+
+# 2. Forward webhooks to the dev server and take the secret it prints
+stripe listen --forward-to localhost:8000/payments/stripe/webhook/
+# -> STRIPE_WEBHOOK_SECRET=whsec_...
+```
+
+### What it does to the books
+
+A processor keeps a cut, so what settles the customer and what reaches the bank
+are two different numbers. Payments carry a `fee_txn` for the difference:
+
+```
+Customer pays 1,000.00, Stripe keeps 29.30
+
+  Dr  1140  Stripe Clearing              970.70
+  Dr  6510  Merchant and Processor Fees   29.30
+      Cr  2210  Customer Advances                1,000.00
+```
+
+The customer is settled for the gross — that is what clears their balance — and
+only the money that genuinely moved reaches the clearing account. When Stripe
+pays out, clear 1140 against the bank with an ordinary journal.
+
+The fee field is not Stripe-specific: use it for a wire charge on a vendor
+payment too, where the sign flips and the fee is added on top of what the vendor
+receives rather than taken out of it.
+
+### When the ledger will not accept the receipt
+
+A webhook can arrive on a day no fiscal period is open, or before anyone has
+entered an exchange rate. **The payment is recorded anyway** and the reason is
+shown on the invoice screen with a button to finish the posting once the cause
+is fixed. This is deliberate: failing the webhook instead would make Stripe
+retry for hours, give up, and leave money received with no record of it here.
+
+---
+
+## Deploying
+
+```bash
+docker build -t wams .
+docker run --env-file .env -p 8000:8000 wams
+```
+
+The image runs gunicorn with the settings in `gunicorn.conf.py` and serves its
+own static files through WhiteNoise, so nothing else is required in front of
+it. Put it behind a reverse proxy or CDN if you want one; both will simply
+answer before WhiteNoise does.
+
+**Migrations are not run by the container.** Several replicas starting at once
+would race each other, and a schema change should be something a person decides
+rather than a side effect of a restart. Run them as a release step:
+
+```bash
+python manage.py migrate
+```
+
+### Probes
+
+| Path | Answers | Use it for |
+|---|---|---|
+| `/healthz/` | Is the process alive? Touches nothing, ~1ms | liveness / restart |
+| `/readyz/` | Can it reach the database? | readiness / rotation |
+
+Point liveness at `/healthz/` only. A database blip failing a *liveness* check
+restarts every replica, which fixes nothing and removes the capacity that was
+still working.
+
+### Sizing the workers
+
+The connection budget, not the CPU count, is the constraint here. The Supabase
+pooler allows 60 connections in total, and with `CONN_MAX_AGE` above zero each
+worker thread can hold one:
+
+    workers x threads  <=  your share of 60
+
+The defaults (2 x 4) use 8. `gunicorn.conf.py` uses threaded workers rather
+than sync ones on purpose: with a remote database most requests are waiting on
+I/O, and a sync worker would hold an entire process while it did.
+
+### The thing that matters most
+
+A query round trip to the database is **~300ms** from outside its region, and
+opening a fresh connection costs **~2.3s**. Both were measured, not estimated.
+No amount of query tuning competes with running the application in the same
+region as the database - `ap-northeast-2` for the current project. Everything
+else in this section is worth doing; this is worth doing first.
+
+---
+
 ## Pending accountant sign-off
 
 These are placeholders (BRD §14.4) and will change. Don't hard-code them.
@@ -231,6 +346,8 @@ These are placeholders (BRD §14.4) and will change. Don't hard-code them.
 - Standard tax rate **11%** (OD-01)
 - Chart of accounts codes and names
 - Exempt and zero-rated codes flagged non-recoverable
+- Stripe clearing **1140** and processor fees **6510** (PAY-013); `MERCHANT_FEE`
+  can be re-pointed from Settings → Account Mappings without a migration
 
 ---
 

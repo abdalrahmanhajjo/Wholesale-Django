@@ -226,6 +226,7 @@ class MappingKey(models.TextChoices):
     FX_LOSS = "FX_LOSS", "Realised FX loss"
     ROUNDING_GAIN = "ROUNDING_GAIN", "Rounding income"
     ROUNDING_LOSS = "ROUNDING_LOSS", "Rounding expense"
+    MERCHANT_FEE = "MERCHANT_FEE", "Merchant and payment-processor fees"
     INVENTORY_GAIN = "INVENTORY_GAIN", "Inventory adjustment gain"
     INVENTORY_LOSS = "INVENTORY_LOSS", "Inventory adjustment loss / write-off"
     RETAINED_EARNINGS = "RETAINED_EARNINGS", "Retained earnings"

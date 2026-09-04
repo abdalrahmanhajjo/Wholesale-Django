@@ -44,6 +44,7 @@ from apps.core.permissions import (
 )
 from apps.inventory.models import DeliveryNote
 from apps.ledger.services import PostingError
+from apps.payments import stripe_gateway, stripe_service
 from apps.sales import services
 from apps.sales.forms import (
     DeliveryLineFormSet,
@@ -338,6 +339,17 @@ class SalesOrderDetailView(BackLinkMixin, ActionPermissionMixin, DetailView):
     template_name = "sales/so_detail.html"
     required_permission = "sales.view_salesorder"
     context_object_name = "order"
+
+    def get_queryset(self):
+        # so_detail.html reads line.product for every line. Without the
+        # prefetch that is one query per line, and against this database each
+        # one is a ~300ms round trip.
+        return (
+            super()
+            .get_queryset()
+            .select_related("customer", "warehouse", "currency")
+            .prefetch_related("lines__product", "lines__unit")
+        )
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
@@ -646,6 +658,15 @@ class DeliveryNoteDetailView(BackLinkMixin, ActionPermissionMixin, DetailView):
     context_object_name = "note"
     required_permission = "inventory.view_deliverynote"
 
+    def get_queryset(self):
+        # Same line.product access in delivery_note_detail.html.
+        return (
+            super()
+            .get_queryset()
+            .select_related("customer", "warehouse")
+            .prefetch_related("lines__product")
+        )
+
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
         ctx["page_title"] = self.object.number
@@ -843,7 +864,12 @@ class SalesInvoiceDetailView(BackLinkMixin, ActionPermissionMixin, DetailView):
     required_permission = "sales.view_salesinvoice"
 
     def get_queryset(self):
-        return super().get_queryset().select_related("customer", "journal_entry")
+        return (
+            super()
+            .get_queryset()
+            .select_related("customer", "journal_entry", "currency")
+            .prefetch_related("lines__product")
+        )
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
@@ -859,6 +885,20 @@ class SalesInvoiceDetailView(BackLinkMixin, ActionPermissionMixin, DetailView):
             content_type__model="salesinvoice",
             object_id=self.object.pk,
         ).select_related("user")[:20]
+
+        # PAY-013. The card is hidden entirely rather than shown disabled when
+        # Stripe is off, so installations that will never use it see no trace.
+        ctx["stripe_enabled"] = stripe_gateway.is_enabled()
+        if ctx["stripe_enabled"]:
+            ctx["stripe_checkouts"] = self.object.stripe_checkouts.select_related(
+                "payment"
+            ).order_by("-created_at")[:5]
+            ctx["stripe_live"] = stripe_service.live_checkout(self.object)
+            ctx["stripe_chargeable"] = (
+                not self.object.is_reversed
+                and self.object.status in stripe_service.CHARGEABLE_STATUSES
+                and self.object.open_txn > 0
+            )
         return ctx
 
 
@@ -912,7 +952,8 @@ class SalesInvoicePrintView(BackLinkMixin, ActionPermissionMixin, TemplateView):
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
         ctx["invoice"] = get_object_or_404(
-            SalesInvoice.objects.select_related("customer"), pk=self.kwargs["pk"]
+            SalesInvoice.objects.select_related("customer").prefetch_related("lines__product"),
+            pk=self.kwargs["pk"],
         )
         ctx["company"] = Company.objects.select_related("base_currency").first()
         return ctx

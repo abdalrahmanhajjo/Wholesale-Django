@@ -108,6 +108,10 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    # Directly after SecurityMiddleware and before everything else, which is
+    # what WhiteNoise documents: a static file should not be paying for session
+    # loading, authentication and message middleware on its way out.
+    "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",  # ACC-007
@@ -140,6 +144,28 @@ TEMPLATES = [
 # NFR-002: PostgreSQL in every deployed environment. SQLite is not an option —
 # the schema uses exclusion constraints, partial indexes, trigram indexes and
 # plpgsql triggers, none of which SQLite has.
+
+# ---------------------------------------------------------------------------
+# TCP keepalives.
+#
+# connect_timeout only bounds *establishing* a connection. Once one is open,
+# libpq blocks on the socket indefinitely, so a peer that goes away without
+# sending a FIN - a pooler recycling, a NAT table forgetting the flow, a
+# network partition - leaves the client waiting forever rather than failing.
+# Observed in practice: a management command sat on a dead socket for hours.
+#
+# These make the kernel probe an idle connection and give up on it, so a dead
+# connection surfaces as an error in about a minute and the caller can react.
+# Gunicorn's own request timeout covers a web worker; nothing covers a
+# management command except this.
+# ---------------------------------------------------------------------------
+KEEPALIVE_OPTIONS = {
+    "keepalives": 1,
+    "keepalives_idle": env_int("DB_KEEPALIVES_IDLE", 30),
+    "keepalives_interval": env_int("DB_KEEPALIVES_INTERVAL", 10),
+    "keepalives_count": env_int("DB_KEEPALIVES_COUNT", 3),
+}
+
 database_url = env("DATABASE_URL")
 if database_url:
     parsed_database_url = urlsplit(database_url)
@@ -158,6 +184,7 @@ if database_url:
             "sslmode": query_options.get("sslmode", ["require"])[-1],
             "connect_timeout": env_int("DB_CONNECT_TIMEOUT", 10),
             "application_name": env("DB_APPLICATION_NAME", "ledgerwise-django"),
+            **KEEPALIVE_OPTIONS,
         },
     }
 else:
@@ -172,6 +199,7 @@ else:
             "sslmode": env("PGSSLMODE", "prefer"),
             "connect_timeout": env_int("DB_CONNECT_TIMEOUT", 10),
             "application_name": env("DB_APPLICATION_NAME", "ledgerwise-django"),
+            **KEEPALIVE_OPTIONS,
         },
     }
 
@@ -181,10 +209,13 @@ database_config.update(
     {
         "ATOMIC_REQUESTS": False,
         "CONN_MAX_AGE": env_int("DB_CONN_MAX_AGE", 60),
-        # A health check adds a network round trip to every DB-using request.
-        # Keep it opt-in for the high-latency hosted database; the short max age
-        # already limits exposure to stale connections.
-        "CONN_HEALTH_CHECKS": env_bool("DB_CONN_HEALTH_CHECKS", False),
+        # A health check costs one extra round trip on the first query of each
+        # request. That is real money against a remote database, but the pooler
+        # does drop connections, and reusing a dead one is not a slow request -
+        # it is a 500 for whoever made it. Off in development, where the churn
+        # does not happen and the round trip is the whole cost; on by default
+        # once DEBUG is off, and still overridable per environment.
+        "CONN_HEALTH_CHECKS": env_bool("DB_CONN_HEALTH_CHECKS", not DEBUG),
     }
 )
 test_database_name = env("DJANGO_TEST_DATABASE_NAME")
@@ -207,6 +238,12 @@ CACHES = {
 DASHBOARD_CACHE_SECONDS = env_int("DASHBOARD_CACHE_SECONDS", 30)
 
 AUTH_USER_MODEL = "accounts.User"
+
+# Usernames are what administrators issue, but the email address is what people
+# remember about a work account — and it is already unique on the model. The
+# backend subclasses ModelBackend, so permissions and the is_active rule are
+# Django's own; only the identifier lookup is widened.
+AUTHENTICATION_BACKENDS = ["apps.accounts.backends.EmailOrUsernameModelBackend"]
 
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
@@ -252,6 +289,31 @@ DEFAULT_FROM_EMAIL = env("DJANGO_FROM_EMAIL") or "no-reply@ledgerwise.local"
 PASSWORD_RESET_TIMEOUT = int(env("DJANGO_PASSWORD_RESET_TIMEOUT") or 60 * 60 * 3)
 
 SESSION_ENGINE = "django.contrib.sessions.backends.cached_db"
+
+# ---------------------------------------------------------------------------
+# Stripe (PAY-013).
+#
+# Off unless a secret key is present, which is what makes it safe to ship to
+# deployments that will never use it. Nothing here has a default: a card
+# integration running against somebody else's guessed-at key is worse than one
+# that is plainly switched off.
+#
+# STRIPE_WEBHOOK_SECRET is what separates a real Stripe callback from anyone on
+# the internet who found the URL, so the webhook refuses every request when it
+# is unset rather than trusting the body.
+# ---------------------------------------------------------------------------
+# Whether Stripe is on is derived from this key wherever it is asked, by
+# stripe_gateway.is_enabled() - not cached into a second setting that could then
+# disagree with it.
+STRIPE_SECRET_KEY = env("STRIPE_SECRET_KEY")
+STRIPE_WEBHOOK_SECRET = env("STRIPE_WEBHOOK_SECRET")
+# Stripe has to be told where to send the customer back to, and it needs an
+# absolute URL. In development that is the runserver; a deployment sets it to
+# the public origin. No trailing slash.
+STRIPE_RETURN_ORIGIN = env("STRIPE_RETURN_ORIGIN", "http://127.0.0.1:8000").rstrip("/")
+# A checkout link should not stay payable forever. Stripe's own limit is 24
+# hours and its minimum is 30 minutes.
+STRIPE_SESSION_MINUTES = env_int("STRIPE_SESSION_MINUTES", 720)
 
 # ---------------------------------------------------------------------------
 # Locale (CFG-001, NFR-018). The company row carries the business timezone and
@@ -325,7 +387,11 @@ if not DEBUG:
             "BACKEND": "django.core.files.storage.FileSystemStorage",
         },
         "staticfiles": {
-            "BACKEND": ("django.contrib.staticfiles.storage.ManifestStaticFilesStorage"),
+            # WhiteNoise's manifest storage, which is Django's own plus gzip
+            # and brotli copies made once at collectstatic rather than per
+            # request. The manifest half is the important half: it fingerprints
+            # every file so it can be cached forever and still change instantly.
+            "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
         },
     }
     if env_bool("DJANGO_BEHIND_HTTPS_PROXY", False):

@@ -3,7 +3,12 @@
 
 {% block title %}Request sent{% endblock %}
 {% block heading %}Request sent{% endblock %}
-{% block panel_note %}An administrator decides what each account can reach.{% endblock %}
+{% block note %}
+  <p class="auth-note">
+    <svg class="icon" aria-hidden="true"><use href="#i-shield"></use></svg>
+    <span>An administrator decides what each account can reach.</span>
+  </p>
+{% endblock %}
 {% block intro %}
   <p class="auth-intro">
     Your account exists but is not active yet, so signing in won't work until
@@ -12,7 +17,7 @@
 {% endblock %}
 
 {% block body %}
-  <ol class="mt-7 space-y-4">
+  <ol class="space-y-4">
     <li class="flex gap-3">
       <span class="step-index shrink-0" aria-hidden="true">1</span>
       <span class="text-sm">An administrator reviews the request and decides which role fits.</span>
@@ -27,5 +32,5 @@
     </li>
   </ol>
 
-  <a href="{% url 'login' %}" class="btn-primary mt-8 h-11 w-full">Back to sign in</a>
+  <a href="{% url 'login' %}" class="btn-primary auth-submit mt-7">Back to sign in</a>
 {% endblock %}

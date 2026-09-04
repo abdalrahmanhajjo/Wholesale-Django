@@ -1,28 +1,37 @@
 {% load static %}<!doctype html>
 {% comment %}
-The shell every page outside the application shares: sign in, create an account,
-and the four steps of a password reset.
+The shell every page outside the application shares: sign in, request an
+account, and the four steps of a password reset.
 
 These pages deliberately do not extend base.html. There is no navigation to show
 before authentication, no company context to read, and no reason to load the
 form and step scripts — so they carry their own document and only the pieces
 they use.
 
-The brand panel is not decoration for its own sake. The one thing that is true
-of this product and of almost nothing else is that its entries balance: debits
-equal credits or the document does not post. The motif draws exactly that — two
-columns of figures settling onto a beam — so the page says what the software is
-before a word is read. It is authored SVG rather than an image file: it stays
-sharp at any size, weighs a couple of kilobytes, takes its colours from the same
-palette as the rest of the product, and needs no request of its own.
+Layout: three columns at xl, and the middle one is the page. The outer two are
+`1fr` each — equal, so the form column lands on the centre line of the viewport
+however much or little the sides are carrying. (They were 15.5rem and 20rem,
+which quietly pushed the form 36px left of centre on every page.) Below xl the
+sides do not disappear silently: the illustration is decoration and goes, but
+whatever words the aside holds fall in under the form instead.
+
+Source order is form → aside → art, with `order` doing the placing, so the <h1>
+stays ahead of the <h2>s beside it and a narrow screen meets the task first.
 
 Blocks:
-  title      browser tab title
-  heading    the page's <h1>
-  intro      a sentence under the heading
-  body       the form
-  footer     links to the other auth pages
-  panel_note the line under the motif, for a page that wants its own
+  title    browser tab title
+  corner   the reassurance pinned to the top-right of the page
+  badge    the icon above the heading, in its ring
+  eyebrow  a line above the heading, where a page greets rather than labels
+  heading  the page's <h1>; wrap the closing words in <em> for the accent
+  intro    a sentence under the heading
+  body     the form
+  note     an aside under the form, for a page that has something to add
+  footer   links to the other auth pages
+  aside    the left column at xl
+  art      the right column at xl
+  outro    the band under everything: the privacy lines, or something richer
+  decor    the fixed backdrop
 {% endcomment %}
 <html lang="en" class="h-full">
 <head>
@@ -32,97 +41,97 @@ Blocks:
   {% include "_theme.html" %}
 </head>
 
-<body class="auth-body h-full">
+<body class="auth-body">
 {% include "core/_icons.html" %}
 
+{% comment %}
+Decoration, and nothing but. It is behind everything, it takes no pointer
+events, and it is hidden from assistive technology, so the page reads exactly
+the same with the whole layer deleted.
+{% endcomment %}
+<div class="auth-decor" aria-hidden="true">
+  {% block decor %}
+    <span class="auth-blob auth-blob-a"></span>
+    <span class="auth-blob auth-blob-b"></span>
+    <span class="auth-blob auth-blob-c"></span>
+    <span class="auth-dotfield auth-dotfield-top"></span>
+    <svg class="auth-lines" viewBox="0 0 1440 1160" preserveAspectRatio="xMidYMid slice"
+         fill="none" stroke="#39d889">
+      <path d="M470 -40C470 190 360 300 150 330" stroke-opacity=".22" stroke-dasharray="3 7"/>
+      <path d="M1180 -60C1420 90 1470 380 1330 620" stroke-opacity=".2" stroke-dasharray="3 7"/>
+      <path d="M1140 900C1010 1030 830 1090 640 1090" stroke-opacity=".16" stroke-dasharray="3 7"/>
+      <circle cx="1204" cy="205" r="3.5" fill="#39d889" stroke="none"/>
+      <circle cx="1204" cy="205" r="9" stroke-opacity=".3"/>
+      <circle cx="182" cy="930" r="3.5" fill="#39d889" stroke="none"/>
+      <circle cx="182" cy="930" r="9" stroke-opacity=".3"/>
+      <circle cx="1142" cy="1042" r="3" fill="#39d889" stroke="none"/>
+    </svg>
+  {% endblock %}
+</div>
+
 <div class="auth-shell">
+  {% block corner %}{% endblock %}
 
-  {# ------------------------------------------------------------- brand #}
-  {% comment %}
-  Hidden below lg, where it would only push the form down the page. It carries
-  no information the form needs, so it is announced to nobody.
-  {% endcomment %}
-  <aside class="auth-brand" aria-hidden="true">
-    <div class="auth-brand-inner">
-      <div class="flex items-center gap-3">
-        <span class="logo-mark"><i></i><i></i><i></i></span>
-        <span>
-          <strong class="block text-[15px] tracking-[-.02em] text-white">ledgerwise</strong>
-          <small class="block text-[10px] uppercase tracking-[.16em] text-nav-muted">Wholesale finance</small>
-        </span>
-      </div>
+  <div class="auth-stage">
 
-      {% comment %}
-      The balance. Two columns of entries settle onto a beam that levels out —
-      the whole rule of double entry in one figure. The settle runs once on
-      load and is switched off entirely under prefers-reduced-motion.
-      {% endcomment %}
-      <svg class="auth-figure" viewBox="0 0 320 220" role="presentation" focusable="false">
-        <defs>
-          <linearGradient id="beam-glow" x1="0" y1="0" x2="1" y2="0">
-            <stop offset="0%"   stop-color="#39d889" stop-opacity=".15"/>
-            <stop offset="50%"  stop-color="#39d889" stop-opacity=".85"/>
-            <stop offset="100%" stop-color="#39d889" stop-opacity=".15"/>
-          </linearGradient>
-        </defs>
+    <main id="main-content" class="auth-column">
 
-        <g class="auth-figure-rings" stroke="#39d889" stroke-opacity=".10" fill="none">
-          <circle cx="160" cy="112" r="96"/>
-          <circle cx="160" cy="112" r="70"/>
-        </g>
-
-        {# Debits, left. Each bar is one entry. #}
-        <g class="auth-figure-col auth-figure-col-debit" fill="#e6eef8">
-          <rect x="44"  y="70" width="58" height="7" rx="3.5" opacity=".9"/>
-          <rect x="44"  y="85" width="42" height="7" rx="3.5" opacity=".65"/>
-          <rect x="44" y="100" width="50" height="7" rx="3.5" opacity=".45"/>
-        </g>
-
-        {# Credits, right — the same total, differently composed. #}
-        <g class="auth-figure-col auth-figure-col-credit" fill="#39d889">
-          <rect x="218" y="70" width="58" height="7" rx="3.5" opacity=".9"/>
-          <rect x="232" y="85" width="44" height="7" rx="3.5" opacity=".65"/>
-          <rect x="226" y="100" width="50" height="7" rx="3.5" opacity=".45"/>
-        </g>
-
-        {# The beam, level because the two sides agree. #}
-        <g class="auth-figure-beam">
-          <rect x="40" y="136" width="240" height="3" rx="1.5" fill="url(#beam-glow)"/>
-          <circle cx="160" cy="137.5" r="7" fill="#071a2f" stroke="#39d889" stroke-width="2"/>
-          <path d="M160 144v34" stroke="#39d889" stroke-opacity=".35" stroke-width="2"/>
-          <rect x="120" y="178" width="80" height="4" rx="2" fill="#39d889" fill-opacity=".35"/>
-        </g>
-      </svg>
-
-      <div>
-        <p class="auth-brand-line">
-          {% block panel_note %}Every figure traces back to the document that produced it.{% endblock %}
-        </p>
-        <ul class="auth-markers">
-          <li><svg class="icon"><use href="#i-scale"></use></svg>Debits equal credits, or it does not post</li>
-          <li><svg class="icon"><use href="#i-book"></use></svg>Accrual basis, one ledger</li>
-          <li><svg class="icon"><use href="#i-shield"></use></svg>Every change carries an audit trail</li>
-        </ul>
-      </div>
-    </div>
-  </aside>
-
-  {# -------------------------------------------------------------- form #}
-  <main id="main-content" class="auth-main">
-    <div class="auth-card">
-      <div class="mb-8 flex items-center gap-2.5 lg:hidden">
+      <a href="/" class="auth-lockup">
         <span class="logo-mark" aria-hidden="true"><i></i><i></i><i></i></span>
-        <span class="text-[15px] font-black">ledgerwise</span>
-      </div>
+        <span class="auth-wordmark">
+          <strong>ledgerwise</strong>
+          <small>Wholesale finance</small>
+        </span>
+      </a>
+
+      {% block eyebrow %}{% endblock %}
+
+      {% block badge %}
+        <span class="auth-badge" aria-hidden="true"><svg class="icon"><use href="#i-lock"></use></svg></span>
+      {% endblock %}
 
       <h1 class="auth-heading">{% block heading %}Sign in{% endblock %}</h1>
       {% block intro %}{% endblock %}
 
-      {% block body %}{% endblock %}
+      {% comment %}
+      A plain container, not a <section>: the heading that used to name it now
+      sits above it, and a <section> with no accessible name is a landmark that
+      announces nothing.
+      {% endcomment %}
+      <div class="auth-panel">
+        {% block body %}{% endblock %}
+      </div>
 
-      <div class="auth-footer">{% block footer %}{% endblock %}</div>
-    </div>
-  </main>
+      {% comment %}
+      Outside the panel, because it is about the process rather than the form.
+      It used to sit in the decorative panel, where no screen reader and no
+      phone ever reached it — which is a poor place for "this link expires in
+      three hours".
+      {% endcomment %}
+      {% block note %}{% endblock %}
+
+      <nav class="auth-footer" aria-label="Account help">
+        {% block footer %}{% endblock %}
+      </nav>
+    </main>
+
+    {% comment %}
+    Always three items, so the middle one keeps the centre column. A page with
+    nothing to say on the left still holds the track at xl, and drops out
+    entirely below it rather than leaving a 3.5rem gap under the form.
+    {% endcomment %}
+    {% block aside %}<div class="auth-aside is-empty"></div>{% endblock %}
+
+    {% block art %}{% include "registration/_auth_art.html" %}{% endblock %}
+  </div>
+
+  {% block outro %}
+    <p class="auth-privacy">
+      <svg class="icon" aria-hidden="true"><use href="#i-shield"></use></svg>
+      Every sign-in and every change to an account is recorded.<br>
+      We value your privacy and security.
+    </p>
+  {% endblock %}
 </div>
 
 <script src="{% static 'js/auth.js' %}" defer></script>

@@ -6,8 +6,6 @@ workflow / posting actions (submit, approve, reject, post).
 Shape copied from apps/parties/views.py per CONTRIBUTING.md §4d/§4e.
 """
 
-import json
-
 from django.contrib import messages
 from django.core.exceptions import ValidationError
 from django.db import transaction
@@ -48,17 +46,22 @@ def _products_payload():
     product id -> default unit / purchase price / tax code, so the line
     formset can prefill a new row in the browser without a round trip.
     Authoritative amounts are still computed server-side on save.
+
+    Returns a dict, not a JSON string: the template renders it through
+    ``json_script``, which escapes the characters that would otherwise let a
+    value containing ``</script>`` break out of the tag it is embedded in.
+    Every value here happens to be numeric today, but the equivalent map in the
+    sales app already carries a product *name*, and that is one edit away from
+    being true here too.
     """
-    return json.dumps(
-        {
-            product.pk: {
-                "unit": product.unit_id,
-                "price": str(product.purchase_price),
-                "tax_code": product.default_purchase_tax_code_id,
-            }
-            for product in Product.objects.filter(is_active=True)
+    return {
+        product.pk: {
+            "unit": product.unit_id,
+            "price": str(product.purchase_price),
+            "tax_code": product.default_purchase_tax_code_id,
         }
-    )
+        for product in Product.objects.filter(is_active=True)
+    }
 
 
 # ---------------------------------------------------------------------------

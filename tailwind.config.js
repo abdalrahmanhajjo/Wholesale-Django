@@ -16,6 +16,12 @@ module.exports = {
         brand: "#4bd27d",
         "brand-bright": "#66dc92",
         "brand-deep": "#1f7447",
+        // The green the auth pages set a word of the heading in, and tint their
+        // icons with. #4bd27d is 1.94:1 on white — fine as a fill, unreadable
+        // as a letterform. This is the brightest green that still clears the
+        // 3:1 large-text minimum (3.30:1), so the accent reads as the mark's
+        // green without the heading going soft.
+        "brand-accent": "#16a34a",
         "brand-tint": "#edf9f1",
         paper: "#fbfcf9",
         canvas: "#f4f7f6",
@@ -37,7 +43,11 @@ module.exports = {
         "danger-strong": "#b91c1c"
       },
       fontFamily: {
-        sans: ["Aptos", "Segoe UI", "system-ui", "sans-serif"]
+        // Inter is self-hosted (see the @font-face block at the top of
+        // static/src/app.css). "Inter Fallback" is the same list of system
+        // faces with Inter's metrics overridden onto them, so the swap when
+        // the real font arrives moves nothing on the page.
+        sans: ["Inter", "Inter Fallback", "system-ui", "sans-serif"]
       },
       borderRadius: { xl2: "0.8rem" }
     }

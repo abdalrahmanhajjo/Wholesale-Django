@@ -1,0 +1,38 @@
+{% load ui %}{% comment %}
+One field on an auth page: the same thing core/_form_field.html renders, with
+an icon inside the box.
+
+    {% include "registration/_auth_field.html" with field=form.email icon="mail" %}
+
+Kept separate from the core partial rather than adding an `icon` argument to it,
+because the icon is a decision these six pages make and no other screen does:
+everywhere else a form is a grid of many fields where a column of glyphs would
+be noise. Here there are four, and each one is a different kind of thing.
+
+The input is rendered through `a11y_field`, so the help text and any error are
+attached with aria-describedby and the invalid state is announced rather than
+merely coloured. The password boxes go through here too — their data-strength
+and data-confirms attributes ride on the widget, set in the form.
+{% endcomment %}
+<div class="field-wrap auth-field">
+  <label for="{{ field.id_for_label }}" class="label">
+    {{ field.label }}
+    {% if not field.field.required %}<span class="label-optional">(optional)</span>{% endif %}
+  </label>
+
+  <div class="auth-control">
+    <span class="auth-field-icon"><svg class="icon" aria-hidden="true"><use href="#i-{{ icon }}"></use></svg></span>
+    {% a11y_field field %}
+  </div>
+
+  {% if field.help_text %}
+    <p class="help" id="{% help_id field %}">{{ field.help_text }}</p>
+  {% endif %}
+
+  {% if field.errors %}
+    <p class="error-text" id="{% error_id field %}">
+      <span aria-hidden="true">&#9888;</span>
+      <span><span class="sr-only">Error: </span>{{ field.errors|join:" " }}</span>
+    </p>
+  {% endif %}
+</div>

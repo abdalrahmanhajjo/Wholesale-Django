@@ -1,6 +1,13 @@
 from django.contrib import admin
 
-from apps.payments.models import Allocation, MoneyAccount, Payment, PaymentMethod, Refund
+from apps.payments.models import (
+    Allocation,
+    MoneyAccount,
+    Payment,
+    PaymentMethod,
+    Refund,
+    StripeCheckout,
+)
 
 
 @admin.register(MoneyAccount)
@@ -33,8 +40,33 @@ class PaymentAdmin(admin.ModelAdmin):
     search_fields = ("number", "reference", "customer__name", "vendor__name")
     readonly_fields = (
         "amount_base",
+        "fee_base",
         "allocated_txn",
         "unallocated_txn",
+        "created_at",
+        "updated_at",
+    )
+
+
+@admin.register(StripeCheckout)
+class StripeCheckoutAdmin(admin.ModelAdmin):
+    list_display = ("session_id", "invoice", "amount_txn", "fee_txn", "status", "payment")
+    list_filter = ("status", "currency")
+    search_fields = ("session_id", "payment_intent_id", "charge_id", "invoice__number")
+    # Everything here is written by Stripe or by the settlement service. Editing
+    # it by hand would decouple the ledger from what actually happened.
+    readonly_fields = (
+        "invoice",
+        "session_id",
+        "payment_intent_id",
+        "charge_id",
+        "url",
+        "currency",
+        "amount_txn",
+        "fee_txn",
+        "payment",
+        "paid_at",
+        "expires_at",
         "created_at",
         "updated_at",
     )

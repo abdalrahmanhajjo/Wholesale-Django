@@ -43,11 +43,17 @@ class StructureTests(TestCase):
                 self.assertNotIn("#", item.url_name)
 
     def test_every_row_can_become_active(self):
-        """A row with no match rule can never highlight, so it would look broken."""
+        """A row with no rule can never highlight, so it would look broken.
+
+        Unless it says so: the Django admin leaves this application, and there
+        is no "you are here" for it to claim.
+        """
         for item in all_items():
             with self.subTest(item=item.label):
+                if item.never_active:
+                    continue
                 self.assertTrue(
-                    item.exact or item.prefix or item.path,
+                    item.exact or item.prefix or item.path or item.app,
                     f"{item.label} has no rule that would ever mark it current",
                 )
 

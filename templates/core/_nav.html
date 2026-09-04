@@ -31,8 +31,10 @@ page. A div with a click handler would need all of that rebuilding, worse.
         </div>
       </details>
     {% else %}
-      {# Overview is one row; a control to hide one row is noise. Wrapped so
-         the search filter can hide the header and its row together. #}
+      {% comment %}
+      Overview is one row; a control to hide one row is noise. Wrapped so the
+      search filter can hide the header and its row together.
+      {% endcomment %}
       <div class="nav-static-section" data-nav-block>
         <p class="nav-group nav-group-static">{{ section.label }}</p>
         {% include "core/_nav_rows.html" with items=section.items %}

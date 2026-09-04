@@ -40,6 +40,9 @@ class Item:
     prefix: str = ""
     app: str = ""
     path: str = ""
+    #: A row that is deliberately never highlighted. The Django admin opens a
+    #: different application, so there is no "you are here" to claim.
+    never_active: bool = False
 
     def visible_to(self, perms, user) -> bool:
         if not self.permission:
@@ -49,13 +52,19 @@ class Item:
         return self.permission in perms
 
     def is_active(self, url_name: str, app_name: str, request_path: str) -> bool:
+        if self.never_active:
+            return False
         if self.path:
             return self.path in request_path
         if self.app and app_name != self.app:
             return False
         if self.prefix and url_name.startswith(self.prefix):
             return True
-        return url_name in self.exact
+        if url_name in self.exact:
+            return True
+        # An app with no narrower rule claims every page in it, which is how
+        # Payments behaved before: one row, one app, any screen within it.
+        return bool(self.app) and not self.prefix and not self.exact
 
 
 @dataclass(frozen=True, slots=True)
@@ -164,7 +173,6 @@ SECTIONS: tuple[Section, ...] = (
                 "nav-payment",
                 permission="payments.view_payment",
                 app="payments",
-                prefix="",
             ),
         ),
         subgroups=(
@@ -362,6 +370,14 @@ SECTIONS: tuple[Section, ...] = (
     Section(
         key="system",
         label="System",
-        items=(Item("Django admin", "admin:index", "shield", permission="is_staff"),),
+        items=(
+            Item(
+                "Django admin",
+                "admin:index",
+                "shield",
+                permission="is_staff",
+                never_active=True,
+            ),
+        ),
     ),
 )

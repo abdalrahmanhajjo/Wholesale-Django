@@ -144,6 +144,28 @@ TEMPLATES = [
 # NFR-002: PostgreSQL in every deployed environment. SQLite is not an option —
 # the schema uses exclusion constraints, partial indexes, trigram indexes and
 # plpgsql triggers, none of which SQLite has.
+
+# ---------------------------------------------------------------------------
+# TCP keepalives.
+#
+# connect_timeout only bounds *establishing* a connection. Once one is open,
+# libpq blocks on the socket indefinitely, so a peer that goes away without
+# sending a FIN - a pooler recycling, a NAT table forgetting the flow, a
+# network partition - leaves the client waiting forever rather than failing.
+# Observed in practice: a management command sat on a dead socket for hours.
+#
+# These make the kernel probe an idle connection and give up on it, so a dead
+# connection surfaces as an error in about a minute and the caller can react.
+# Gunicorn's own request timeout covers a web worker; nothing covers a
+# management command except this.
+# ---------------------------------------------------------------------------
+KEEPALIVE_OPTIONS = {
+    "keepalives": 1,
+    "keepalives_idle": env_int("DB_KEEPALIVES_IDLE", 30),
+    "keepalives_interval": env_int("DB_KEEPALIVES_INTERVAL", 10),
+    "keepalives_count": env_int("DB_KEEPALIVES_COUNT", 3),
+}
+
 database_url = env("DATABASE_URL")
 if database_url:
     parsed_database_url = urlsplit(database_url)
@@ -162,6 +184,7 @@ if database_url:
             "sslmode": query_options.get("sslmode", ["require"])[-1],
             "connect_timeout": env_int("DB_CONNECT_TIMEOUT", 10),
             "application_name": env("DB_APPLICATION_NAME", "ledgerwise-django"),
+            **KEEPALIVE_OPTIONS,
         },
     }
 else:
@@ -176,6 +199,7 @@ else:
             "sslmode": env("PGSSLMODE", "prefer"),
             "connect_timeout": env_int("DB_CONNECT_TIMEOUT", 10),
             "application_name": env("DB_APPLICATION_NAME", "ledgerwise-django"),
+            **KEEPALIVE_OPTIONS,
         },
     }
 

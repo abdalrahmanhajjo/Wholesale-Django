@@ -26,12 +26,17 @@ class PeriodFixture:
             email="m7-closer@example.com",
             password="x-test-password",
         )
+        # Deliberately earlier than the seeded 2026 calendar. These tests are
+        # about the ordering among *these three* periods, and a fixture dated
+        # after the seed would sit behind two years of open seeded periods -
+        # so every close would be blocked, correctly, for a reason that has
+        # nothing to do with what is being tested.
         cls.year = FiscalYear.objects.create(
-            code="M7-FY94", start_date=date(2094, 1, 1), end_date=date(2094, 12, 31)
+            code="M7-FY94", start_date=date(1994, 1, 1), end_date=date(1994, 12, 31)
         )
-        cls.january = cls._period(1, "M7 January", date(2094, 1, 1), date(2094, 1, 31))
-        cls.february = cls._period(2, "M7 February", date(2094, 2, 1), date(2094, 2, 28))
-        cls.march = cls._period(3, "M7 March", date(2094, 3, 1), date(2094, 3, 31))
+        cls.january = cls._period(1, "M7 January", date(1994, 1, 1), date(1994, 1, 31))
+        cls.february = cls._period(2, "M7 February", date(1994, 2, 1), date(1994, 2, 28))
+        cls.march = cls._period(3, "M7 March", date(1994, 3, 1), date(1994, 3, 31))
 
     @classmethod
     def _period(cls, no, name, start, end):

@@ -111,6 +111,14 @@ a click that takes a second looks like a click that did nothing.
             <a href="{% url 'purchases:bill_list' %}" class="nav-link {% if request.resolver_match.app_name == 'purchases' and request.resolver_match.url_name|slice:':5' == 'bill_' %}nav-link-active{% endif %}"
                {% if request.resolver_match.app_name == 'purchases' and request.resolver_match.url_name|slice:':5' == 'bill_' %}aria-current="page"{% endif %}>Purchase bills</a>
           </li>
+          <li>
+            <a href="{% url 'purchases:pr_list' %}" class="nav-link {% if request.resolver_match.app_name == 'purchases' and request.resolver_match.url_name|slice:':3' == 'pr_' %}nav-link-active{% endif %}"
+               {% if request.resolver_match.app_name == 'purchases' and request.resolver_match.url_name|slice:':3' == 'pr_' %}aria-current="page"{% endif %}>Purchase returns</a>
+          </li>
+          <li>
+            <a href="{% url 'purchases:dbn_list' %}" class="nav-link {% if request.resolver_match.app_name == 'purchases' and request.resolver_match.url_name|slice:':4' == 'dbn_' %}nav-link-active{% endif %}"
+               {% if request.resolver_match.app_name == 'purchases' and request.resolver_match.url_name|slice:':4' == 'dbn_' %}aria-current="page"{% endif %}>Vendor debit notes</a>
+          </li>
           {% if perms.payments.view_payment %}
             <li>
               <a href="{% url 'payments:payment_list' %}" class="nav-link {% if request.resolver_match.app_name == 'payments' %}nav-link-active{% endif %}"

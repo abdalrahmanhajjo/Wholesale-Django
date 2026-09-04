@@ -19,11 +19,12 @@ from apps.core.models import (
     DocumentStatus,
 )
 from apps.inventory.models import DeliveryNote, DeliveryNoteLine
+from apps.inventory.services import post_delivery as inventory_post_delivery
 from apps.ledger.models import AccountMapping, JournalType, MappingKey
 from apps.ledger.services import (
     JournalDraft,
     JournalLineDraft,
-    PostingEngineStub,
+    PostingEngine,
     PostingError,
     PostingErrorCode,
     PostingRequest,
@@ -459,11 +460,11 @@ def reject_order(order, user, reason=""):
 #
 # DeliveryNote / DeliveryNoteLine live in apps/inventory (Member 2's app, BRD
 # 11.2). The screens and business flow are owned here in sales. The actual
-# StockMovement ledger write is owned by Member 2's stock-posting engine (Day 5,
-# INV-003/INV-005); this module ships the delivery flow and leaves a clearly
-# marked seam (`_commit_stock_movements`) for that engine to fill. Everything
-# else — eligibility, partial delivery, counters, status transitions — is
-# complete and testable without it.
+# StockMovement ledger write and COGS costing are owned by Member 2's
+# stock-posting engine (Day 5, INV-003/INV-005); post_delivery below validates
+# the sales-specific rules (over-delivery, SAL-005) then delegates the costing
+# to apps.inventory.services.post_delivery. Order status transitions
+# (PARTIAL/COMPLETED) remain a sales-layer concern.
 # ---------------------------------------------------------------------------
 
 
@@ -597,32 +598,35 @@ def draft_delivery_from_order(*, order, user, quantities, **kwargs):
     return note
 
 
-def post_delivery(note, user):
+def post_delivery(note, user, request=None):
     """
-    POST a DRAFT delivery note (SAL-005, INV-007).
+    POST a DRAFT delivery note (SAL-005, INV-007), wiring to the costing engine.
 
-    Inside one transaction it:
-      * validates the note is DRAFT and every line still has remaining
-        quantity on its order line (the note may have been worked on while
-        other deliveries went out);
-      * writes the stock movements through the Member 2 seam
-        (`_commit_stock_movements`) — a no-op until the Day 5 payers arrive,
-        guarded by the same idempotency shape as StockMovement;
-      * increments SalesOrderLine.quantity_delivered;
-      * flips the order to PARTIAL while any line remains, or COMPLETED when
-        every line is fully delivered (fired from the same transaction);
-      * records the POST audit event.
+    The sales layer owns the order-of-business decisions that the inventory
+    engine does not make, then delegates the actual stock costing:
+      * validates the note is DRAFT and every line has at least one line;
+      * rejects over-delivery per line unless the caller set
+        line.delivery_override = True before posting (authorised override,
+        SAL-005 — the inventory engine has no such guard);
+      * delegates to Member 2's engine (`apps.inventory.services.post_delivery`),
+        which moves stock out, costs each line at the warehouse's weighted
+        average, books COGS against Inventory, sets line.unit_cost/total_cost,
+        bumps SalesOrderLine.quantity_delivered, flips the delivery to POSTED
+        and records the delivery audit event;
+      * finally syncs the sales order to PARTIAL while any line remains or
+        COMPLETED when every line is fully delivered.
 
-    Over-delivery is rejected on the individual line unless the caller set
-    line.delivery_override = True before posting (authorised override, SAL-005).
+    `request` is passed through for audit context (client IP / correlation id)
+    and may be None in tests.
     """
     with transaction.atomic():
         _validate_postable(note)
-        summary = {}
         for dn_line in note.lines.select_related("sales_order_line", "product").order_by(
             "line_no"
         ):
             so_line = dn_line.sales_order_line
+            if so_line is None:
+                continue
             qty = dn_line.quantity or ZERO
             remaining = remaining_to_deliver(so_line)
             if qty > remaining and not getattr(dn_line, "delivery_override", False):
@@ -632,45 +636,10 @@ def post_delivery(note, user):
                     "(over-delivery blocked, SAL-005)"
                 )
 
-            so_line.quantity_delivered = F("quantity_delivered") + qty
-            so_line.save(update_fields=["quantity_delivered"])
-            so_line.refresh_from_db()
-
-            summary[f"line-{dn_line.line_no}"] = str(qty)
-
-        _commit_stock_movements(note, user)
-
-        note.status = DocumentStatus.POSTED
-        note.posted_at = timezone.now()
-        note.posted_by = user
-        note.save(
-            update_fields=[
-                "status",
-                "posted_at",
-                "posted_by",
-                "updated_at",
-            ]
-        )
-
-        audit.record(audit.AuditAction.POST, note, user=user)
+        inventory_post_delivery(note, user, request)
         _sync_order_fulfilment(note.sales_order)
         note.refresh_from_db()
         return note
-
-
-def _commit_stock_movements(note, user):
-    """
-    Seam for Member 2's stock-posting engine (Day 5, INV-003/INV-005).
-
-    When that engine lands, this function should write one StockMovement row
-    per delivery line using DELIVERY / direction -1 and the engine's
-    weighted-average cost, with `idempotency_key = "delivery:{note.number}:"
-    "{warehouse_id}:{line_no}"` — the same idempotency shape defined on
-    StockMovement (GL-002). Until then it is deliberately a no-op so the
-    delivery flow works end-to-end without inventing a competing source of
-    truth (INV-003).
-    """
-    return None
 
 
 def _validate_postable(note):
@@ -995,9 +964,36 @@ def build_sales_invoice_journal(invoice, *, user):
 # Posting (SAL-009) — the real engine, no silent no-op
 # ---------------------------------------------------------------------------
 
-# The one binding to swap when Member 4's concrete engine lands. The contract
-# interface is identical, so nothing else in this module changes.
-posting_service = PostingEngineStub()
+# Real production engine (Member 4's Day-2 deliverable). The contract
+# interface is identical to the stub, so nothing else in this module changes.
+posting_service = PostingEngine()
+
+
+def _posting_required_mappings(invoice):
+    """Mappings the journal will reference for this invoice (SAL-009/010).
+
+    Must mirror build_sales_invoice_journal's conditional lines exactly:
+    the engine rejects a declared mapping whose account is absent from the
+    journal (posting.py _validate_draft), so only declare the keys that will
+    actually appear for this invoice.
+    """
+    keys = [
+        MappingKey.ACCOUNTS_RECEIVABLE,
+        MappingKey.SALES_REVENUE,
+    ]
+    if invoice.tax_base:
+        keys.append(MappingKey.OUTPUT_TAX)
+    if invoice.rounding_base:
+        keys.append(
+            MappingKey.ROUNDING_LOSS if invoice.rounding_base < 0 else MappingKey.ROUNDING_GAIN
+        )
+    has_cogs = any(
+        (sl.delivery_line is not None and (sl.delivery_line.unit_cost or ZERO) > ZERO)
+        for sl in invoice.lines.select_related("delivery_line").iterator()
+    )
+    if has_cogs:
+        keys.extend([MappingKey.COGS, MappingKey.INVENTORY])
+    return tuple(keys)
 
 
 def post_invoice(invoice, user):
@@ -1014,6 +1010,7 @@ def post_invoice(invoice, user):
                 user=user,
                 idempotency_key=f"sales-invoice:{invoice.pk}:post:v1",
                 build_journal=build_sales_invoice_journal,
+                required_mappings=_posting_required_mappings(invoice),
                 reason="Invoice posting",
             )
         )

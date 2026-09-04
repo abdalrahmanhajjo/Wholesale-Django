@@ -637,7 +637,7 @@ class DeliveryNoteCreateView(BackLinkMixin, ActionPermissionMixin, TemplateView)
                 tracking_reference=header.cleaned_data.get("tracking_reference", ""),
                 shipping_address_text=header.cleaned_data.get("shipping_address_text", ""),
             )
-            services.post_delivery(note, request.user)
+            services.post_delivery(note, request.user, request)
             messages.success(
                 request,
                 f"Delivery note {note.number} created and posted.",
@@ -691,7 +691,7 @@ class DeliveryNotePostView(ActionPermissionMixin, View):
     def post(self, request, pk):
         note = get_object_or_404(DeliveryNote, pk=pk)
         try:
-            services.post_delivery(note, request.user)
+            services.post_delivery(note, request.user, request)
             messages.success(
                 request,
                 f"Delivery note {note.number} posted.",

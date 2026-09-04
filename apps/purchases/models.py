@@ -352,6 +352,11 @@ class PurchaseReturn(TimeStampedModel):
     def __str__(self):
         return self.number
 
+    def get_absolute_url(self):
+        from django.urls import reverse
+
+        return reverse("purchases:pr_detail", args=[self.pk])
+
 
 class PurchaseReturnLine(models.Model):
     purchase_return = models.ForeignKey(
@@ -460,6 +465,11 @@ class VendorDebitNote(FinancialDocumentBase):
                 fields=["vendor"], condition=Q(open_txn__gt=0), name="ix_dbn_open_credit"
             ),
         ]
+
+    def get_absolute_url(self):
+        from django.urls import reverse
+
+        return reverse("purchases:dbn_detail", args=[self.pk])
 
 
 class VendorDebitNoteLine(DocumentLineBase):

@@ -1,0 +1,167 @@
+{% extends "base.html" %}
+{% load ui %}
+{% comment %}
+Create a delivery note from an approved sales order (SAL-005, INV-007).
+
+Two steps on one screen: pick the approved order (`step == "pick"`), then the
+header plus its lines with the remaining quantity pre-filled and editable
+(`step == "create"`). Submitting creates the note, posts it, and lands on its
+detail screen.
+
+Follows so_form.html: an error summary above the form, real section headings,
+the shared field partial, a table that stacks on small screens, and a submit
+button that says what it will do.
+{% endcomment %}
+
+{% block header_title %}{{ page_title }}{% endblock %}
+
+{% block content %}
+{% if step == "pick" %}
+  <div class="card card-pad max-w-xl">
+    <p class="section-heading">Step 1 of 2</p>
+    <h2 class="card-title mt-2">Which approved order are you delivering?</h2>
+    <p class="mt-1 text-sm text-muted-fg">
+      The note lists that order's lines with the quantity still outstanding, so
+      you can ship all of it or part of it.
+    </p>
+
+    <form method="get" action="{% url 'sales:delivery_create' %}" class="mt-5 space-y-4"
+          data-guard-unsaved="off">
+      {% include "core/_form_field.html" with field=order_picker.order %}
+      <button type="submit" class="btn-primary" data-busy-label="Loading order…">
+        Continue
+      </button>
+    </form>
+  </div>
+{% else %}
+
+  <form method="post" action="{% url 'sales:delivery_create' %}?order={{ order.pk }}"
+        novalidate class="max-w-6xl">
+    {% csrf_token %}
+    <input type="hidden" name="order" value="{{ order.pk }}">
+
+    {% include "core/_form_errors.html" with form=header_form formset=line_formset %}
+
+    <section class="card card-pad" aria-labelledby="dn-order">
+      <h2 class="section-heading" id="dn-order">Sales order</h2>
+      <p class="card-title mt-2">{{ order.number }} · {{ order.customer }}</p>
+      <p class="mt-1 text-sm text-muted-fg">
+        {{ order.customer_reference|default:"No customer reference" }} · {{ order.get_status_display }}
+      </p>
+
+      <div class="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {# Carried from the order, not chosen here. #}
+        {{ header_form.customer }}
+        {{ header_form.sales_order }}
+        {% include "core/_form_field.html" with field=header_form.warehouse %}
+        {% include "core/_form_field.html" with field=header_form.document_date %}
+        {% include "core/_form_field.html" with field=header_form.reference %}
+        {% include "core/_form_field.html" with field=header_form.carrier %}
+        {% include "core/_form_field.html" with field=header_form.tracking_reference %}
+      </div>
+
+      <div class="mt-4 grid gap-4 sm:grid-cols-2">
+        {% include "core/_form_field.html" with field=header_form.shipping_address_text %}
+        {% include "core/_form_field.html" with field=header_form.notes %}
+      </div>
+    </section>
+
+    <section class="card mt-4" aria-labelledby="dn-lines">
+      <div class="border-b border-line px-5 py-4">
+        <p class="section-heading">Lines</p>
+        <h2 class="card-title mt-1" id="dn-lines">Quantities to deliver</h2>
+        <p class="mt-1 text-sm text-muted-fg">
+          Pre-filled with everything still outstanding. Lower a quantity to send
+          a partial delivery; the rest stays on the order.
+        </p>
+      </div>
+
+      {{ line_formset.management_form }}
+
+      {% comment %}
+      The same table twice over: a grid at md and up, one labelled card per line
+      below it. The region takes focus so the horizontal scroll is reachable
+      from the keyboard (WCAG 2.1.1).
+      {% endcomment %}
+      <div class="lines-stack-wrap scroll-region px-4 pt-2 md:px-0 md:pt-0"
+           tabindex="0" role="region" aria-label="Delivery lines">
+        <table class="lines-stack w-full text-sm">
+          <caption class="sr-only">
+            One row per order line, showing what was ordered, what has already
+            been delivered, and how much this note delivers.
+          </caption>
+          <thead>
+            <tr class="border-b border-line bg-muted-bg text-[11px] font-bold uppercase tracking-[0.1em] text-muted-fg">
+              <th scope="col" class="px-4 py-3 text-right">#</th>
+              <th scope="col" class="px-4 py-3 text-left">Product</th>
+              <th scope="col" class="px-4 py-3 text-right">Ordered</th>
+              <th scope="col" class="px-4 py-3 text-right">Delivered so far</th>
+              <th scope="col" class="px-4 py-3 text-right">Delivering now</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for form in line_formset %}
+              <tr class="border-b border-line last:border-0">
+                <td class="line-cell line-cell-number px-4 py-2 text-right tabular-nums"
+                    data-label="Line">
+                  <span class="line-number">{{ forloop.counter }}</span>
+                </td>
+                <td class="line-cell px-4 py-2" data-label="Product">
+                  {{ form.sales_order_line }}
+                  <span class="font-medium">{{ form.so_line.product }}</span>
+                  {% if form.sales_order_line.errors %}
+                    <p class="error-text">{{ form.sales_order_line.errors|join:" " }}</p>
+                  {% endif %}
+                </td>
+                <td class="line-cell line-cell-computed px-4 py-2 text-right tabular-nums"
+                    data-label="Ordered">{{ form.so_line.quantity|quantity }}</td>
+                <td class="line-cell line-cell-computed px-4 py-2 text-right tabular-nums"
+                    data-label="Delivered so far">{{ form.so_line.quantity_delivered|quantity }}</td>
+                <td class="line-cell px-4 py-2 text-right" data-label="Delivering now">
+                  <div class="inline-flex items-center gap-2">
+                    {% comment %}
+                    The only control in the row, and its label lives in a column
+                    header it is not associated with, so it names itself.
+                    {% endcomment %}
+                    {% a11y_field form.quantity label="Quantity to deliver" line=forloop.counter data_max=form.remaining %}
+                    <span class="whitespace-nowrap text-xs text-muted-fg">
+                      of {{ form.remaining|quantity }}
+                    </span>
+                  </div>
+                  {% if form.quantity.errors %}
+                    <p class="error-text" id="{% error_id form.quantity %}">{{ form.quantity.errors|join:" " }}</p>
+                  {% endif %}
+                </td>
+              </tr>
+            {% empty %}
+              <tr>
+                <td colspan="5" class="px-4 py-12 text-center">
+                  <p class="text-base font-semibold">Nothing left to deliver</p>
+                  <p class="mx-auto mt-1 max-w-md text-sm text-muted-fg">
+                    Every line on {{ order.number }} has already been delivered in full.
+                  </p>
+                  <a href="{% url 'sales:so_detail' order.pk %}" class="btn-ghost mt-4">
+                    Back to {{ order.number }}
+                  </a>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <div class="mt-5 flex flex-wrap items-center gap-2">
+      <button type="submit" class="btn-primary" data-busy-label="Posting delivery…">
+        Create and post delivery note
+      </button>
+      <a href="{% url 'sales:so_detail' order.pk %}" class="btn-ghost">Cancel</a>
+      <a href="{% url 'sales:delivery_list' %}" class="btn-ghost">All delivery notes</a>
+      <p class="basis-full text-sm text-muted-fg sm:basis-auto sm:pl-2">
+        Posting moves the stock. It cannot be undone from this screen.
+      </p>
+    </div>
+  </form>
+
+{% endif %}
+{% endblock %}

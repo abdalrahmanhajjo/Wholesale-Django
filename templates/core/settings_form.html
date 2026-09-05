@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% comment %}Generic settings form. Renders every field of whatever form the view supplies.{% endcomment %}
+
+{% block header_title %}{{ page_title }}{% endblock %}
+
+{% block content %}
+<form method="post" novalidate class="form-shell max-w-4xl">
+  {% csrf_token %}
+
+  {% include "core/_form_errors.html" with form=form %}
+  <div data-notice-slot class="space-y-2 empty:hidden"></div>
+
+  <section class="form-section" aria-labelledby="s-settings">
+    <div class="form-section-head">
+      <h2 class="form-section-title" id="s-settings">{{ page_title }}</h2>
+      {% if form_hint %}<p class="form-section-hint">{{ form_hint }}</p>{% endif %}
+    </div>
+    <div class="form-section-body">
+      {% for field in form %}
+        {% include "core/_form_field.html" with field=field %}
+      {% endfor %}
+    </div>
+  </section>
+
+  <div class="form-actions">
+    <button type="submit" class="btn-primary" data-busy-label="Saving…">Save changes</button>
+    <a href="{{ back_url|default:'/' }}" class="btn-ghost">Cancel</a>
+  </div>
+</form>
+{% endblock %}

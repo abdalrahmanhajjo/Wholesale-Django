@@ -13,7 +13,7 @@ from django import forms
 from django.forms import inlineformset_factory
 
 from apps.catalog.models import Product, UnitOfMeasure
-from apps.core.models import Company, TaxCode
+from apps.core.models import Company, DocumentStatus, TaxCode
 from apps.inventory.models import Warehouse
 from apps.ledger.models import Account
 from apps.parties.models import Vendor
@@ -22,6 +22,10 @@ from apps.purchases.models import (
     PurchaseBillLine,
     PurchaseOrder,
     PurchaseOrderLine,
+    PurchaseReturn,
+    PurchaseReturnLine,
+    VendorDebitNote,
+    VendorDebitNoteLine,
 )
 
 
@@ -354,6 +358,247 @@ PurchaseBillLineFormSet = inlineformset_factory(
     PurchaseBillLine,
     form=PurchaseBillLineForm,
     fk_name="bill",
+    extra=1,
+    can_delete=True,
+    min_num=1,
+    validate_min=True,
+)
+
+
+# ---------------------------------------------------------------------------
+# Purchase return (RET-005, RET-008)
+# ---------------------------------------------------------------------------
+class PurchaseReturnForm(forms.ModelForm):
+    class Meta:
+        model = PurchaseReturn
+        fields = [
+            "vendor",
+            "warehouse",
+            "original_bill",
+            "original_receipt",
+            "document_date",
+            "reason",
+        ]
+        widgets = {
+            "document_date": forms.DateInput(attrs={"type": "date"}),
+            "reason": forms.Textarea(attrs={"rows": 3}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["vendor"].queryset = Vendor.objects.filter(is_active=True)
+        self.fields["warehouse"].queryset = Warehouse.objects.filter(is_active=True)
+        self.fields["original_bill"].queryset = PurchaseBill.objects.filter(
+            status__in=["POSTED", "PARTIAL", "COMPLETED"]
+        ).order_by("-document_date")
+        self.fields["original_bill"].required = False
+        self.fields["original_receipt"].required = False
+        _style(self.fields)
+
+    def clean_reason(self):
+        # purchase_return_reason_required (RET-008) — a clear form error beats
+        # the database's blank-string CHECK constraint.
+        reason = (self.cleaned_data.get("reason") or "").strip()
+        if not reason:
+            raise forms.ValidationError("A reason is required for a vendor return.")
+        return reason
+
+    def clean(self):
+        cleaned = super().clean()
+        if not cleaned.get("original_bill") and not cleaned.get("original_receipt"):
+            self.add_error(
+                "original_bill",
+                "Pick the bill or the goods receipt this return is against.",
+            )
+        return cleaned
+
+
+class PurchaseReturnLineForm(forms.ModelForm):
+    class Meta:
+        model = PurchaseReturnLine
+        fields = [
+            "bill_line",
+            "receipt_line",
+            "product",
+            "quantity",
+            "disposition",
+            "note",
+        ]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["product"].queryset = Product.objects.filter(is_active=True).order_by(
+            "sku"
+        )
+        self.fields["note"].required = False
+        self.fields["bill_line"].required = False
+        self.fields["bill_line"].widget = forms.HiddenInput()
+        self.fields["receipt_line"].required = False
+        self.fields["receipt_line"].widget = forms.HiddenInput()
+        _style(self.fields)
+        for name in ("product", "quantity", "disposition"):
+            self.fields[name].widget.attrs["data-role"] = name
+
+    def clean_quantity(self):
+        quantity = self.cleaned_data.get("quantity")
+        if quantity is not None and quantity <= 0:
+            raise forms.ValidationError("Quantity must be greater than zero.")
+        return quantity
+
+
+PurchaseReturnLineFormSet = inlineformset_factory(
+    PurchaseReturn,
+    PurchaseReturnLine,
+    form=PurchaseReturnLineForm,
+    fk_name="purchase_return",
+    extra=1,
+    can_delete=True,
+    min_num=1,
+    validate_min=True,
+)
+
+
+# ---------------------------------------------------------------------------
+# Vendor debit note (RET-006, RET-007, RET-008)
+# ---------------------------------------------------------------------------
+class VendorDebitNoteForm(forms.ModelForm):
+    class Meta:
+        model = VendorDebitNote
+        fields = [
+            "vendor",
+            "original_bill",
+            "purchase_return",
+            "vendor_credit_reference",
+            "document_date",
+            "currency",
+            "exchange_rate",
+            "reason",
+            "notes",
+        ]
+        widgets = {
+            "document_date": forms.DateInput(attrs={"type": "date"}),
+            "reason": forms.Textarea(attrs={"rows": 3}),
+            "notes": forms.Textarea(attrs={"rows": 3}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["vendor"].queryset = Vendor.objects.filter(is_active=True)
+        self.fields["original_bill"].queryset = PurchaseBill.objects.filter(
+            status__in=["POSTED", "PARTIAL", "COMPLETED"]
+        ).order_by("-document_date")
+        self.fields["original_bill"].required = False
+        self.fields["purchase_return"].queryset = PurchaseReturn.objects.filter(
+            status=DocumentStatus.POSTED
+        ).order_by("-document_date")
+        self.fields["purchase_return"].required = False
+        self.fields["vendor_credit_reference"].required = False
+        _style(self.fields)
+
+    def clean_reason(self):
+        reason = (self.cleaned_data.get("reason") or "").strip()
+        if not reason:
+            raise forms.ValidationError("A reason is required for a vendor debit note.")
+        return reason
+
+    def save(self, commit=True):
+        note = super().save(commit=False)
+        note.posting_date = note.document_date
+        if commit:
+            note.save()
+        return note
+
+
+class VendorDebitNoteLineForm(forms.ModelForm):
+    class Meta:
+        model = VendorDebitNoteLine
+        fields = [
+            "bill_line",
+            "return_line",
+            "is_stock_line",
+            "product",
+            "expense_account",
+            "description",
+            "unit",
+            "tax_code",
+            "quantity",
+            "unit_price",
+            "discount_percent",
+        ]
+        widgets = {"tax_code": TaxCodeSelect}
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["product"].queryset = Product.objects.filter(is_active=True).order_by(
+            "sku"
+        )
+        self.fields["product"].required = False
+        self.fields["unit"].queryset = UnitOfMeasure.objects.filter(is_active=True)
+        self.fields["unit"].required = False
+        self.fields["tax_code"].queryset = TaxCode.objects.filter(
+            is_active=True, applies_to__in=["PURCHASE", "BOTH"]
+        )
+        self.fields["tax_code"].required = False
+        self.fields["discount_percent"].required = False
+        self.fields["description"].required = False
+        self.fields["expense_account"].queryset = Account.objects.filter(
+            is_postable=True, is_active=True, account_type="EXPENSE"
+        )
+        self.fields["expense_account"].required = False
+        self.fields["bill_line"].required = False
+        self.fields["bill_line"].widget = forms.HiddenInput()
+        self.fields["return_line"].required = False
+        self.fields["return_line"].widget = forms.HiddenInput()
+        _style(self.fields)
+        for name in (
+            "is_stock_line",
+            "product",
+            "quantity",
+            "unit_price",
+            "discount_percent",
+            "tax_code",
+        ):
+            self.fields[name].widget.attrs["data-role"] = name
+
+    def clean_discount_percent(self):
+        return self.cleaned_data.get("discount_percent") or Decimal("0")
+
+    def clean_quantity(self):
+        quantity = self.cleaned_data.get("quantity")
+        if quantity is not None and quantity <= 0:
+            raise forms.ValidationError("Quantity must be greater than zero.")
+        return quantity
+
+    def clean_unit_price(self):
+        # A zero-priced line has nothing to credit — post_vendor_debit_note
+        # would otherwise try to write a journal line with both debit and
+        # credit at zero, which the database rejects (journal_line_debit_xor_credit).
+        # Catch it here with a clear message instead of that 500.
+        unit_price = self.cleaned_data.get("unit_price")
+        if not unit_price:
+            raise forms.ValidationError("Unit price must be greater than zero.")
+        return unit_price
+
+    def clean(self):
+        # Appendix A split, same as a bill line for the stock side: a stock
+        # line needs a product. Unlike a bill line, a non-stock line does not
+        # require picking an expense account — leaving it blank credits the
+        # dedicated Purchase Returns contra account instead (services.py),
+        # which is the sensible default for a credit rather than a spend.
+        cleaned = super().clean()
+        if cleaned.get("DELETE"):
+            return cleaned
+        is_stock_line = cleaned.get("is_stock_line", True)
+        if is_stock_line and not cleaned.get("product"):
+            self.add_error("product", "A stock line needs a product.")
+        return cleaned
+
+
+VendorDebitNoteLineFormSet = inlineformset_factory(
+    VendorDebitNote,
+    VendorDebitNoteLine,
+    form=VendorDebitNoteLineForm,
+    fk_name="debit_note",
     extra=1,
     can_delete=True,
     min_num=1,

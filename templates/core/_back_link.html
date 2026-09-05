@@ -1,0 +1,18 @@
+{% comment %}
+The return arrow every inner page carries.
+
+Takes `back_url` and `back_label`; both are required, because "Back" alone
+leaves a screen-reader user with a list of identical links and no idea where
+any of them go.
+
+It is a real link to a real URL, not `history.back()`. A link is what makes the
+destination visible in the status bar, opens in a new tab on middle-click, and
+still works when the page was reached from a bookmark or an email — none of
+which a history call can do. `app.js` upgrades it to a genuine back step only
+when the previous page really was that URL, so the browser's own history stays
+honest.
+{% endcomment %}
+<a href="{{ back_url }}" class="back-link" data-back-to="{{ back_url }}">
+  <svg class="icon" aria-hidden="true"><use href="#i-arrow-left"></use></svg>
+  <span>{{ back_label }}</span>
+</a>

@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% comment %}Product detail (CFG-011): what it is, what it costs, and what changed.{% endcomment %}
+
+{% block header_title %}{{ product.sku }}{% endblock %}
+
+{% block actions %}
+  {% if perms.catalog.change_product %}
+    <a href="{% url 'catalog:product_edit' product.pk %}" class="btn-primary">Edit</a>
+  {% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="grid gap-4 lg:grid-cols-3">
+
+  <div class="space-y-4 lg:col-span-2">
+    <div class="card card-pad">
+      <div class="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 class="eyebrow">Product</h2>
+          <p class="mt-1 font-mono text-sm text-muted-fg">{{ product.sku }}</p>
+        </div>
+        <div class="flex gap-2">
+          {% if product.is_active %}<span class="badge-posted">Active</span>
+          {% else %}<span class="badge-draft">Inactive</span>{% endif %}
+          {% if product.is_inventory %}<span class="badge">Stocked</span>{% endif %}
+        </div>
+      </div>
+
+      <dl class="mt-5 grid gap-4 sm:grid-cols-3">
+        <div><dt class="eyebrow">Category</dt><dd class="mt-1 text-sm">{{ product.category|default:"—" }}</dd></div>
+        <div><dt class="eyebrow">Unit</dt><dd class="mt-1 text-sm">{{ product.unit }}</dd></div>
+        <div><dt class="eyebrow">Type</dt><dd class="mt-1 text-sm">{{ product.get_product_type_display }}</dd></div>
+        <div><dt class="eyebrow">Sales price</dt><dd class="mt-1 text-sm tabular-nums">{{ product.sales_price|floatformat:2 }}</dd></div>
+        <div><dt class="eyebrow">Purchase price</dt><dd class="mt-1 text-sm tabular-nums">{{ product.purchase_price|floatformat:2 }}</dd></div>
+        <div><dt class="eyebrow">Max discount</dt><dd class="mt-1 text-sm tabular-nums">{{ product.max_discount_percent|floatformat:2 }}%</dd></div>
+        <div><dt class="eyebrow">Sales tax</dt><dd class="mt-1 text-sm">{{ product.default_sales_tax_code|default:"—" }}</dd></div>
+        <div><dt class="eyebrow">Purchase tax</dt><dd class="mt-1 text-sm">{{ product.default_purchase_tax_code|default:"—" }}</dd></div>
+        <div><dt class="eyebrow">Reorder level</dt><dd class="mt-1 text-sm tabular-nums">{{ product.reorder_level|floatformat:2 }}</dd></div>
+        <div><dt class="eyebrow">Preferred vendor</dt><dd class="mt-1 text-sm">{{ product.preferred_vendor|default:"—" }}</dd></div>
+        <div><dt class="eyebrow">Barcode</dt><dd class="mt-1 font-mono text-xs">{{ product.barcode|default:"—" }}</dd></div>
+      </dl>
+
+      {% if product.description %}
+        <div class="mt-5 border-t border-line pt-4">
+          <p class="eyebrow">Description</p>
+          <p class="mt-1 whitespace-pre-line text-sm text-muted-fg">{{ product.description }}</p>
+        </div>
+      {% endif %}
+    </div>
+
+    <div class="card card-pad">
+      <div class="flex items-center justify-between">
+        <h2 class="card-title">Price list</h2>
+        {% if perms.catalog.add_productprice %}
+          <a href="{% url 'catalog:price_create' product.pk %}" class="btn-ghost btn-sm">Add price</a>
+        {% endif %}
+      </div>
+      <p class="mt-1 text-sm text-muted-fg">
+        Dated prices per currency and minimum quantity. The default prices above
+        apply when no price list entry matches.
+      </p>
+      <div class="mt-3 space-y-3">
+        {% for price in product.prices.all %}
+          <div class="flex items-start justify-between border-t border-line pt-3">
+            <div>
+              <p class="text-sm font-semibold">
+                {{ price.currency_id }} {{ price.price|floatformat:2 }}
+                <span class="text-xs font-normal text-muted-fg">· {{ price.get_kind_display }}</span>
+              </p>
+              <p class="mt-1 text-sm text-muted-fg">
+                From {{ price.valid_from }}{% if price.valid_to %} to {{ price.valid_to }}{% else %} (open ended){% endif %}
+                {% if price.min_quantity %} · minimum {{ price.min_quantity|floatformat:2 }}{% endif %}
+              </p>
+            </div>
+                        <div class="flex shrink-0 items-center gap-2">
+              <a href="{% url 'catalog:price_edit' price.pk %}" class="text-xs font-semibold text-muted-fg hover:text-ink">Edit</a>
+              <form method="post" action="{% url 'catalog:price_delete' price.pk %}">
+                {% csrf_token %}
+                <button type="submit" class="text-xs font-semibold text-danger hover:underline">Remove</button>
+              </form>
+            </div>
+          </div>
+        {% empty %}
+          <p class="text-sm text-muted-fg">No price list entries — the default prices apply.</p>
+        {% endfor %}
+      </div>
+    </div>
+
+    {% if product.revenue_account or product.cogs_account or product.inventory_account or product.expense_account %}
+    <div class="card card-pad">
+      <h2 class="card-title">Account overrides</h2>
+      <dl class="mt-4 grid gap-4 sm:grid-cols-2">
+        {% if product.revenue_account %}<div><dt class="eyebrow">Revenue</dt><dd class="mt-1 text-sm">{{ product.revenue_account }}</dd></div>{% endif %}
+        {% if product.cogs_account %}<div><dt class="eyebrow">COGS</dt><dd class="mt-1 text-sm">{{ product.cogs_account }}</dd></div>{% endif %}
+        {% if product.inventory_account %}<div><dt class="eyebrow">Inventory</dt><dd class="mt-1 text-sm">{{ product.inventory_account }}</dd></div>{% endif %}
+        {% if product.expense_account %}<div><dt class="eyebrow">Expense</dt><dd class="mt-1 text-sm">{{ product.expense_account }}</dd></div>{% endif %}
+      </dl>
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="card card-pad self-start">
+    <p class="eyebrow">Audit history</p>
+    <h2 class="card-title mt-2">What changed, and who changed it</h2>
+    <ul class="mt-4 space-y-4">
+      {% for event in audit_events %}
+        <li class="border-l-2 border-line pl-3">
+          <p class="text-sm font-semibold">{{ event.get_action_display }}</p>
+          <p class="text-xs text-muted-fg">{{ event.occurred_at }} · {{ event.user|default:"system" }}</p>
+          {% if event.changes %}
+            <p class="mt-1 text-xs text-muted-fg">{{ event.changes.keys|join:", " }}</p>
+          {% endif %}
+        </li>
+      {% empty %}
+        <li class="text-sm text-muted-fg">No changes recorded yet.</li>
+      {% endfor %}
+    </ul>
+  </div>
+
+</div>
+{% endblock %}

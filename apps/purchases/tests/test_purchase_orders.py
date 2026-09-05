@@ -274,3 +274,48 @@ class PurchaseOrderScreenTests(TestCase):
         response = self.client.get(reverse("purchases:po_list"))
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context["total_count"], 1)
+
+
+class ProductPayloadEmbeddingTests(TestCase):
+    """The product map is embedded in a <script> tag, so how it is escaped matters.
+
+    The sales app renders its equivalent map through ``json_script`` and that
+    map already carries a product *name*. This one carried only numbers, but it
+    was rendered with ``|safe``, so the day anybody added a name to it the page
+    would have become injectable. These pin both halves: the browser contract
+    the inline script depends on, and the escaping.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.unit = UnitOfMeasure.objects.get(code="EA")
+        Product.objects.create(
+            sku="SKU-EMBED",
+            # If this name ever reaches the payload, json_script is what stops
+            # it closing the tag. Harmless while the map is numeric-only.
+            name="Widget </script><script>alert(1)</script>",
+            unit=cls.unit,
+            purchase_price=Decimal("10.00"),
+        )
+
+    def setUp(self):
+        self.buyer = User.objects.create_user(
+            username="embed-buyer", email="embed@example.com", password="testpass-12345"
+        )
+        self.buyer.groups.add(Group.objects.get(name=PURCHASING))
+        self.client.force_login(self.buyer)
+
+    def test_the_inline_script_can_still_find_its_data(self):
+        """json_script emits the id itself; the JS looks the element up by it."""
+        response = self.client.get(reverse("purchases:po_create"))
+        self.assertEqual(response.status_code, 200)
+        body = response.content.decode()
+        self.assertIn('id="po-products-data"', body)
+        self.assertIn('type="application/json"', body)
+
+    def test_no_unescaped_closing_script_tag_reaches_the_page(self):
+        response = self.client.get(reverse("purchases:po_create"))
+        body = response.content.decode()
+        payload_start = body.index('id="po-products-data"')
+        payload = body[payload_start : body.index("</script>", payload_start)]
+        self.assertNotIn("<script", payload)

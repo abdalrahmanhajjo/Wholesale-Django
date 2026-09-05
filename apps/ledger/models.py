@@ -15,6 +15,7 @@ from django.contrib.contenttypes.models import ContentType
 from django.db import models
 from django.db.models import F, Q
 from django.db.models.functions import Upper
+from django.urls import reverse
 
 from apps.core.expressions import at_most_one, exactly_one
 from apps.core.models import MONEY, RATE, TimeStampedModel
@@ -66,7 +67,11 @@ class Account(TimeStampedModel):
     is_postable = models.BooleanField(default=True)
     is_control = models.BooleanField(
         default=False,
-        help_text="Backed by a subledger (AR/AP/Inventory). Postable only via services (GL-011).",
+        help_text=(
+            "This account is driven by a subledger - receivables, payables or "
+            "inventory - so entries reach it through those workflows rather "
+            "than by direct posting."
+        ),
     )
     control_type = models.CharField(
         max_length=18,
@@ -191,6 +196,9 @@ class Account(TimeStampedModel):
     def __str__(self):
         return f"{self.code} {self.name}"
 
+    def get_absolute_url(self):
+        return reverse("core:account_edit", args=[self.pk])
+
 
 class MappingKey(models.TextChoices):
     """
@@ -218,6 +226,7 @@ class MappingKey(models.TextChoices):
     FX_LOSS = "FX_LOSS", "Realised FX loss"
     ROUNDING_GAIN = "ROUNDING_GAIN", "Rounding income"
     ROUNDING_LOSS = "ROUNDING_LOSS", "Rounding expense"
+    MERCHANT_FEE = "MERCHANT_FEE", "Merchant and payment-processor fees"
     INVENTORY_GAIN = "INVENTORY_GAIN", "Inventory adjustment gain"
     INVENTORY_LOSS = "INVENTORY_LOSS", "Inventory adjustment loss / write-off"
     RETAINED_EARNINGS = "RETAINED_EARNINGS", "Retained earnings"
@@ -239,6 +248,9 @@ class AccountMapping(TimeStampedModel):
 
     def __str__(self):
         return f"{self.key} -> {self.account_id}"
+
+    def get_absolute_url(self):
+        return reverse("core:mapping_edit", args=[self.pk])
 
 
 # ---------------------------------------------------------------------------

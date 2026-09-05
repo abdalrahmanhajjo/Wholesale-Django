@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% load ui %}
+{% block header_title %}New sales return{% endblock %}
+
+{% block breadcrumb %}
+  <a href="{% url 'sales:return_list' %}"
+     class="mb-4 inline-flex items-center gap-1.5 text-sm font-medium text-muted-fg transition-colors hover:text-brand">
+    <span aria-hidden="true">&larr;</span> Back to returns
+  </a>
+{% endblock %}
+
+{% block content %}
+
+{% if step == "pick" %}
+  <div class="card card-pad max-w-xl">
+    <p class="eyebrow">Step 1 · choose the source</p>
+    <h2 class="card-title mt-2">Return from which invoice?</h2>
+    <form method="get" action="{% url 'sales:return_create' %}" class="mt-5">
+      <div class="field-wrap">
+        {{ invoice_picker.invoice }}
+      </div>
+      <button type="submit" class="btn-primary mt-4">Continue</button>
+    </form>
+  </div>
+{% else %}
+  {# rows = [(invoice_line, remaining_to_return)] chosen by the view #}
+  <div class="card card-pad">
+    <p class="eyebrow">{{ invoice.number }}</p>
+    <h2 class="card-title mt-1">{{ invoice.customer }} · {{ invoice.document_date }}</h2>
+    {% if rows %}
+      <form method="post" action="{% url 'sales:return_create' %}">
+        <input type="hidden" name="invoice" value="{{ invoice.pk }}">
+        {% csrf_token %}
+        <div class="mt-4 overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-b border-line bg-muted-bg text-[11px] font-bold uppercase text-muted-fg">
+                <th class="px-4 py-2 text-left">Product</th>
+                <th class="px-4 py-2 text-right">Invoiced</th>
+                <th class="px-4 py-2 text-right">Returned so far</th>
+                <th class="px-4 py-2 text-right">Qty to return</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for il, remaining in rows %}
+                <tr class="border-b border-line">
+                  <td class="px-4 py-2">{{ il.product }}</td>
+                  <td class="px-4 py-2 text-right tabular-nums">{{ il.quantity }}</td>
+                  <td class="px-4 py-2 text-right tabular-nums">{{ il.quantity_returned }}</td>
+                  <td class="px-4 py-2 text-right">
+                    <div class="inline-flex items-center gap-2">
+                      <input type="number" id="qty_{{ il.pk }}" name="qty_{{ il.pk }}"
+                             placeholder="0" min="0" max="{{ remaining }}"
+                             step="0.0001" data-rule="decimal" data-min="0"
+                             data-max="{{ remaining }}" data-decimals="4"
+                             class="field w-32 text-right tabular-nums">
+                      <span class="whitespace-nowrap text-xs text-muted-fg">
+                        of {{ remaining|quantity }}
+                      </span>
+                    </div>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <div class="mt-5 grid gap-4 sm:grid-cols-2">
+          <div>
+            <label for="disposition" class="eyebrow">Disposition</label>
+            <select id="disposition" name="disposition" class="field mt-2">
+              <option value="RESTOCK">Return to saleable stock</option>
+              <option value="WRITE_OFF">Damaged / write-off</option>
+              <option value="NO_STOCK_EFFECT">No stock effect</option>
+            </select>
+          </div>
+          <div>
+            <label for="reason" class="eyebrow">Reason (required, RET-008)</label>
+            <textarea id="reason" name="reason" rows="2" class="field mt-2"
+                      placeholder="e.g. Customer returned 2 units — defective"></textarea>
+          </div>
+        </div>
+        <div class="mt-5 flex gap-2">
+          <button type="submit" class="btn-primary">Create return (draft)</button>
+          <a href="{% url 'sales:return_list' %}" class="btn-ghost">Cancel</a>
+        </div>
+      </form>
+    {% else %}
+      <div class="mt-4 rounded-lg border border-line bg-muted-bg/50 p-4">
+        <p class="text-sm font-bold text-fg">Nothing left to return on {{ invoice.number }}</p>
+        <p class="mt-1 text-sm text-muted-fg">
+          All of this invoice's quantity has already been returned on a prior
+          return document. Partial returns are supported — return a smaller
+          quantity first, then return the rest later.
+        </p>
+        <a href="{% url 'sales:return_create' %}" class="btn-ghost mt-4">Choose another invoice</a>
+      </div>
+    {% endif %}
+  </div>
+{% endif %}
+{% endblock %}

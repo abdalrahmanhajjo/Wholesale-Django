@@ -72,6 +72,10 @@ def allocate_gr_number(document_date):
     return _allocate_number(DocumentType.GOODS_RECEIPT, document_date)
 
 
+def allocate_dn_number(document_date):
+    return _allocate_number(DocumentType.DELIVERY_NOTE, document_date)
+
+
 def allocate_st_number(document_date):
     return _allocate_number(DocumentType.STOCK_TRANSFER, document_date)
 
@@ -777,3 +781,144 @@ def post_stock_adjustment(adjustment, user, request):
         audit.record_action(request, AuditAction.POST, adjustment)
 
     return adjustment
+
+
+# ---------------------------------------------------------------------------
+# Delivery note (INV-007, SAL-005, SAL-010, GL-001, GL-002)
+# ---------------------------------------------------------------------------
+def recalculate_delivery(delivery):
+    """
+    Estimate each line's cost from the warehouse's *current* average (a
+    preview only, same as `recalculate_transfer` — the authoritative figure
+    is fixed at posting time, since the average can move between saving a
+    draft and posting it).
+    """
+    total_cost = ZERO
+    for line in delivery.lines.select_related("product"):
+        balance = StockBalance.objects.filter(
+            product=line.product, warehouse=delivery.warehouse
+        ).first()
+        line.unit_cost = balance.average_cost if balance else ZERO
+        line.total_cost = _money(line.quantity * line.unit_cost)
+        line.save(update_fields=["unit_cost", "total_cost"])
+        total_cost += line.total_cost
+    delivery.total_cost_base = total_cost
+    delivery.save(update_fields=["total_cost_base"])
+    return delivery
+
+
+def post_delivery(delivery, user, request):
+    """
+    Moves stock out and books the cost of goods sold (INV-007, SAL-010):
+    every line becomes a DELIVERY movement through the shared costing
+    engine — costed at the warehouse's *current* weighted average, which
+    is exactly what COGS means (INV-005) — and Cost of Goods Sold is
+    debited against Inventory for the total, unless every line happened to
+    cost zero (a product that has never carried a value), in which case
+    there is nothing to post. Mirrors `post_goods_receipt` with the
+    direction and accounts swapped: outbound instead of inbound, COGS
+    instead of GRNI.
+    """
+    if delivery.status != DocumentStatus.DRAFT:
+        raise ValidationError("Only a draft delivery can be posted.")
+    lines = list(delivery.lines.select_related("product", "sales_order_line"))
+    if not lines:
+        raise ValidationError("Add at least one line before posting.")
+
+    with transaction.atomic():
+        fiscal_period = _fiscal_period_for(delivery.document_date)
+        movements = []
+        total_cost = ZERO
+
+        for line in lines:
+            movement = post_stock_movement(
+                product=line.product,
+                warehouse=delivery.warehouse,
+                movement_date=delivery.document_date,
+                movement_type=MovementType.DELIVERY,
+                quantity=line.quantity,
+                source=delivery,
+                source_doc_type=DocumentType.DELIVERY_NOTE,
+                source_doc_number=delivery.number,
+                idempotency_key=f"DN:{delivery.pk}:{line.pk}",
+                user=user,
+            )
+            line.unit_cost = movement.unit_cost
+            line.total_cost = movement.total_cost
+            line.save(update_fields=["unit_cost", "total_cost"])
+
+            total_cost += movement.total_cost
+            movements.append(movement)
+
+            if line.sales_order_line_id:
+                so_line = line.sales_order_line
+                so_line.quantity_delivered = so_line.quantity_delivered + line.quantity
+                so_line.save(update_fields=["quantity_delivered"])
+
+        delivery.total_cost_base = total_cost
+
+        journal_entry = None
+        if total_cost > ZERO:
+            cogs_account = _mapped_account("COGS")
+            inventory_account = _mapped_account("INVENTORY")
+            company = Company.objects.first()
+            if company is None:
+                raise ValidationError(
+                    "Company configuration is missing. Ask an administrator to set it up."
+                )
+            base_currency = company.base_currency
+
+            journal_entry = JournalEntry.objects.create(
+                number=_allocate_journal_number(delivery.document_date),
+                entry_date=delivery.document_date,
+                fiscal_period=fiscal_period,
+                journal_type=JournalType.INVENTORY,
+                narration=f"Delivery {delivery.number} — {delivery.customer}",
+                currency=base_currency,
+                exchange_rate=Decimal("1"),
+                total_debit_base=total_cost,
+                total_credit_base=total_cost,
+                source_content_type=ContentType.objects.get_for_model(delivery),
+                source_object_id=delivery.pk,
+                source_doc_type=DocumentType.DELIVERY_NOTE,
+                source_doc_number=delivery.number,
+                idempotency_key=f"DN:{delivery.pk}",
+                posted_at=timezone.now(),
+                posted_by=user,
+            )
+            JournalLine.objects.create(
+                entry=journal_entry,
+                line_no=1,
+                account=cogs_account,
+                debit_txn=total_cost,
+                debit_base=total_cost,
+                credit_txn=ZERO,
+                credit_base=ZERO,
+                currency=base_currency,
+                warehouse=delivery.warehouse,
+                description=f"Cost of goods sold on {delivery.number}",
+            )
+            JournalLine.objects.create(
+                entry=journal_entry,
+                line_no=2,
+                account=inventory_account,
+                debit_txn=ZERO,
+                debit_base=ZERO,
+                credit_txn=total_cost,
+                credit_base=total_cost,
+                currency=base_currency,
+                warehouse=delivery.warehouse,
+                description=f"Shipped on {delivery.number}",
+            )
+            for movement in movements:
+                movement.journal_entry = journal_entry
+                movement.save(update_fields=["journal_entry"])
+            delivery.journal_entry = journal_entry
+
+        delivery.status = DocumentStatus.POSTED
+        delivery.posted_at = timezone.now()
+        delivery.posted_by = user
+        delivery.save()
+        audit.record_action(request, AuditAction.POST, delivery)
+
+    return delivery

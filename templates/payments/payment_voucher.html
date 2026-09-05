@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>{{ payment.number }}</title>
+<style>
+  body { font-family: "Georgia", serif; color: #111; margin: 48px; }
+  .muted { color: #666; }
+  table { width: 100%; border-collapse: collapse; margin-top: 24px; }
+  th, td { padding: 6px 8px; text-align: left; border-bottom: 1px solid #ddd; }
+  th { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: #888; }
+  .num { text-align: right; font-variant-numeric: tabular-nums; }
+  .tot { font-weight: bold; }
+  .head { display: flex; justify-content: space-between; }
+  .badge { border: 1px solid; padding: 2px 10px; border-radius: 20px; font-size: 12px; }
+  .badge-posted { border-color: #2e8b57; color: #2e8b57; }
+  .badge-partial { border-color: #c98a2d; color: #c98a2d; }
+  .badge-completed { border-color: #2e8b57; color: #2e8b57; }
+  .badge-draft { border-color: #888; color: #888; }
+  .badge-reversed { border-color: #b3261e; color: #b3261e; }
+  .void { border: 2px solid #b3261e; color: #b3261e; padding: 10px 14px;
+          margin-top: 24px; font-weight: bold; }
+  .sign { display: flex; gap: 48px; margin-top: 56px; }
+  .sign div { flex: 1; border-top: 1px solid #999; padding-top: 6px; font-size: 12px;
+              color: #666; }
+  @media print { body { margin: 12mm; } }
+</style>
+</head>
+<body>
+  <div class="head">
+    <div>
+      {# The two directions are different documents to an auditor, so name them. #}
+      <h1>{% if payment.direction == "RECEIPT" %}RECEIPT VOUCHER{% else %}PAYMENT VOUCHER{% endif %}</h1>
+      <p class="muted">{{ company.name|default:"" }} · {{ company.base_currency.code|default:"USD" }}</p>
+    </div>
+    <div style="text-align:right">
+      <p><strong>{{ payment.number }}</strong></p>
+      <span class="badge badge-{{ payment.status|lower }}">{{ payment.get_status_display }}</span>
+    </div>
+  </div>
+
+  {% if payment.is_reversed %}
+    <p class="void">
+      REVERSED on {{ payment.reversed_at|date:"Y-m-d" }} —
+      {{ payment.reversal_reason }}
+      {% if payment.reversal_journal %}(journal {{ payment.reversal_journal.number }}){% endif %}
+    </p>
+  {% endif %}
+
+  <table style="margin-top:32px">
+    <tr>
+      <th>{% if payment.direction == "RECEIPT" %}Received from{% else %}Paid to{% endif %}</th>
+      <th>Voucher no.</th><th>Date</th><th>Method</th>
+    </tr>
+    <tr>
+      <td>{{ party.name|default:"—" }}{% if party.code %}<br><span class="muted">{{ party.code }}</span>{% endif %}</td>
+      <td>{{ payment.number }}</td>
+      <td>{{ payment.payment_date }}</td>
+      <td>
+        {{ payment.method.name|default:"—" }}
+        {% if payment.reference %}<br><span class="muted">Ref {{ payment.reference }}</span>{% endif %}
+      </td>
+    </tr>
+  </table>
+
+  <table>
+    <tr><th>Account</th><th>Currency</th><th class="num">Rate</th><th class="num">Amount</th><th class="num">Base</th></tr>
+    <tr>
+      <td>{{ payment.money_account.name|default:"—" }}</td>
+      <td>{{ payment.currency.code }}</td>
+      <td class="num">{{ payment.exchange_rate }}</td>
+      <td class="num tot">{{ payment.amount_txn|floatformat:4 }}</td>
+      <td class="num">{{ payment.amount_base|floatformat:4 }}</td>
+    </tr>
+  </table>
+
+  {% if allocations %}
+    <h3 style="margin-top:32px">Applied to</h3>
+    <table>
+      <tr>
+        <th>Document</th><th>Date</th>
+        <th class="num">Amount</th><th class="num">Exchange difference</th>
+      </tr>
+      {% for row in allocations %}
+        <tr>
+          <td>{{ row.target.number|default:"—" }}</td>
+          <td>{{ row.allocation_date }}</td>
+          <td class="num">{{ row.target_amount_txn|floatformat:4 }}</td>
+          <td class="num">
+            {% if row.fx_gain_loss_base %}{{ row.fx_gain_loss_base|floatformat:4 }}{% else %}—{% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      <tr>
+        <td class="tot" colspan="2">Applied</td>
+        <td class="num tot">{{ payment.allocated_txn|floatformat:4 }}</td>
+        <td class="num tot">{% if fx_total %}{{ fx_total|floatformat:4 }}{% else %}—{% endif %}</td>
+      </tr>
+      <tr>
+        <td class="tot" colspan="2">Unapplied advance</td>
+        <td class="num tot">{{ payment.unallocated_txn|floatformat:4 }}</td>
+        <td></td>
+      </tr>
+    </table>
+    {% if fx_total %}
+      <p class="muted" style="margin-top:12px">
+        The exchange difference is the movement between each document's booking
+        rate and the rate this money was received at. A positive figure is a gain.
+      </p>
+    {% endif %}
+  {% else %}
+    <p class="muted" style="margin-top:24px">
+      Held in full as an unapplied advance of
+      {{ payment.unallocated_txn|floatformat:4 }} {{ payment.currency.code }}.
+    </p>
+  {% endif %}
+
+  {% if payment.narration %}
+    <p style="margin-top:24px">{{ payment.narration }}</p>
+  {% endif %}
+
+  <p class="muted" style="margin-top:24px">
+    {% if payment.journal_entry %}Journal {{ payment.journal_entry.number }}{% endif %}
+    {% if payment.posted_by %} · posted by {{ payment.posted_by.get_username }}{% endif %}
+  </p>
+
+  <div class="sign">
+    <div>{% if payment.direction == "RECEIPT" %}Received by{% else %}Paid by{% endif %}</div>
+    <div>Approved by</div>
+    <div>{% if payment.direction == "RECEIPT" %}Customer signature{% else %}Vendor receipt{% endif %}</div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,122 @@
+{% extends "reports/_statement_shell.html" %}
+{% comment %}
+RPT-006 / RPT-007. Open documents at a date, bucketed by how overdue they are.
+
+Sorted worst-debt-first rather than alphabetically: an ageing is a work list,
+and the top of it should be who to ring today.
+
+Every document number and every party name is a link, because the question a
+reader asks next is always "which invoice?" or "who is this?", and making them
+search for it is how a report stops being used.
+{% endcomment %}
+
+{% block date_controls %}
+  {% include "core/_form_field.html" with field=form.as_of %}
+  {% include "core/_form_field.html" with field=form.currency %}
+  {% include "core/_form_field.html" with field=form.overdue_only %}
+{% endblock %}
+
+{% block statement %}
+{% if report.other_currencies %}
+  <div class="card card-pad mb-4 border-warning/40 bg-warning/5">
+    <p class="text-xs font-bold uppercase text-warning-strong">Not shown here</p>
+    <p class="mt-1 text-sm">
+      {% for code, count in report.other_currencies %}
+        {{ count }} open document{{ count|pluralize }} in {{ code }}{% if not forloop.last %};{% endif %}
+      {% endfor %}.
+      Totals only mean something within one currency, so switch the currency above to see them.
+    </p>
+  </div>
+{% endif %}
+
+<div class="mb-4 grid gap-3 sm:grid-cols-3">
+  <div class="card card-pad">
+    <p class="eyebrow">Total open</p>
+    <p class="mt-1 text-2xl font-semibold tabular-nums">{{ report.total|floatformat:2 }}</p>
+    <p class="text-xs text-muted-fg">{{ report.currency_code }}</p>
+  </div>
+  <div class="card card-pad">
+    <p class="eyebrow">Overdue</p>
+    <p class="mt-1 text-2xl font-semibold tabular-nums {% if report.overdue %}text-danger{% endif %}">
+      {{ report.overdue|floatformat:2 }}
+    </p>
+    <p class="text-xs text-muted-fg">
+      {% if report.overdue_percent is not None %}{{ report.overdue_percent }}% of the total{% else %}nothing open{% endif %}
+    </p>
+  </div>
+  <div class="card card-pad">
+    <p class="eyebrow">{{ report.party_label }}s</p>
+    <p class="mt-1 text-2xl font-semibold tabular-nums">{{ parties|length }}</p>
+    <p class="text-xs text-muted-fg">with something open</p>
+  </div>
+</div>
+
+<div class="card overflow-x-auto">
+  <table class="w-full text-sm">
+    <caption class="sr-only">{{ report.title }} as at {{ report.as_of }}</caption>
+    <thead>
+      <tr class="border-b border-line bg-muted-bg text-[11px] font-bold uppercase text-muted-fg">
+        <th scope="col" class="px-4 py-2 text-left">{{ report.party_label }} / document</th>
+        <th scope="col" class="px-4 py-2 text-left">Due</th>
+        {% for cell in report.bucket_cells %}
+          <th scope="col" class="px-4 py-2 text-right">{{ cell.label }}</th>
+        {% endfor %}
+        <th scope="col" class="px-4 py-2 text-right">Total</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for party in parties %}
+        <tr class="border-b border-line bg-muted-bg/50">
+          <th scope="rowgroup" class="px-4 py-2 text-left font-semibold">
+            <a href="{% url report.config.party_url party.party_id %}" class="underline underline-offset-2 hover:text-brand">
+              {{ party.party_name }}
+            </a>
+          </th>
+          <td></td>
+          {% for cell in party.bucket_cells %}
+            <td class="px-4 py-2 text-right tabular-nums font-medium">{{ cell.amount|floatformat:2 }}</td>
+          {% endfor %}
+          <td class="px-4 py-2 text-right tabular-nums font-semibold">{{ party.total|floatformat:2 }}</td>
+        </tr>
+        {% for item in party.items %}
+          <tr class="border-b border-line">
+            <td class="px-4 py-1.5 pl-8">
+              <a href="{% url report.config.detail_url item.document_id %}" class="font-mono text-xs underline underline-offset-2 hover:text-brand">
+                {{ item.document_number }}
+              </a>
+              {% if item.is_part_paid %}
+                <span class="ml-2 text-xs text-muted-fg">part paid — {{ item.settled|floatformat:2 }} of {{ item.total|floatformat:2 }}</span>
+              {% endif %}
+            </td>
+            <td class="px-4 py-1.5 text-xs {% if item.is_overdue %}text-danger{% else %}text-muted-fg{% endif %}">
+              {{ item.due_date|date:"j M Y"|default:"—" }}
+              {% if item.days_overdue %}<span class="ml-1">({{ item.days_overdue }}d)</span>{% endif %}
+            </td>
+            {% for cell in item.bucket_cells %}
+              <td class="px-4 py-1.5 text-right tabular-nums text-muted-fg">
+                {% if not cell.is_empty %}{{ cell.amount|floatformat:2 }}{% endif %}
+              </td>
+            {% endfor %}
+            <td class="px-4 py-1.5 text-right tabular-nums">{{ item.open_amount|floatformat:2 }}</td>
+          </tr>
+        {% endfor %}
+      {% empty %}
+        <tr><td colspan="8" class="px-4 py-10 text-center text-sm text-muted-fg">
+          {% if overdue_only %}Nothing is overdue.{% else %}Nothing is open in {{ report.currency_code }} at this date.{% endif %}
+        </td></tr>
+      {% endfor %}
+    </tbody>
+    {% if parties %}
+      <tfoot>
+        <tr class="border-t-2 border-line bg-muted-bg font-semibold">
+          <td colspan="2" class="px-4 py-2 text-right text-xs uppercase text-muted-fg">Totals</td>
+          {% for cell in report.bucket_cells %}
+            <td class="px-4 py-2 text-right tabular-nums">{{ cell.amount|floatformat:2 }}</td>
+          {% endfor %}
+          <td class="px-4 py-2 text-right tabular-nums text-brand-deep">{{ report.total|floatformat:2 }}</td>
+        </tr>
+      </tfoot>
+    {% endif %}
+  </table>
+</div>
+{% endblock %}

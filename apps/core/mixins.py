@@ -28,8 +28,14 @@ For a plain function view, use `@require_action(POST_SALES_INVOICE)`.
 
 from functools import wraps
 
+from django.contrib import messages
 from django.contrib.auth.mixins import AccessMixin, LoginRequiredMixin
 from django.core.exceptions import PermissionDenied
+from django.db import transaction
+from django.shortcuts import redirect
+from django.urls import reverse
+
+from apps.core import audit
 
 #: HTTP methods that do not change state. Everything else is a write.
 SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS", "TRACE"})
@@ -165,3 +171,95 @@ def require_action(*permissions):
         return wrapped
 
     return decorator
+
+
+class AuditedFormMixin:
+    """
+    Saves the object and writes the ACC-005 audit event in one transaction.
+
+    Doing it here rather than in each view means no screen can forget, and a
+    failed save never leaves an audit event claiming a change that did not
+    happen (BR-005).
+    """
+
+    audit_reason = ""
+
+    def form_valid(self, form):
+        # `self.object` is None on a CreateView and the loaded row on an
+        # UpdateView. Never infer this from the pk: a model with a natural
+        # primary key (Currency.code) already has one before it is ever saved.
+        is_create = self.object is None
+        # Re-read from the database rather than snapshotting `self.object` —
+        # the form has already applied cleaned_data to that instance, so it
+        # holds the *after* values by the time we get here.
+        before = (
+            None if is_create else audit.snapshot(self.model.objects.get(pk=self.object.pk))
+        )
+
+        with transaction.atomic():
+            form.instance.updated_by = self.request.user
+            if is_create:
+                form.instance.created_by = self.request.user
+            self.object = form.save()
+
+            if is_create:
+                audit.record_create(self.request, self.object, reason=self.audit_reason)
+                messages.success(self.request, f"{self.object} created.")
+            else:
+                event = audit.record_update(
+                    self.request, self.object, before, reason=self.audit_reason
+                )
+                if event:
+                    changed = ", ".join(event.changes.keys())
+                    messages.success(self.request, f"{self.object} updated ({changed}).")
+                else:
+                    messages.info(self.request, "No changes to save.")
+
+        return redirect(self.get_success_url())
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        form = ctx["form"]
+        # PTY-007 soft warnings, only once the form has been validated.
+        ctx["duplicate_warnings"] = (
+            form.duplicate_warnings()
+            if hasattr(form, "duplicate_warnings") and form.is_bound and form.is_valid()
+            else []
+        )
+        return ctx
+
+
+class BackLinkMixin:
+    """
+    Supplies the return arrow that base.html renders above the page heading.
+
+    Declared rather than hand-written per template, so a screen with no obvious
+    way back is a missing attribute rather than something nobody noticed. Two
+    forms:
+
+        back_url_name = "parties:customer_list"   # a named route
+        back_to_object = True                     # the record being edited
+
+    `back_label` names the destination. "Back" on its own is useless to anyone
+    reading a list of links out of context, so it is always a real place.
+    """
+
+    back_url_name = None
+    back_to_object = False
+    back_label = "Back"
+
+    def get_back_url(self):
+        if self.back_to_object:
+            obj = getattr(self, "object", None)
+            if obj is not None and hasattr(obj, "get_absolute_url"):
+                return obj.get_absolute_url()
+        if self.back_url_name:
+            return reverse(self.back_url_name)
+        return None
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        # setdefault, so a view with a more specific answer keeps it.
+        ctx.setdefault("back_url", self.get_back_url())
+        ctx.setdefault("back_label", self.back_label)
+        return ctx

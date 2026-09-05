@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+{% block header_title %}{{ credit_note.number }}{% endblock %}
+{% block breadcrumb %}
+  <a href="{% url 'sales:credit_note_list' %}"
+     class="mb-4 inline-flex items-center gap-1.5 text-sm font-medium text-muted-fg transition-colors hover:text-brand">
+    <span aria-hidden="true">&larr;</span> Back to credit notes
+  </a>
+{% endblock %}
+{% block actions %}
+  {% if credit_note.status == "DRAFT" or credit_note.status == "REJECTED" %}
+    {% if perms.sales.change_salescreditnote %}
+      <form method="post"
+            data-confirm="Submit {{ credit_note.number }} for approval? It becomes read-only until approved or rejected."
+            action="{% url 'sales:credit_note_submit' credit_note.pk %}">
+        {% csrf_token %}
+        <button type="submit" class="btn-accent">Submit</button>
+      </form>
+    {% endif %}
+  {% endif %}
+{% endblock %}
+{% block content %}
+<div class="grid gap-4 lg:grid-cols-3">
+  <div class="space-y-4 lg:col-span-2">
+    <div class="card card-pad">
+      <div class="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p class="eyebrow">Sales credit note</p>
+          <h2 class="display mt-1 text-2xl">{{ credit_note.customer }}</h2>
+          <p class="font-mono text-xs text-muted-fg">{{ credit_note.number }}</p>
+        </div>
+        {% include "core/_status_badge.html" with value=credit_note.status display=credit_note.get_status_display %}
+      </div>
+      <dl class="mt-6 grid gap-x-6 gap-y-4 sm:grid-cols-2">
+        <div><dt class="eyebrow">Document date</dt><dd class="mt-1 text-sm">{{ credit_note.document_date }}</dd></div>
+        <div><dt class="eyebrow">Posting date</dt><dd class="mt-1 text-sm">{{ credit_note.posting_date }}</dd></div>
+        <div><dt class="eyebrow">Original invoice</dt>
+          <dd class="mt-1 text-sm">
+            {% if credit_note.original_invoice %}
+              <a class="font-mono text-xs hover:text-brand" href="{% url 'sales:invoice_detail' credit_note.original_invoice.pk %}">{{ credit_note.original_invoice.number }}</a>
+            {% else %}standalone{% endif %}
+          </dd></div>
+        <div><dt class="eyebrow">Open credit</dt>
+          <dd class="mt-1 text-sm tabular-nums">{{ credit_note.open_txn|floatformat:2 }}</dd></div>
+        <div><dt class="eyebrow">Reason</dt>
+          <dd class="mt-1 text-sm">{{ credit_note.reason }}</dd>
+        </div>
+        <div><dt class="eyebrow">Currency</dt><dd class="mt-1 text-sm">{{ credit_note.currency_id }} @ {{ credit_note.exchange_rate }}</dd></div>
+      </dl>
+    </div>
+
+    <div class="card card-pad">
+      <p class="eyebrow">Lines</p>
+      <table class="w-full text-sm">
+        <thead><tr class="border-b border-line bg-muted-bg text-[11px] font-bold uppercase text-muted-fg">
+          <th class="px-4 py-2 text-left">Product</th><th class="px-4 py-2 text-right">Qty</th>
+          <th class="px-4 py-2 text-right">Price</th><th class="px-4 py-2 text-right">Disc %</th>
+          <th class="px-4 py-2 text-right">Tax</th><th class="px-4 py-2 text-right">Total</th>
+        </tr></thead>
+        <tbody>
+          {% for line in credit_note.lines.all %}
+          <tr class="border-b border-line">
+            <td class="px-4 py-2">{{ line.product|default:"—" }}</td>
+            <td class="px-4 py-2 text-right tabular-nums">{{ line.quantity }}</td>
+            <td class="px-4 py-2 text-right tabular-nums">{{ line.unit_price|floatformat:2 }}</td>
+            <td class="px-4 py-2 text-right tabular-nums">{{ line.discount_percent|floatformat:1 }}%</td>
+            <td class="px-4 py-2 text-right tabular-nums">{{ line.tax_txn|floatformat:2 }}</td>
+            <td class="px-4 py-2 text-right tabular-nums font-semibold">{{ line.total_txn|floatformat:2 }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+        <tfoot>
+          <tr class="border-t-2 border-line bg-muted-bg font-semibold">
+            <td colspan="5" class="px-4 py-2 text-right text-xs uppercase text-muted-fg">Total</td>
+            <td class="px-4 py-2 text-right tabular-nums text-brand-deep text-base">{{ credit_note.total_txn|floatformat:2 }}</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  </div>
+
+  <div class="space-y-4">
+    <div class="card card-pad">
+      <p class="eyebrow">Status</p>
+      {% include "core/_status_badge.html" with value=credit_note.status display=credit_note.get_status_display %}
+
+      {% if credit_note.status == "SUBMITTED" %}
+        {% if perms.core.post_credit_note %}
+          <form method="post"
+                data-confirm="Post {{ credit_note.number }}? It credits AR and reverses revenue/tax."
+                action="{% url 'sales:credit_note_post' credit_note.pk %}" class="mt-4">
+            {% csrf_token %}
+            <button type="submit" class="btn-primary w-full">Post to ledger</button>
+          </form>
+        {% endif %}
+        {% if perms.core.approve_sales_credit_note %}
+          <form method="post"
+                data-confirm="Approve {{ credit_note.number }}?"
+                action="{% url 'sales:credit_note_approve' credit_note.pk %}" class="mt-4 space-y-3">
+            {% csrf_token %}
+            <input type="hidden" name="confirm" value="yes">
+            <label for="approval-reason" class="sr-only">Reason for approval</label>
+            <input type="text" id="approval-reason" name="reason"
+                   placeholder="Reason for approval (required)"
+                   class="field" required>
+            <button type="submit" class="btn-accent w-full">Approve</button>
+          </form>
+          <form method="post"
+                data-confirm="Reject {{ credit_note.number }}? The reason you entered is recorded in the audit trail."
+                action="{% url 'sales:credit_note_reject' credit_note.pk %}" class="mt-3 space-y-3">
+            {% csrf_token %}
+            <input type="hidden" name="confirm" value="yes">
+            <label for="rejection-reason" class="sr-only">Reason for rejection</label>
+            <input type="text" id="rejection-reason" name="reason"
+                   placeholder="Reason for rejection (required)"
+                   class="field" required>
+            <button type="submit" class="btn-danger w-full">Reject</button>
+          </form>
+        {% endif %}
+      {% endif %}
+
+      {% if credit_note.status == "POSTED" and credit_note.journal_entry %}
+        <p class="mt-3 text-xs text-muted-fg">Journal {{ credit_note.journal_entry.number }} · posted by {{ credit_note.posted_by|default:"—" }} · {{ credit_note.posted_at|date:"j M Y, H:i"|default:"—" }}</p>
+      {% endif %}
+      {% if credit_note.approval_reason %}
+        <div class="mt-4 border-t border-line pt-4">
+          <p class="eyebrow">Approval reason</p>
+          <p class="mt-1 text-sm text-muted-fg">{{ credit_note.approval_reason }}</p>
+          {% if credit_note.approved_by %}
+            <p class="mt-1 text-xs text-muted-fg">by {{ credit_note.approved_by }} at {{ credit_note.approved_at|date:"j M Y, H:i" }}</p>
+          {% endif %}
+        </div>
+      {% endif %}
+    </div>
+    <div class="card card-pad">
+      <p class="eyebrow">Audit history</p>
+      <ul class="mt-4 max-h-64 space-y-4 overflow-y-auto pr-1">
+        {% for event in audit_events %}
+          <li class="border-l-2 border-line pl-3">
+            <p class="text-xs font-bold uppercase text-brand-deep">{{ event.get_action_display }}</p>
+            <p class="text-sm">{{ event.user|default:"system" }}</p>
+            <p class="text-xs text-muted-fg">{{ event.occurred_at|date:"j M Y, H:i" }}</p>
+            {% if event.reason %}<p class="mt-1 text-xs italic text-muted-fg">{{ event.reason }}</p>{% endif %}
+          </li>
+        {% empty %}<li class="text-sm text-muted-fg">No changes recorded yet.</li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+</div>
+{% endblock %}

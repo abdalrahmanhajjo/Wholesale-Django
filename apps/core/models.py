@@ -13,9 +13,11 @@ from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
 from django.contrib.postgres.constraints import ExclusionConstraint
 from django.contrib.postgres.fields import DateRangeField, RangeBoundary, RangeOperators
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.validators import MinValueValidator
 from django.db import models
 from django.db.models import F, Func, Q
+from django.urls import reverse
 from django.utils import timezone
 
 from apps.core.permissions import ACTION_PERMISSIONS
@@ -45,6 +47,25 @@ class DateRangeInclusive(Func):
 #   RATE   - 18,8  exchange rates
 #   PCT    - 9,4   percentages
 # ---------------------------------------------------------------------------
+#: Largest company logo accepted. Django's ImageField already proves the upload
+#: is a real image, but it puts no ceiling on how big a real image may be, and
+#: the file is written to disk and then served on every printed document.
+MAX_LOGO_BYTES = 2 * 1024 * 1024
+
+
+def validate_logo_size(file):
+    """Reject an oversized logo with a message that says what to do about it."""
+    if file and file.size > MAX_LOGO_BYTES:
+        raise DjangoValidationError(
+            "That logo is %(actual).1f MB. The limit is %(limit)d MB - resize it "
+            "and try again.",
+            params={
+                "actual": file.size / (1024 * 1024),
+                "limit": MAX_LOGO_BYTES // (1024 * 1024),
+            },
+        )
+
+
 MONEY = {"max_digits": 18, "decimal_places": 4}
 QTY = {"max_digits": 18, "decimal_places": 4}
 COST = {"max_digits": 18, "decimal_places": 6}
@@ -113,8 +134,11 @@ class FinancialDocumentBase(TimeStampedModel):
     number = models.CharField(max_length=32, unique=True)
     document_date = models.DateField(db_index=True)
     due_date = models.DateField(null=True, blank=True, db_index=True)
-    posting_date = models.DateField(
-        help_text="Ledger date; must fall inside an open fiscal period (BR-020)."
+    posting_date = models.DateField(  # BR-020
+        help_text=(
+            "The date this document hits the ledger. It must fall inside an open "
+            "fiscal period, and it can differ from the document date."
+        )
     )
     fiscal_period = models.ForeignKey(
         "core.FiscalPeriod", null=True, blank=True, on_delete=models.PROTECT, related_name="+"
@@ -243,9 +267,12 @@ class Currency(models.Model):
     name = models.CharField(max_length=64)
     symbol = models.CharField(max_length=8, blank=True)
     decimal_places = models.PositiveSmallIntegerField(default=2)
-    is_base = models.BooleanField(
+    is_base = models.BooleanField(  # BR-002
         default=False,
-        help_text="Exactly one currency is the base currency (BR-002).",
+        help_text=(
+            "The currency your accounts are reported in. Exactly one currency "
+            "can be the base, and changing it re-values every open balance."
+        ),
     )
     is_active = models.BooleanField(default=True)
 
@@ -267,6 +294,9 @@ class Currency(models.Model):
 
     def __str__(self):
         return self.code
+
+    def get_absolute_url(self):
+        return reverse("core:currency_edit", args=[self.pk])
 
 
 class ExchangeRate(models.Model):
@@ -313,8 +343,12 @@ class TaxCode(models.Model):
     code = models.CharField(max_length=20, unique=True)
     name = models.CharField(max_length=100)
     rate_percent = models.DecimalField(**PCT, default=ZERO)
-    is_inclusive = models.BooleanField(
-        default=False, help_text="Price entered already contains the tax (FTD-006)."
+    is_inclusive = models.BooleanField(  # FTD-006
+        default=False,
+        help_text=(
+            "Tick when prices are quoted with this tax already in them, so the "
+            "tax is worked back out of the price rather than added to it."
+        ),
     )
     is_recoverable = models.BooleanField(
         default=True, help_text="Input tax may be reclaimed (drives input-tax reporting)."
@@ -351,6 +385,9 @@ class TaxCode(models.Model):
     def __str__(self):
         return f"{self.code} ({self.rate_percent}%)"
 
+    def get_absolute_url(self):
+        return reverse("core:taxcode_edit", args=[self.pk])
+
 
 # ---------------------------------------------------------------------------
 # Payment terms (CFG-005)
@@ -377,6 +414,9 @@ class PaymentTerm(models.Model):
     def __str__(self):
         return self.name
 
+    def get_absolute_url(self):
+        return reverse("core:paymentterm_edit", args=[self.pk])
+
 
 # ---------------------------------------------------------------------------
 # Company (CFG-001, CFG-010, BR-017, BR-022)
@@ -398,7 +438,13 @@ class Company(TimeStampedModel):
     state = models.CharField(max_length=100, blank=True)
     postal_code = models.CharField(max_length=20, blank=True)
     country = models.CharField(max_length=100, blank=True)
-    logo = models.ImageField(upload_to="company/", null=True, blank=True)
+    logo = models.ImageField(
+        upload_to="company/",
+        null=True,
+        blank=True,
+        validators=[validate_logo_size],
+        help_text="Shown on printed documents. PNG or JPEG, up to 2 MB.",
+    )
 
     base_currency = models.ForeignKey(Currency, on_delete=models.PROTECT, related_name="+")
     fiscal_year_start_month = models.PositiveSmallIntegerField(default=1)
@@ -553,8 +599,20 @@ class FiscalPeriod(models.Model):
     def __str__(self):
         return self.name
 
+    def get_absolute_url(self):
+        return reverse("core:period_close", args=[self.pk])
+
     def contains(self, d):
         return self.start_date <= d <= self.end_date
+
+    @property
+    def is_open(self):
+        return self.status == PeriodStatus.OPEN
+
+    @property
+    def can_be_reopened(self):
+        """LOCKED is permanent; that is the difference between it and CLOSED."""
+        return self.status == PeriodStatus.CLOSED
 
 
 # ---------------------------------------------------------------------------
@@ -619,6 +677,9 @@ class DocumentSequence(models.Model):
     def __str__(self):
         return f"{self.get_document_type_display()} / {self.series}"
 
+    def get_absolute_url(self):
+        return reverse("core:sequence_edit", args=[self.pk])
+
 
 # ---------------------------------------------------------------------------
 # Audit trail (ACC-005, RPT-020, NFR-006)
@@ -658,8 +719,10 @@ class AuditEvent(models.Model):
     object_id = models.BigIntegerField(null=True, blank=True)
     target = GenericForeignKey("content_type", "object_id")
     object_repr = models.CharField(max_length=255, blank=True)
-    changes = models.JSONField(
-        null=True, blank=True, help_text='{"field": {"from": x, "to": y}} (ACC-005)'
+    changes = models.JSONField(  # ACC-005
+        null=True,
+        blank=True,
+        help_text="Which fields changed, with the value before and after each one.",
     )
     reason = models.TextField(blank=True)
     correlation_id = models.UUIDField(null=True, blank=True, db_index=True)  # NFR-016

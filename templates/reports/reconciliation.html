@@ -1,0 +1,86 @@
+{% extends "reports/_statement_shell.html" %}
+{% comment %}
+GL-011 / RPT-021. Each control account beside the subledger behind it.
+
+Three states, not two. An account can agree, disagree, or not have been
+examined at all - the last happens when the control account has no ledger
+activity, and showing it as agreeing would be a lie of omission.
+{% endcomment %}
+
+{% block date_controls %}
+  <p class="text-sm text-muted-fg">
+    Compares the ledger and the documents as they stand now, not as at a date:
+    they are meant to agree at every instant.
+  </p>
+{% endblock %}
+
+{% block statement %}
+<div class="card overflow-x-auto">
+  <table class="w-full text-sm">
+    <caption class="sr-only">Control accounts and their subledgers</caption>
+    <thead>
+      <tr class="border-b border-line bg-muted-bg text-[11px] font-bold uppercase text-muted-fg">
+        <th scope="col" class="px-4 py-2 text-left">Control</th>
+        <th scope="col" class="px-4 py-2 text-left">Account</th>
+        <th scope="col" class="px-4 py-2 text-right">Ledger</th>
+        <th scope="col" class="px-4 py-2 text-right">Subledger</th>
+        <th scope="col" class="px-4 py-2 text-right">Difference</th>
+        <th scope="col" class="px-4 py-2 text-center">Agrees</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for check in checks %}
+        <tr class="border-b border-line {% if not check.reconciles %}bg-danger/5{% endif %}">
+          <td class="px-4 py-3 font-medium">{{ check.label }}</td>
+          <td class="px-4 py-3 font-mono text-xs">{{ check.account_code }}</td>
+          <td class="px-4 py-3 text-right tabular-nums">{{ check.gl_balance|floatformat:2 }}</td>
+          <td class="px-4 py-3 text-right tabular-nums">{{ check.subledger_balance|floatformat:2 }}</td>
+          <td class="px-4 py-3 text-right tabular-nums {% if not check.reconciles %}font-bold text-danger{% endif %}">
+            {{ check.difference|floatformat:4 }}
+          </td>
+          <td class="px-4 py-3 text-center">
+            {% if check.reconciles %}
+              <svg class="icon text-brand" aria-hidden="true"><use href="#i-check"></use></svg>
+              <span class="sr-only">Agrees</span>
+            {% else %}
+              <svg class="icon text-danger" aria-hidden="true"><use href="#i-alert"></use></svg>
+              <span class="sr-only">Does not agree</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% if not check.reconciles %}
+          <tr class="border-b border-line bg-danger/5">
+            <td colspan="6" class="px-4 pb-3 text-xs text-muted-fg">
+              The ledger says {{ check.gl_balance|floatformat:2 }} but {{ check.source }}
+              total {{ check.subledger_balance|floatformat:2 }}. Until that is explained,
+              any statement using {{ check.label|lower }} is suspect.
+            </td>
+          </tr>
+        {% endif %}
+      {% endfor %}
+
+      {% for label in unevaluated %}
+        <tr class="border-b border-line">
+          <td class="px-4 py-3 font-medium">{{ label }}</td>
+          <td colspan="4" class="px-4 py-3 text-xs text-muted-fg">
+            Not examined — no journal line has touched this control account, so there is
+            no ledger balance to compare against.
+          </td>
+          <td class="px-4 py-3 text-center text-muted-fg" aria-label="Not examined">—</td>
+        </tr>
+      {% endfor %}
+
+      {% if not checks and not unevaluated %}
+        <tr><td colspan="6" class="px-4 py-10 text-center text-sm text-muted-fg">
+          No control accounts are configured.
+        </td></tr>
+      {% endif %}
+    </tbody>
+  </table>
+</div>
+
+<p class="mt-3 text-xs text-muted-fg">
+  Differences below {{ tolerance }} are treated as agreement. Both sides are held to four
+  decimal places, so a real difference cannot hide underneath that.
+</p>
+{% endblock %}

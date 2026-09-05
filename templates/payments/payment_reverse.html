@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% load ui %}
+
+{% block header_title %}{{ page_title }}{% endblock %}
+
+{% block actions %}
+  <a href="{{ payment.get_absolute_url }}" class="btn-ghost">Back to payment</a>
+{% endblock %}
+
+{% block content %}
+<div class="space-y-5">
+  <section class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_19rem]" aria-labelledby="reverse-heading">
+    <div class="card card-pad">
+      <p class="text-xs font-bold uppercase tracking-[0.12em] text-brand-deep">
+        {% if mode == "payment" %}Reverse payment{% else %}Reverse allocation{% endif %}
+      </p>
+      <div class="mt-3 flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h2 id="reverse-heading" class="display text-2xl">{{ payment.party }}</h2>
+          <p class="mt-1 font-mono text-xs text-muted-fg">
+            {{ payment.number }} | {{ payment.get_direction_display }}
+          </p>
+        </div>
+        {% include "core/_status_badge.html" with value=payment.status display=payment.get_status_display %}
+      </div>
+      <p class="mt-4 max-w-prose text-sm text-muted-fg">{{ intro }}</p>
+
+      <form method="post" class="mt-6 space-y-4" novalidate>
+        {% csrf_token %}
+        {% include "core/_form_errors.html" with form=form %}
+        {% for field in form %}
+          {% include "core/_form_field.html" with field=field %}
+        {% endfor %}
+        <div class="flex flex-wrap gap-3 pt-2">
+          <button type="submit" class="btn-danger">
+            {% if mode == "payment" %}Reverse this payment{% else %}Reverse this allocation{% endif %}
+          </button>
+          <a href="{{ payment.get_absolute_url }}" class="btn-ghost">Cancel</a>
+        </div>
+      </form>
+    </div>
+
+    <aside class="card card-pad lg:sticky lg:top-24 lg:self-start" aria-labelledby="reverse-summary">
+      <h3 id="reverse-summary" class="text-xs font-bold uppercase tracking-[0.12em] text-brand-deep">
+        What is applied
+      </h3>
+      {% if live_batches %}
+        <ul class="mt-4 space-y-3 text-sm">
+          {% for batch in live_batches %}
+            <li class="border-b border-line pb-3 last:border-0">
+              <p class="font-mono text-xs text-muted-fg">{{ batch.allocation_date }}</p>
+              <p class="mt-1 font-mono tabular-nums">
+                {{ batch.amount_txn|money:payment.currency_id }}
+              </p>
+              <p class="mt-1 text-xs text-muted-fg">{{ batch.documents|join:", " }}</p>
+              {% if batch.fx_gain_loss_base %}
+                <p class="mt-1 text-xs text-muted-fg">
+                  Exchange difference {{ batch.fx_gain_loss_base|floatformat:4 }}
+                </p>
+              {% endif %}
+              {% if mode == "payment" %}
+                <a class="mt-2 inline-block text-xs underline"
+                   href="{% url 'payments:allocation_reverse' payment.pk batch.batch_key %}">
+                  Reverse this allocation first
+                </a>
+              {% endif %}
+            </li>
+          {% endfor %}
+        </ul>
+        {% if mode == "payment" %}
+          <p class="mt-4 text-xs text-muted-fg">
+            The payment cannot be reversed while its money is still applied.
+            Take these off first.
+          </p>
+        {% endif %}
+      {% else %}
+        <p class="mt-4 text-sm text-muted-fg">
+          Nothing is applied. The full amount is sitting as an unapplied advance.
+        </p>
+      {% endif %}
+    </aside>
+  </section>
+</div>
+{% endblock %}

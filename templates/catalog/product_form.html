@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% comment %}Create / edit a product (CFG-011, SAL-010, FTD-008).{% endcomment %}
+
+{% block header_title %}{{ page_title }}{% endblock %}
+
+{% block content %}
+<form method="post" novalidate class="max-w-4xl">
+  {% csrf_token %}
+
+  {% if form.non_field_errors %}
+    <div class="card card-pad mb-5 border-l-4 border-l-danger">
+      {% for error in form.non_field_errors %}<p class="text-sm text-danger">{{ error }}</p>{% endfor %}
+    </div>
+  {% endif %}
+
+  <div class="card card-pad">
+    <p class="eyebrow">Identity</p>
+    <div class="mt-4 grid gap-4 sm:grid-cols-2">
+      {% include "core/_form_field.html" with field=form.sku %}
+      {% include "core/_form_field.html" with field=form.name %}
+      {% include "core/_form_field.html" with field=form.barcode %}
+    </div>
+    <div class="mt-4 grid gap-4">
+      {% include "core/_form_field.html" with field=form.description %}
+    </div>
+  </div>
+
+  <div class="card card-pad mt-4">
+    <p class="eyebrow">Classification</p>
+    <div class="mt-4 grid gap-4 sm:grid-cols-3">
+      {% include "core/_form_field.html" with field=form.category %}
+      {% include "core/_form_field.html" with field=form.unit %}
+      {% include "core/_form_field.html" with field=form.product_type %}
+    </div>
+    <div class="mt-4 grid gap-4 sm:grid-cols-2">
+      {% include "core/_form_field.html" with field=form.is_inventory %}
+      {% include "core/_form_field.html" with field=form.is_active %}
+    </div>
+  </div>
+
+  <div class="card card-pad mt-4">
+    <p class="eyebrow">Pricing and tax</p>
+    <div class="mt-4 grid gap-4 sm:grid-cols-2">
+      {% include "core/_form_field.html" with field=form.sales_price %}
+      {% include "core/_form_field.html" with field=form.purchase_price %}
+      {% include "core/_form_field.html" with field=form.default_sales_tax_code %}
+      {% include "core/_form_field.html" with field=form.default_purchase_tax_code %}
+      {% include "core/_form_field.html" with field=form.max_discount_percent %}
+    </div>
+  </div>
+
+  <div class="card card-pad mt-4">
+    <p class="eyebrow">Purchasing and stock</p>
+    <div class="mt-4 grid gap-4 sm:grid-cols-2">
+      {% include "core/_form_field.html" with field=form.preferred_vendor %}
+      {% include "core/_form_field.html" with field=form.reorder_level %}
+    </div>
+  </div>
+
+  <div class="card card-pad mt-4">
+    <p class="eyebrow">Account overrides</p>
+    <p class="mt-1 text-sm text-muted-fg">
+      Optional. Leave empty to use the category's accounts, or the account mapping.
+    </p>
+    <div class="mt-4 grid gap-4 sm:grid-cols-2">
+      {% include "core/_form_field.html" with field=form.revenue_account %}
+      {% include "core/_form_field.html" with field=form.cogs_account %}
+      {% include "core/_form_field.html" with field=form.inventory_account %}
+      {% include "core/_form_field.html" with field=form.expense_account %}
+    </div>
+  </div>
+
+  <div class="mt-5 flex items-center gap-2">
+    <button type="submit" class="btn-primary">Save</button>
+    <a href="{% url 'catalog:product_list' %}" class="btn-ghost">Cancel</a>
+  </div>
+</form>
+{% endblock %}

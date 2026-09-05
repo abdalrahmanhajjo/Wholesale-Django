@@ -13,40 +13,48 @@ module-specific empty message.
 
 {% block actions %}
   {% if can_export %}
-    <a href="?{{ querystring }}{% if querystring %}&{% endif %}export=csv" class="btn-ghost">Export CSV</a>
+    <a href="?{{ querystring }}{% if querystring %}&{% endif %}export=csv" class="btn-ghost">
+      <svg class="icon" aria-hidden="true"><use href="#i-download"></use></svg>
+      <span>Export CSV</span>
+    </a>
   {% endif %}
   {% block list_actions %}{% endblock %}
-  {% if create_url_name %}
-    <a href="{% url create_url_name %}" class="btn-primary">{{ create_label }}</a>
+  {% if create_url_name and can_create %}
+    <a href="{% url create_url_name %}" class="btn-primary">
+      <svg class="icon" aria-hidden="true"><use href="#i-plus"></use></svg>
+      <span>{{ create_label }}</span>
+    </a>
   {% endif %}
 {% endblock %}
 
 {% block content %}
 
 {% if summary %}
-  <div class="mb-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+  <dl class="mb-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
     {% for label, value in summary %}
       <div class="card card-pad">
-        <p class="eyebrow">{{ label }}</p>
-        <p class="display mt-2 text-2xl tabular-nums">{{ value }}</p>
+        <dt class="eyebrow">{{ label }}</dt>
+        <dd class="display mt-2 text-2xl tabular-nums">{{ value }}</dd>
       </div>
     {% endfor %}
-  </div>
+  </dl>
 {% endif %}
 
 <div class="card">
 
   {# ------------------------------------------------------------ toolbar #}
-  <form method="get" class="flex flex-wrap items-end gap-3 border-b border-line p-4 sm:p-5">
-    <div class="min-w-[220px] flex-1">
+  <form method="get" class="toolbar" role="search" aria-label="Filter {{ record_label_plural }}">
+    <div class="toolbar-field">
       <label for="q" class="label">Search</label>
       <input type="search" name="q" id="q" value="{{ search_term }}"
-             placeholder="Search…" class="field">
+             class="field" aria-describedby="q-help"
+             placeholder="Name, code or reference">
+      <p class="help" id="q-help">Matches name, code and reference.</p>
     </div>
 
     {% for f in filters %}
       {% if f.kind == "choice" %}
-        <div>
+        <div class="toolbar-field">
           <label for="f-{{ f.name }}" class="label">{{ f.label }}</label>
           <select name="{{ f.name }}" id="f-{{ f.name }}" class="field pr-8">
             <option value="">{{ f.blank_label }}</option>
@@ -56,76 +64,134 @@ module-specific empty message.
           </select>
         </div>
       {% else %}
-        <div>
-          <label class="label">{{ f.label }}</label>
+        {# A date range is two controls answering one question, so it is a group. #}
+        <fieldset class="toolbar-field">
+          <legend class="label">{{ f.label }}</legend>
           <div class="flex items-center gap-2">
-            <input type="date" name="{{ f.name }}_from" value="{{ f.value_from }}" class="field">
-            <span class="text-sm text-muted-fg">to</span>
-            <input type="date" name="{{ f.name }}_to" value="{{ f.value_to }}" class="field">
+            <input type="date" name="{{ f.name }}_from" value="{{ f.value_from }}"
+                   class="field" aria-label="{{ f.label }} from">
+            <span class="text-sm text-muted-fg" aria-hidden="true">to</span>
+            <input type="date" name="{{ f.name }}_to" value="{{ f.value_to }}"
+                   class="field" aria-label="{{ f.label }} to">
           </div>
-        </div>
+        </fieldset>
       {% endif %}
     {% endfor %}
 
     {% if current_sort %}<input type="hidden" name="sort" value="{{ current_sort }}">{% endif %}
 
-    <button type="submit" class="btn-primary">Apply</button>
-    {% if active_filters %}
-      <a href="{{ request.path }}" class="btn-ghost">Clear</a>
-    {% endif %}
+    <div class="toolbar-actions">
+      <button type="submit" class="btn-primary">Apply filters</button>
+      {% if active_filters %}
+        <a href="{{ request.path }}" class="btn-ghost">Clear filters</a>
+      {% endif %}
+    </div>
   </form>
 
+  {% comment %}
+  The result count sits above the table rather than under it: after a filter
+  submit it is the answer to what the user just asked, and role="status" means
+  a screen reader hears it without hunting for the change.
+  {% endcomment %}
+  <p class="border-b border-line px-4 py-2.5 text-sm text-muted-fg sm:px-5" role="status">
+    {% if active_filters %}
+      <strong class="font-semibold text-ink">{{ total_count }}</strong>
+      matching {{ record_label_plural }}{% if search_term %} for “{{ search_term }}”{% endif %}
+    {% else %}
+      <strong class="font-semibold text-ink">{{ total_count }}</strong> {{ record_label_plural }}
+    {% endif %}
+  </p>
+
   {# -------------------------------------------------------------- table #}
-  <div class="overflow-x-auto">
-    <table class="w-full text-sm">
+  {% comment %}
+  tabindex="0" makes the horizontal scroll operable from the keyboard; a
+  scroll container that cannot take focus cannot be scrolled without a mouse
+  (WCAG 2.1.1).
+  {% endcomment %}
+  <div class="scroll-region" tabindex="0" role="region" aria-label="{{ page_title }} table">
+    <table class="table-stack w-full text-sm">
+      <caption class="sr-only">
+        {{ page_title }}. {{ total_count }} record{{ total_count|pluralize }}{% if is_paginated %}, showing {{ page_obj.start_index }} to {{ page_obj.end_index }}{% endif %}.
+      </caption>
       <thead>
         <tr class="border-b border-line bg-muted-bg">
           {% for c in columns %}
-            <th class="whitespace-nowrap px-4 py-3 text-{{ c.align }} text-[11px] font-bold uppercase tracking-[0.1em] text-muted-fg">
+            <th scope="col"
+                class="whitespace-nowrap px-4 py-3 text-{{ c.align }} text-[11px] font-bold uppercase tracking-[0.1em] text-muted-fg"
+                {% if c.sortable %}
+                  {% if current_sort == c.ordering_key %}aria-sort="ascending"
+                  {% elif current_sort == "-"|add:c.ordering_key %}aria-sort="descending"
+                  {% else %}aria-sort="none"{% endif %}
+                {% endif %}>
               {% if c.sortable %}
                 {% if current_sort == c.ordering_key %}
                   <a href="?{{ querystring }}{% if querystring %}&{% endif %}sort=-{{ c.ordering_key }}"
-                     class="inline-flex items-center gap-1 hover:text-ink">{{ c.label }} <span aria-hidden="true">↑</span></a>
+                     class="inline-flex items-center gap-1 hover:text-ink">{{ c.label }}
+                    <span aria-hidden="true">↑</span>
+                    <span class="sr-only">, sorted ascending. Activate to sort descending.</span></a>
                 {% elif current_sort == "-"|add:c.ordering_key %}
                   <a href="?{{ querystring }}{% if querystring %}&{% endif %}sort={{ c.ordering_key }}"
-                     class="inline-flex items-center gap-1 hover:text-ink">{{ c.label }} <span aria-hidden="true">↓</span></a>
+                     class="inline-flex items-center gap-1 hover:text-ink">{{ c.label }}
+                    <span aria-hidden="true">↓</span>
+                    <span class="sr-only">, sorted descending. Activate to sort ascending.</span></a>
                 {% else %}
                   <a href="?{{ querystring }}{% if querystring %}&{% endif %}sort={{ c.ordering_key }}"
-                     class="inline-flex items-center gap-1 hover:text-ink">{{ c.label }}</a>
+                     class="inline-flex items-center gap-1 hover:text-ink">{{ c.label }}
+                    <span class="sr-only">, activate to sort ascending</span></a>
                 {% endif %}
               {% else %}{{ c.label }}{% endif %}
             </th>
           {% endfor %}
-          <th class="w-px px-4 py-3"><span class="sr-only">Actions</span></th>
+          {% if not has_linked_column %}
+            <th scope="col" class="w-px px-4 py-3"><span class="sr-only">Actions</span></th>
+          {% endif %}
         </tr>
       </thead>
       <tbody>
         {% for row in rows %}
           <tr class="border-b border-line last:border-0 hover:bg-muted-bg/60">
             {% for cell in row.cells %}
-              <td class="px-4 py-3 text-{{ cell.column.align }} {{ cell.column.css }}
+              <td data-label="{{ cell.column.label }}"
+                  class="px-4 py-3 text-{{ cell.column.align }} {{ cell.column.css }}
                          {% if cell.column.money %}tabular-nums font-medium{% endif %}">
                 {% if cell.column.link %}
-                  <a href="{{ row.object.get_absolute_url }}" class="font-semibold text-ink hover:text-brand-deep">{{ cell.display }}</a>
+                  <a href="{{ row.object.get_absolute_url }}" class="font-semibold text-ink underline decoration-line underline-offset-2 hover:text-brand-deep hover:decoration-brand-deep">{{ cell.display }}</a>
                 {% elif cell.column.badge %}
                   {% include "core/_status_badge.html" with value=cell.value display=cell.display %}
                 {% else %}{{ cell.display }}{% endif %}
               </td>
             {% endfor %}
-            <td class="px-4 py-3 text-right">
-              <a href="{{ row.object.get_absolute_url }}" class="text-xs font-semibold text-muted-fg hover:text-ink">View</a>
-            </td>
+            {% if not has_linked_column %}
+              <td data-label="" class="px-4 py-3 text-right">
+                {% if row.object.get_absolute_url %}
+                    {% comment %}
+                  "View" alone repeats once per row in a screen reader's link
+                  list, so the record name rides along invisibly.
+                  {% endcomment %}
+                  <a href="{{ row.object.get_absolute_url }}" class="text-xs font-semibold text-muted-fg underline underline-offset-2 hover:text-ink">
+                    View<span class="sr-only"> {{ row.object }}</span></a>
+                {% endif %}
+              </td>
+            {% endif %}
           </tr>
         {% empty %}
           <tr>
-            <td colspan="{{ columns|length|add:1 }}" class="px-4 py-16 text-center">
+            <td colspan="{% if has_linked_column %}{{ columns|length }}{% else %}{{ columns|length|add:1 }}{% endif %}" class="px-4 py-16 text-center">
               {% block empty_state %}
-                <p class="text-sm font-semibold">Nothing to show</p>
-                <p class="mt-1 text-sm text-muted-fg">
-                  {% if active_filters %}No records match these filters.{% else %}No records yet.{% endif %}
-                </p>
                 {% if active_filters %}
+                  <p class="text-base font-semibold">No {{ record_label_plural }} match these filters</p>
+                  <p class="mx-auto mt-1 max-w-md text-sm text-muted-fg">
+                    Try a shorter search term, or clear the filters to see everything.
+                  </p>
                   <a href="{{ request.path }}" class="btn-ghost mt-4">Clear filters</a>
+                {% else %}
+                  <p class="text-base font-semibold">No {{ record_label_plural }} yet</p>
+                  <p class="mx-auto mt-1 max-w-md text-sm text-muted-fg">
+                    {{ page_subtitle|default:"Records you add will be listed here." }}
+                  </p>
+                  {% if create_url_name and can_create %}
+                    <a href="{% url create_url_name %}" class="btn-primary mt-4">{{ create_label }}</a>
+                  {% endif %}
                 {% endif %}
               {% endblock %}
             </td>
@@ -137,28 +203,25 @@ module-specific empty message.
 
   {# --------------------------------------------------------- pagination #}
   {% if is_paginated %}
-    <div class="flex flex-wrap items-center justify-between gap-3 border-t border-line px-4 py-3 sm:px-5">
-      <p class="text-xs text-muted-fg">
+    <nav class="flex flex-wrap items-center justify-between gap-3 border-t border-line px-4 py-3 sm:px-5"
+         aria-label="{{ record_label_plural|capfirst }} pages">
+      <p class="text-sm text-muted-fg">
         Showing {{ page_obj.start_index }}–{{ page_obj.end_index }} of {{ total_count }}
       </p>
       <div class="flex items-center gap-1">
         {% if page_obj.has_previous %}
           <a href="?{{ querystring }}{% if querystring %}&{% endif %}page={{ page_obj.previous_page_number }}"
-             class="btn-ghost btn-sm">Previous</a>
+             class="btn-ghost btn-sm">Previous<span class="sr-only"> page</span></a>
         {% endif %}
-        <span class="px-3 text-xs font-semibold text-muted-fg">
+        <span class="px-3 text-sm font-semibold text-muted-fg">
           Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}
         </span>
         {% if page_obj.has_next %}
           <a href="?{{ querystring }}{% if querystring %}&{% endif %}page={{ page_obj.next_page_number }}"
-             class="btn-ghost btn-sm">Next</a>
+             class="btn-ghost btn-sm">Next<span class="sr-only"> page</span></a>
         {% endif %}
       </div>
-    </div>
-  {% else %}
-    <div class="border-t border-line px-4 py-3 text-xs text-muted-fg sm:px-5">
-      {{ total_count }} record{{ total_count|pluralize }}
-    </div>
+    </nav>
   {% endif %}
 </div>
 {% endblock %}

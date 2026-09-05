@@ -1,0 +1,179 @@
+{% extends "base.html" %}
+{% comment %}
+Create / edit a vendor debit note (RET-006, RET-007).
+
+Line amounts shown here while typing are a client-side preview only — the
+authoritative figures are recomputed by apps.purchases.services.recalculate_debit_note
+on save, same pattern as bill_form.html. The AP/inventory/tax reversal is
+only written when the note is posted (RET-006), not on this save.
+{% endcomment %}
+
+{% block header_title %}{{ page_title }}{% endblock %}
+
+{% block content %}
+<form method="post" novalidate id="dbn-form" class="max-w-6xl">
+  {% csrf_token %}
+
+  {% if form.non_field_errors %}
+    <div class="card card-pad mb-5 border-l-4 border-l-danger">
+      {% for error in form.non_field_errors %}<p class="text-sm text-danger">{{ error }}</p>{% endfor %}
+    </div>
+  {% endif %}
+  {% if formset.non_form_errors %}
+    <div class="card card-pad mb-5 border-l-4 border-l-danger">
+      {% for error in formset.non_form_errors %}<p class="text-sm text-danger">{{ error }}</p>{% endfor %}
+    </div>
+  {% endif %}
+
+  <div class="card card-pad">
+    <p class="eyebrow">Debit note</p>
+    <div class="mt-4 grid gap-4 sm:grid-cols-3">
+      {% include "core/_form_field.html" with field=form.vendor %}
+      {% include "core/_form_field.html" with field=form.original_bill %}
+      {% include "core/_form_field.html" with field=form.purchase_return %}
+      {% include "core/_form_field.html" with field=form.vendor_credit_reference %}
+      {% include "core/_form_field.html" with field=form.document_date %}
+      {% include "core/_form_field.html" with field=form.currency %}
+      {% include "core/_form_field.html" with field=form.exchange_rate %}
+    </div>
+  </div>
+
+  <div class="card mt-4">
+    <div class="flex items-center justify-between border-b border-line p-4 sm:p-5">
+      <p class="card-title">Lines</p>
+      <button type="button" id="dbn-add-line" class="btn-ghost btn-sm">Add line</button>
+    </div>
+
+    {{ formset.management_form }}
+
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="border-b border-line bg-muted-bg text-[11px] font-bold uppercase tracking-[0.1em] text-muted-fg">
+            <th class="px-3 py-2 text-left">Stock?</th>
+            <th class="px-3 py-2 text-left">Product / expense account</th>
+            <th class="px-3 py-2 text-left">Description</th>
+            <th class="px-3 py-2 text-left">Unit</th>
+            <th class="px-3 py-2 text-left">Tax</th>
+            <th class="px-3 py-2 text-right">Qty</th>
+            <th class="px-3 py-2 text-right">Unit price</th>
+            <th class="px-3 py-2 text-right">Disc %</th>
+            <th class="px-3 py-2 text-right">Line total</th>
+            <th class="w-px px-3 py-2"></th>
+          </tr>
+        </thead>
+        <tbody id="dbn-line-rows">
+          {% for line_form in formset %}
+            {% include "purchases/_dbn_line_row.html" with form=line_form %}
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="mt-4 grid gap-4 lg:grid-cols-2">
+    <div class="card card-pad">
+      <p class="eyebrow">Reason</p>
+      <div class="mt-4">{% include "core/_form_field.html" with field=form.reason %}</div>
+      <p class="help mt-2">Mandatory (RET-008).</p>
+    </div>
+    <div class="card card-pad">
+      <p class="eyebrow">Preview total</p>
+      <dl class="mt-3 space-y-1.5 text-sm">
+        <div class="flex justify-between"><dt class="text-muted-fg">Subtotal</dt><dd id="dbn-preview-subtotal" class="tabular-nums">0.00</dd></div>
+        <div class="flex justify-between"><dt class="text-muted-fg">Tax</dt><dd id="dbn-preview-tax" class="tabular-nums">0.00</dd></div>
+        <div class="flex justify-between border-t border-line pt-1.5 font-bold"><dt>Total</dt><dd id="dbn-preview-total" class="tabular-nums">0.00</dd></div>
+      </dl>
+      <p class="help mt-2">Estimated in the browser. The saved note recalculates exactly.</p>
+    </div>
+  </div>
+
+  <div class="card card-pad mt-4">
+    <p class="eyebrow">Notes</p>
+    <div class="mt-4">{% include "core/_form_field.html" with field=form.notes %}</div>
+  </div>
+
+  <div class="mt-5 flex items-center gap-2">
+    <button type="submit" class="btn-primary">Save draft</button>
+    <a href="{% if object %}{{ object.get_absolute_url }}{% else %}{% url 'purchases:dbn_list' %}{% endif %}"
+       class="btn-ghost">Cancel</a>
+  </div>
+</form>
+
+<template id="dbn-empty-row">
+  {% include "purchases/_dbn_line_row.html" with form=empty_form %}
+</template>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+(function () {
+  const totalForms = document.querySelector('input[name="lines-TOTAL_FORMS"]');
+  const rowsBody = document.getElementById("dbn-line-rows");
+  const rowTemplate = document.getElementById("dbn-empty-row");
+
+  function rowsOf() {
+    return Array.from(rowsBody.querySelectorAll("tr[data-dbn-row]"));
+  }
+
+  function wireRow(row) {
+    row.querySelectorAll('[data-role="quantity"], [data-role="unit_price"], [data-role="discount_percent"], [data-role="tax_code"]').forEach(
+      function (el) { el.addEventListener("input", recalculate); el.addEventListener("change", recalculate); }
+    );
+    const removeBtn = row.querySelector('[data-role="remove-line"]');
+    if (removeBtn) {
+      removeBtn.addEventListener("click", function () {
+        const deleteBox = row.querySelector('input[type="checkbox"][name$="-DELETE"]');
+        if (deleteBox) {
+          deleteBox.checked = true;
+          row.classList.add("hidden");
+        } else {
+          row.remove();
+        }
+        recalculate();
+      });
+    }
+  }
+
+  function recalculate() {
+    let subtotal = 0, tax = 0;
+    rowsOf().forEach(function (row) {
+      if (row.classList.contains("hidden")) return;
+      const qty = parseFloat(row.querySelector('[data-role="quantity"]').value) || 0;
+      const price = parseFloat(row.querySelector('[data-role="unit_price"]').value) || 0;
+      const discountPct = parseFloat(row.querySelector('[data-role="discount_percent"]').value) || 0;
+      const taxSelect = row.querySelector('[data-role="tax_code"]');
+      const taxRate = taxSelect ? parseFloat(taxSelect.selectedOptions[0]?.dataset.rate || 0) : 0;
+
+      const gross = qty * price;
+      const net = gross - (gross * discountPct / 100);
+      const lineTax = net * taxRate / 100;
+      const total = net + lineTax;
+
+      const totalCell = row.querySelector('[data-role="line-total"]');
+      if (totalCell) totalCell.textContent = total.toFixed(2);
+
+      subtotal += net;
+      tax += lineTax;
+    });
+    document.getElementById("dbn-preview-subtotal").textContent = subtotal.toFixed(2);
+    document.getElementById("dbn-preview-tax").textContent = tax.toFixed(2);
+    document.getElementById("dbn-preview-total").textContent = (subtotal + tax).toFixed(2);
+  }
+
+  document.getElementById("dbn-add-line").addEventListener("click", function () {
+    const index = parseInt(totalForms.value, 10);
+    const html = rowTemplate.innerHTML.replaceAll("__prefix__", index);
+    const wrapper = document.createElement("tbody");
+    wrapper.innerHTML = html;
+    const newRow = wrapper.querySelector("tr");
+    rowsBody.appendChild(newRow);
+    totalForms.value = index + 1;
+    wireRow(newRow);
+  });
+
+  rowsOf().forEach(wireRow);
+  recalculate();
+})();
+</script>
+{% endblock %}

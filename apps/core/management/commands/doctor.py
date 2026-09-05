@@ -25,11 +25,12 @@ DIM = "\033[2m"
 RESET = "\033[0m"
 
 MIN_PYTHON = (3, 11)
-MIN_POSTGRES = 13
+MIN_POSTGRES = 14
 REQUIRED_EXTENSIONS = ["btree_gist", "pg_trgm"]
 EXPECTED_TRIGGERS = 9
 EXPECTED_VIEWS = 10
 EXPECTED_FUNCTIONS = 4
+SUPPORTED_DJANGO_PREFIX = "5.2"
 
 
 class Command(BaseCommand):
@@ -101,11 +102,11 @@ class Command(BaseCommand):
 
     def check_django(self):
         version = django.get_version()
-        if version.startswith("5.1"):
+        if version.startswith(SUPPORTED_DJANGO_PREFIX):
             self.ok(f"Django {version}")
         else:
             self.warn(
-                f"Django {version} — the project is pinned to 5.1",
+                f"Django {version} — the project is pinned to {SUPPORTED_DJANGO_PREFIX}",
                 "run: pip install -r requirements.txt",
             )
 
@@ -116,8 +117,8 @@ class Command(BaseCommand):
             self.ok(".env present")
         else:
             self.warn(
-                ".env not found — running on defaults",
-                "run: cp .env.example .env   (fine if your Postgres needs no password)",
+                ".env not found — using process environment only",
+                "fine in production; locally run: cp .env.example .env",
             )
 
         if settings.DEBUG:
@@ -200,17 +201,20 @@ class Command(BaseCommand):
             return
         self.section("Schema objects")
         with connection.cursor() as cur:
-            cur.execute("SELECT count(*) FROM pg_trigger WHERE NOT tgisinternal")
-            triggers = cur.fetchone()[0]
             cur.execute(
-                "SELECT count(*) FROM information_schema.views WHERE table_schema = 'public'"
+                "SELECT "
+                "(SELECT count(*) FROM pg_trigger t "
+                " JOIN pg_class c ON c.oid = t.tgrelid "
+                " JOIN pg_namespace n ON n.oid = c.relnamespace "
+                " WHERE NOT t.tgisinternal AND n.nspname = 'public' "
+                " AND t.tgname LIKE 'trg\\_%'), "
+                "(SELECT count(*) FROM information_schema.views "
+                " WHERE table_schema = 'public'), "
+                "(SELECT count(*) FROM pg_proc p "
+                " JOIN pg_namespace n ON n.oid = p.pronamespace "
+                " WHERE n.nspname = 'public' AND p.proname LIKE 'fn\\_%')"
             )
-            views = cur.fetchone()[0]
-            cur.execute(
-                "SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace "
-                "WHERE n.nspname = 'public' AND p.proname LIKE 'fn\\_%'"
-            )
-            functions = cur.fetchone()[0]
+            triggers, views, functions = cur.fetchone()
 
         self._expect(triggers, EXPECTED_TRIGGERS, "posting-guard triggers")
         self._expect(views, EXPECTED_VIEWS, "reporting views")
@@ -249,10 +253,12 @@ class Command(BaseCommand):
 
         # ACC-003: empty role groups mean every permission check fails silently.
         from django.contrib.auth.models import Group
+        from django.db.models import Count
 
-        empty = [g.name for g in Group.objects.all() if g.permissions.count() == 0]
-        if Group.objects.exists() and not empty:
-            self.ok("role groups populated (ACC-003)", f"{Group.objects.count()} roles")
+        groups = list(Group.objects.annotate(permission_count=Count("permissions")))
+        empty = [group.name for group in groups if group.permission_count == 0]
+        if groups and not empty:
+            self.ok("role groups populated (ACC-003)", f"{len(groups)} roles")
         elif empty:
             self.fail(
                 f"role group(s) with no permissions: {', '.join(empty)}",

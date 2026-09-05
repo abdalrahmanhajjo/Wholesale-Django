@@ -1,0 +1,108 @@
+{% extends "registration/_auth_base.html" %}
+{% comment %}
+Request an account (ACC-001, ACC-003).
+
+Not a registration. The account this creates has no role and cannot sign in
+until an administrator activates it — a wholesale ledger is not something people
+should be able to join. The intro says so plainly rather than letting someone
+discover it when their first sign-in fails; it used to be said three times over,
+in the intro, an aside and a panel of its own, which is how a caveat stops being
+read at all.
+{% endcomment %}
+
+{% block title %}Request an account{% endblock %}
+{% block badge %}
+  <span class="auth-badge" aria-hidden="true"><svg class="icon"><use href="#i-user-plus"></use></svg></span>
+{% endblock %}
+{% block heading %}Request an <em>account</em>{% endblock %}
+{% block intro %}
+  <p class="auth-intro">
+    Tell us who you are and choose a password.
+    An administrator will activate your account and set what you can see.
+  </p>
+{% endblock %}
+
+{% block body %}
+  {% include "core/_form_errors.html" with form=form %}
+
+  <form method="post" class="auth-form" novalidate>
+    {% csrf_token %}
+
+    {% include "registration/_auth_field.html" with field=form.username icon="user" %}
+    {% include "registration/_auth_field.html" with field=form.full_name icon="user" %}
+    {% include "registration/_auth_field.html" with field=form.email icon="mail" %}
+    {% include "registration/_auth_field.html" with field=form.job_title icon="briefcase" %}
+    {% include "registration/_auth_field.html" with field=form.password1 icon="lock" %}
+    {% include "registration/_auth_field.html" with field=form.password2 icon="lock" %}
+
+    <button type="submit" class="btn-primary auth-submit" data-busy-label="Sending request…">
+      Request account
+      <svg class="icon text-brand" aria-hidden="true"><use href="#i-arrow-right"></use></svg>
+    </button>
+  </form>
+{% endblock %}
+
+{% block footer %}
+  <p>Already have an account? <a href="{% url 'login' %}">Sign in</a>.</p>
+{% endblock %}
+
+{% comment %}
+What the product is, beside the form that asks to be let into it. Three points,
+and they are words rather than decoration — so below xl they fall in under the
+panel as a row of three, then a stack, instead of being hidden the way the old
+split layout hid half its design on every screen under 1024px.
+{% endcomment %}
+{% block aside %}
+  <aside class="auth-aside">
+  <ul class="auth-points">
+    <li>
+      <span class="auth-point-icon"><svg class="icon" aria-hidden="true"><use href="#i-shield"></use></svg></span>
+      <div>
+        <h2 class="auth-point-title">Secure &amp; private</h2>
+        <p class="auth-point-body">Your data is protected with bank-level security.</p>
+      </div>
+    </li>
+    <li>
+      <span class="auth-point-icon"><svg class="icon" aria-hidden="true"><use href="#i-chart"></use></svg></span>
+      <div>
+        <h2 class="auth-point-title">Built for teams</h2>
+        <p class="auth-point-body">Collaborate across your team with smart permissions.</p>
+      </div>
+    </li>
+    <li>
+      <span class="auth-point-icon"><svg class="icon" aria-hidden="true"><use href="#i-bolt"></use></svg></span>
+      <div>
+        <h2 class="auth-point-title">Everything in one place</h2>
+        <p class="auth-point-body">Manage customers, credit, and transactions easily.</p>
+      </div>
+    </li>
+  </ul>
+  </aside>
+{% endblock %}
+
+{% comment %}
+The same promise the other auth pages make in two lines of small print, given
+room here because this is the page where someone is handing over their details
+for the first time.
+{% endcomment %}
+{% block outro %}
+  <div class="auth-trust">
+    <div class="auth-trust-say">
+      <span class="auth-trust-icon" aria-hidden="true"><svg class="icon"><use href="#i-shield"></use></svg></span>
+      <div>
+        <p class="auth-trust-title">Your security is our priority</p>
+        <p class="auth-trust-body">
+          Every sign-up and every change to an account is recorded.<br>
+          We value your privacy and security.
+        </p>
+      </div>
+    </div>
+
+    <div class="auth-trust-proof">
+      <span class="auth-avatars" aria-hidden="true">
+        <span>AH</span><span>ML</span><span>RK</span><span class="auth-avatars-count">+2.5K</span>
+      </span>
+      <p>Finance teams trust Ledgerwise</p>
+    </div>
+  </div>
+{% endblock %}

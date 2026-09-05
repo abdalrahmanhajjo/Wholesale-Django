@@ -1,0 +1,89 @@
+{% extends "reports/_statement_shell.html" %}
+{% comment %}
+RPT-008. Tax charged on sales and incurred on purchases.
+
+The two sides are kept apart on purpose. A return is filed as output tax and
+input tax, and the amount payable is a consequence of those two rather than a
+figure in its own right — netting them into one number loses the two lines the
+filing actually asks for.
+{% endcomment %}
+
+{% block date_controls %}
+  {% include "core/_form_field.html" with field=form.date_from %}
+  {% include "core/_form_field.html" with field=form.date_to %}
+{% endblock %}
+
+{% block period_link %}?date_from={{ period.start_date|date:"Y-m-d" }}&date_to={{ period.end_date|date:"Y-m-d" }}{% endblock %}
+
+{% block statement %}
+<div class="space-y-4">
+  {% for side in report.sides %}
+    <div class="card overflow-x-auto">
+      <p class="border-b border-line px-4 py-3 text-sm font-semibold">{{ side.label }}</p>
+      <table class="w-full text-sm">
+        <caption class="sr-only">{{ side.label }} from {{ report.date_from }} to {{ report.date_to }}</caption>
+        <thead>
+          <tr class="border-b border-line bg-muted-bg text-[11px] font-bold uppercase text-muted-fg">
+            <th scope="col" class="px-4 py-2 text-left">Tax code</th>
+            <th scope="col" class="px-4 py-2 text-left">Treatment</th>
+            <th scope="col" class="px-4 py-2 text-right">Rate</th>
+            <th scope="col" class="px-4 py-2 text-right">Taxable base</th>
+            <th scope="col" class="px-4 py-2 text-right">Tax</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for group in side.groups %}
+            <tr class="border-b border-line">
+              <td class="px-4 py-2 font-mono text-xs">{{ group.tax_code }}</td>
+              <td class="px-4 py-2 text-xs text-muted-fg">{{ group.treatment|default:"—" }}</td>
+              <td class="px-4 py-2 text-right tabular-nums">{{ group.rate_percent|floatformat:2 }}%</td>
+              <td class="px-4 py-2 text-right tabular-nums">{{ group.taxable_base|floatformat:2 }}</td>
+              <td class="px-4 py-2 text-right tabular-nums font-medium">{{ group.tax_amount|floatformat:2 }}</td>
+            </tr>
+            {% if group.non_recoverable %}
+              <tr class="border-b border-line">
+                <td colspan="4" class="px-4 pb-2 pl-8 text-xs text-muted-fg">
+                  of which non-recoverable — a cost, not something to reclaim
+                </td>
+                <td class="px-4 pb-2 text-right tabular-nums text-xs text-muted-fg">
+                  {{ group.non_recoverable|floatformat:2 }}
+                </td>
+              </tr>
+            {% endif %}
+          {% empty %}
+            <tr><td colspan="5" class="px-4 py-8 text-center text-sm text-muted-fg">
+              Nothing in this range.
+            </td></tr>
+          {% endfor %}
+        </tbody>
+        {% if side.groups %}
+          <tfoot>
+            <tr class="border-t-2 border-line bg-muted-bg font-semibold">
+              <td colspan="3" class="px-4 py-2 text-right text-xs uppercase text-muted-fg">Total</td>
+              <td class="px-4 py-2 text-right tabular-nums">{{ side.taxable_base|floatformat:2 }}</td>
+              <td class="px-4 py-2 text-right tabular-nums text-brand-deep">{{ side.tax_amount|floatformat:2 }}</td>
+            </tr>
+          </tfoot>
+        {% endif %}
+      </table>
+    </div>
+  {% endfor %}
+
+  <div class="card card-pad">
+    <div class="flex flex-wrap items-baseline justify-between gap-2">
+      <div>
+        <p class="eyebrow">Net position</p>
+        <p class="mt-1 text-sm text-muted-fg">
+          Output tax less the input tax that can actually be reclaimed.
+        </p>
+      </div>
+      <p class="text-2xl font-semibold tabular-nums {% if report.net_payable < 0 %}text-brand-deep{% endif %}">
+        {{ report.net_payable|floatformat:2 }}
+      </p>
+    </div>
+    {% if report.net_payable < 0 %}
+      <p class="mt-2 text-xs text-muted-fg">Negative: more was reclaimable than was charged, so this is a repayment.</p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

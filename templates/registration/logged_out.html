@@ -1,1 +1,21 @@
-{% extends "registration/login.html" %}
+{% extends "registration/_auth_base.html" %}
+{% comment %}Shown after signing out.{% endcomment %}
+
+{% block title %}Signed out{% endblock %}
+{% block heading %}You're signed out{% endblock %}
+{% block note %}
+  <p class="auth-note">
+    <svg class="icon" aria-hidden="true"><use href="#i-shield"></use></svg>
+    <span>Your session is closed on this device.</span>
+  </p>
+{% endblock %}
+{% block intro %}
+  <p class="auth-intro">
+    Your session has ended. Anything you had saved is safe; anything you were
+    part-way through entering was not sent.
+  </p>
+{% endblock %}
+
+{% block body %}
+  <a href="{% url 'login' %}" class="btn-primary auth-submit">Sign in again</a>
+{% endblock %}

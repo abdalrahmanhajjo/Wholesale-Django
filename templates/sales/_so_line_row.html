@@ -1,0 +1,120 @@
+{% load ui %}{% comment %}
+One order line.
+
+Twelve columns of equal weight is why the product search read "search produ" and
+the description "Overrides the pro". The fields are not equally important, so
+they are no longer given equal room: related pairs share a cell, with the
+secondary control sitting under the primary one, which takes the row from twelve
+columns to seven and gives the product search the width it needs.
+
+  Item        product, then the description that overrides its name
+  Qty         quantity, then the unit it is counted in
+  Price       unit price, then the line discount
+  Tax         the tax code
+  Line total  the total, with gross and tax underneath
+
+Every control has a column header for a visible label but no <label> of its own,
+so each names its column and its line. `line` comes from the caller: the loop
+counter for existing rows, and the literal __LINE__ for the empty-form template,
+which the add-line script swaps for the real number when it clones the row.
+{% endcomment %}
+<tr class="border-b border-line last:border-0 line-row">
+  <td class="line-cell line-cell-number px-3 py-2.5 align-top" data-label="Line">
+    {% for hidden in lf.hidden_fields %}
+      {{ hidden }}
+      {% for error in hidden.errors %}<p class="error-text">{{ error }}</p>{% endfor %}
+    {% endfor %}
+    <span class="line-number">{{ lf.line_no.value|default:"New" }}</span>
+  </td>
+
+  <td class="line-cell line-cell-item px-3 py-2.5 align-top" data-label="Item">
+    {% if lf.non_field_errors %}
+      {% for error in lf.non_field_errors %}<p class="error-text">{{ error }}</p>{% endfor %}
+    {% endif %}
+    <div class="line-sub">
+      <span class="line-sub-label" aria-hidden="true">Product</span>
+      {% comment %}
+      Filled from the embedded product map in so_form.html, so the network
+      prefill is switched off here to avoid two mechanisms doing one job.
+      {% endcomment %}
+      {% a11y_field lf.product label="Product" line=line data_prefill="off" %}
+    </div>
+    {% if lf.product.errors %}<p class="error-text" id="{% error_id lf.product %}">{{ lf.product.errors|join:" " }}</p>{% endif %}
+    <div class="line-sub line-sub-secondary">
+      <span class="line-sub-label" aria-hidden="true">Description</span>
+      {% a11y_field lf.description label="Description" line=line %}
+    </div>
+    {% if lf.description.errors %}<p class="error-text" id="{% error_id lf.description %}">{{ lf.description.errors|join:" " }}</p>{% endif %}
+  </td>
+
+  <td class="line-cell line-cell-qty px-3 py-2.5 align-top" data-label="Quantity">
+    <div class="line-sub">
+      <span class="line-sub-label" aria-hidden="true">Qty</span>
+      {% a11y_field lf.quantity label="Quantity" line=line %}
+    </div>
+    {% if lf.quantity.errors %}<p class="error-text" id="{% error_id lf.quantity %}">{{ lf.quantity.errors|join:" " }}</p>{% endif %}
+    <div class="line-sub line-sub-secondary">
+      <span class="line-sub-label" aria-hidden="true">Unit</span>
+      {% a11y_field lf.unit label="Unit" line=line %}
+    </div>
+    {% if lf.unit.errors %}<p class="error-text" id="{% error_id lf.unit %}">{{ lf.unit.errors|join:" " }}</p>{% endif %}
+  </td>
+
+  <td class="line-cell line-cell-price px-3 py-2.5 align-top" data-label="Unit price">
+    <div class="line-sub">
+      <span class="line-sub-label" aria-hidden="true">Unit price</span>
+      {% a11y_field lf.unit_price label="Unit price" line=line %}
+    </div>
+    {% if lf.unit_price.errors %}<p class="error-text" id="{% error_id lf.unit_price %}">{{ lf.unit_price.errors|join:" " }}</p>{% endif %}
+    <div class="line-sub line-sub-secondary">
+      <span class="line-sub-label" aria-hidden="true">Discount %</span>
+      {% a11y_field lf.discount_percent label="Discount percent" line=line %}
+    </div>
+    {% if lf.discount_percent.errors %}<p class="error-text" id="{% error_id lf.discount_percent %}">{{ lf.discount_percent.errors|join:" " }}</p>{% endif %}
+  </td>
+
+  <td class="line-cell line-cell-tax px-3 py-2.5 align-top" data-label="Tax code">
+    <div class="line-sub">
+      <span class="line-sub-label" aria-hidden="true">Tax code</span>
+      {% a11y_field lf.tax_code label="Tax code" line=line %}
+    </div>
+    {% if lf.tax_code.errors %}<p class="error-text" id="{% error_id lf.tax_code %}">{{ lf.tax_code.errors|join:" " }}</p>{% endif %}
+  </td>
+
+  {% comment %}
+  Three read-only figures took three columns from the editable ones. The total
+  is what a person checks; gross and tax are the working, so they sit under it.
+  The classes are what the recalculation script writes to — it used to address
+  these by column index, which any layout change would have broken silently.
+  {% endcomment %}
+  <td class="line-cell line-cell-total px-3 py-2.5 text-right align-top" data-label="Line total">
+    <span class="line-total-main tabular-nums line-total">{% if lf.instance.pk %}{{ lf.instance.total_txn|floatformat:2 }}{% else %}0.00{% endif %}</span>
+    <span class="line-total-parts">
+      <span class="tabular-nums line-gross">{% if lf.instance.pk %}{{ lf.instance.gross_txn|floatformat:2 }}{% else %}0.00{% endif %}</span>
+      <span aria-hidden="true"> gross · </span>
+      <span class="tabular-nums line-tax">{% if lf.instance.pk %}{{ lf.instance.tax_txn|floatformat:2 }}{% else %}0.00{% endif %}</span>
+      <span aria-hidden="true"> tax</span>
+    </span>
+  </td>
+
+  <td class="line-cell line-cell-action px-3 py-2.5 text-center align-top" data-label="">
+    {% if lf.instance.pk %}
+      {% comment %}
+      The name goes on the control. A wrapping label takes its name from its own
+      text content, and the only content here is the input, so the checkbox had
+      no accessible name at all.
+      {% endcomment %}
+      <span class="flex items-center justify-center">
+        {% a11y_field lf.DELETE label="Remove" line=line %}
+      </span>
+    {% else %}
+      {% comment %}
+      A row added by mistake could not be taken back: DELETE only renders for
+      saved lines, so the only way out was to reload and lose the form.
+      {% endcomment %}
+      <button type="button" class="remove-new-line btn-ghost btn-sm" data-line="{{ line }}">
+        Remove<span class="sr-only"> line {{ line }}</span>
+      </button>
+    {% endif %}
+  </td>
+</tr>

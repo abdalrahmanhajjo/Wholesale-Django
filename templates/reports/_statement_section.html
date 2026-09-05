@@ -1,0 +1,31 @@
+{% comment %}
+One named group of accounts and its total, as it appears on a statement.
+
+`amount` is the attribute to read off each row — `period_net` on a profit and
+loss, `closing_net` on a balance sheet — because the two statements ask the
+same rows for different spans of the same number.
+{% endcomment %}
+{% if not section.is_empty %}
+  <tr class="border-t border-line">
+    <th scope="rowgroup" colspan="2" class="px-4 pb-1 pt-4 text-left text-[11px] font-bold uppercase text-muted-fg">
+      {{ section.title }}
+    </th>
+  </tr>
+  {% for row in section.rows %}
+    <tr>
+      <td class="px-4 py-1.5 pl-8">
+        <span class="font-mono text-xs text-muted-fg">{{ row.code }}</span>
+        <span class="ml-2">{{ row.name }}</span>
+      </td>
+      <td class="px-4 py-1.5 text-right tabular-nums">
+        {% if amount == "closing" %}{{ row.closing_net|floatformat:2 }}{% else %}{{ row.period_net|floatformat:2 }}{% endif %}
+      </td>
+    </tr>
+  {% endfor %}
+  <tr>
+    <td class="px-4 py-1.5 pl-8 text-sm font-medium">Total {{ section.title|lower }}</td>
+    <td class="border-t border-line px-4 py-1.5 text-right tabular-nums font-medium">
+      {{ section.total|floatformat:2 }}
+    </td>
+  </tr>
+{% endif %}

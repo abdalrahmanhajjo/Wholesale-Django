@@ -1,0 +1,92 @@
+{% extends "reports/_statement_shell.html" %}
+{% comment %}
+RPT-001. What the business owns and owes at a single date.
+
+The "result for the period" line is the one to understand before changing
+anything here. Until a year is closed, its profit is still sitting in the
+income and expense accounts; without that line the statement is out by exactly
+the profit. It disappears on its own once the year is closed, because the
+accounts it comes from are then zero.
+{% endcomment %}
+
+{% block date_controls %}
+  {% include "core/_form_field.html" with field=form.as_of %}
+{% endblock %}
+
+{% block period_link %}?as_of={{ period.end_date|date:"Y-m-d" }}{% endblock %}
+
+{% block statement %}
+{% if not report.is_balanced %}
+  <div class="card card-pad mb-4 border-danger/40 bg-danger/5">
+    <p class="text-xs font-bold uppercase text-danger">The balance sheet does not balance</p>
+    <p class="mt-1 text-sm">
+      Assets exceed liabilities and equity by {{ report.out_of_balance_by|floatformat:4 }}.
+      Since every journal balances, this can only mean an account is missing a subtype and
+      so is absent from every section below. Check the chart of accounts.
+    </p>
+  </div>
+{% endif %}
+
+<div class="card card-pad mx-auto max-w-3xl">
+  <div class="border-b border-line pb-4 text-center">
+    <p class="eyebrow">{{ company_name }}</p>
+    <h2 class="display mt-1 text-xl">Balance sheet</h2>
+    <p class="mt-1 text-sm text-muted-fg">as at {{ report.as_of|date:"j M Y" }}</p>
+    {# FTD-003: the ledger is kept in base currency, so every figure here is. #}
+    <p class="mt-1 text-xs text-muted-fg">All amounts in {{ base_currency }}</p>
+  </div>
+
+  <table class="mt-4 w-full text-sm">
+    <caption class="sr-only">Balance sheet as at {{ report.as_of }}</caption>
+    <tbody>
+      {% include "reports/_statement_section.html" with section=report.current_assets amount="closing" %}
+      {% include "reports/_statement_section.html" with section=report.noncurrent_assets amount="closing" %}
+      <tr class="bg-muted-bg font-semibold">
+        <td class="px-4 py-2">Total assets</td>
+        <td class="px-4 py-2 text-right tabular-nums">{{ report.total_assets|floatformat:2 }}</td>
+      </tr>
+
+      {% include "reports/_statement_section.html" with section=report.current_liabilities amount="closing" %}
+      {% include "reports/_statement_section.html" with section=report.noncurrent_liabilities amount="closing" %}
+      <tr class="font-semibold">
+        <td class="px-4 py-2">Total liabilities</td>
+        <td class="border-t border-line px-4 py-2 text-right tabular-nums">
+          {{ report.total_liabilities|floatformat:2 }}
+        </td>
+      </tr>
+
+      {% include "reports/_statement_section.html" with section=report.equity amount="closing" %}
+      {% if report.result_for_period %}
+        <tr>
+          <td class="px-4 py-1.5 pl-8">
+            Result for the period
+            <span class="ml-1 text-xs text-muted-fg">(not yet closed to reserves)</span>
+          </td>
+          <td class="px-4 py-1.5 text-right tabular-nums">{{ report.result_for_period|floatformat:2 }}</td>
+        </tr>
+      {% endif %}
+      <tr class="font-semibold">
+        <td class="px-4 py-2">Total equity</td>
+        <td class="border-t border-line px-4 py-2 text-right tabular-nums">
+          {{ report.total_equity|floatformat:2 }}
+        </td>
+      </tr>
+    </tbody>
+    <tfoot>
+      <tr class="border-t-2 border-line text-base font-bold">
+        <td class="px-4 py-3">Total liabilities and equity</td>
+        <td class="px-4 py-3 text-right tabular-nums text-brand-deep">
+          {{ report.total_liabilities_and_equity|floatformat:2 }}
+        </td>
+      </tr>
+    </tfoot>
+  </table>
+
+  {% if report.is_balanced %}
+    <p class="mt-4 flex items-center justify-center gap-1.5 border-t border-line pt-3 text-xs text-muted-fg">
+      <svg class="icon text-brand" aria-hidden="true"><use href="#i-check"></use></svg>
+      Assets equal liabilities plus equity.
+    </p>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% load ui %}
+{% block header_title %}New credit note{% endblock %}
+
+{% block breadcrumb %}
+  <a href="{% url 'sales:credit_note_list' %}"
+     class="mb-4 inline-flex items-center gap-1.5 text-sm font-medium text-muted-fg transition-colors hover:text-brand">
+    <span aria-hidden="true">&larr;</span> Back to credit notes
+  </a>
+{% endblock %}
+
+{% block content %}
+
+{% if step == "pick" %}
+  <div class="card card-pad max-w-xl">
+    <p class="eyebrow">Step 1 · choose the source</p>
+    <h2 class="card-title mt-2">Credit which sales invoice?</h2>
+    <form method="get" action="{% url 'sales:credit_note_create' %}" class="mt-5">
+      <div class="field-wrap">
+        {{ invoice_picker.invoice }}
+      </div>
+      <button type="submit" class="btn-primary mt-4">Continue</button>
+    </form>
+  </div>
+{% else %}
+  {# rows = [(invoice_line, credited_so_far, remaining)] chosen by the view #}
+  <div class="card card-pad">
+    <p class="eyebrow">{{ invoice.number }}</p>
+    <h2 class="card-title mt-1">{{ invoice.customer }} · {{ invoice.document_date }}</h2>
+    {% if rows %}
+      <form method="post" action="{% url 'sales:credit_note_create' %}">
+        <input type="hidden" name="invoice" value="{{ invoice.pk }}">
+        {% csrf_token %}
+        <div class="mt-4 overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-b border-line bg-muted-bg text-[11px] font-bold uppercase text-muted-fg">
+                <th class="px-4 py-2 text-left">Product</th>
+                <th class="px-4 py-2 text-right">Invoiced</th>
+                <th class="px-4 py-2 text-right">Credited so far</th>
+                <th class="px-4 py-2 text-right">Price</th>
+                <th class="px-4 py-2 text-right">Tax</th>
+                <th class="px-4 py-2 text-right">Qty to credit</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for il, credited, remaining in rows %}
+                <tr class="border-b border-line">
+                  <td class="px-4 py-2">{{ il.product }}</td>
+                  <td class="px-4 py-2 text-right tabular-nums">{{ il.quantity }}</td>
+                  <td class="px-4 py-2 text-right tabular-nums">{{ credited|quantity }}</td>
+                  <td class="px-4 py-2 text-right tabular-nums">{{ il.unit_price|floatformat:2 }}</td>
+                  <td class="px-4 py-2 text-right tabular-nums">{{ il.tax_rate_percent|floatformat:1 }}%</td>
+                  <td class="px-4 py-2 text-right">
+                    <div class="inline-flex items-center gap-2">
+                      <input type="number" id="qty_{{ il.pk }}" name="qty_{{ il.pk }}"
+                             placeholder="0" min="0" max="{{ remaining }}"
+                             step="0.0001" data-rule="decimal" data-min="0"
+                             data-max="{{ remaining }}" data-decimals="4"
+                             class="field w-32 text-right tabular-nums">
+                      <span class="whitespace-nowrap text-xs text-muted-fg">
+                        of {{ remaining|quantity }}
+                      </span>
+                    </div>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <div class="mt-5">
+          <label for="reason" class="eyebrow">Reason (required, RET-008)</label>
+          <textarea id="reason" name="reason" rows="3" class="field mt-2"
+                    placeholder="e.g. Customer returned goods — agreed partial credit"></textarea>
+        </div>
+        <div class="mt-5 flex gap-2">
+          <button type="submit" class="btn-primary">Create credit note (draft)</button>
+          <a href="{% url 'sales:credit_note_list' %}" class="btn-ghost">Cancel</a>
+        </div>
+      </form>
+    {% else %}
+      <div class="mt-4 rounded-lg border border-line bg-muted-bg/50 p-4">
+        <p class="text-sm font-bold text-fg">Nothing left to credit on {{ invoice.number }}</p>
+        <p class="mt-1 text-sm text-muted-fg">
+          Everything on this invoice has already been fully credited. Credit
+          notes are partial too — credit a smaller quantity first, then credit
+          the rest later.
+        </p>
+        <a href="{% url 'sales:credit_note_create' %}" class="btn-ghost mt-4">Choose another invoice</a>
+      </div>
+    {% endif %}
+  </div>
+{% endif %}
+{% endblock %}

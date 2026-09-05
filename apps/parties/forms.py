@@ -18,7 +18,8 @@ from django import forms
 from django.contrib.postgres.search import TrigramSimilarity
 from django.db.models.functions import Upper
 
-from apps.parties.models import Customer, Vendor
+from apps.core.form_ui import UIFormMixin
+from apps.parties.models import Address, Contact, Customer, Vendor
 
 SIMILARITY_THRESHOLD = 0.45
 
@@ -70,8 +71,16 @@ class PartyFormMixin:
         return warnings
 
 
-class CustomerForm(PartyFormMixin, forms.ModelForm):
+class CustomerForm(PartyFormMixin, UIFormMixin, forms.ModelForm):
     model_class = Customer
+    placeholders = {
+        "code": "CUST-0001",
+        "name": "The trading name you invoice under",
+        "legal_name": "Registered name, if it differs",
+        "credit_limit": "0.00 for no limit",
+    }
+    autocomplete_fields = ["currency", "payment_term", "default_tax_code"]
+    checks = {"code": "customer-code", "name": "similar-customer-name"}
 
     class Meta:
         model = Customer
@@ -101,22 +110,6 @@ class CustomerForm(PartyFormMixin, forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # One place decides how a control looks, so every form in the system
-        # matches without each member styling their own fields.
-        for fld in self.fields.values():
-            widget = fld.widget
-            if isinstance(widget, forms.CheckboxInput):
-                widget.attrs.setdefault(
-                    "class", "h-4 w-4 rounded border-line text-brand focus:ring-brand/30"
-                )
-            elif isinstance(widget, forms.Textarea):
-                widget.attrs.setdefault(
-                    "class",
-                    "block w-full rounded-xl border border-line bg-white px-3 py-2 text-sm "
-                    "focus:border-brand focus:ring-2 focus:ring-brand/30 focus:outline-none",
-                )
-            else:
-                widget.attrs.setdefault("class", "field")
         # PTY-008: an inactive party cannot be chosen for new transactions, so
         # inactive records are not offered here either.
         self.fields["default_warehouse"].queryset = self.fields[
@@ -136,8 +129,15 @@ class CustomerForm(PartyFormMixin, forms.ModelForm):
         return cleaned
 
 
-class VendorForm(PartyFormMixin, forms.ModelForm):
+class VendorForm(PartyFormMixin, UIFormMixin, forms.ModelForm):
     model_class = Vendor
+    placeholders = {
+        "code": "VEND-0001",
+        "name": "The trading name on their invoices",
+        "legal_name": "Registered name, if it differs",
+    }
+    autocomplete_fields = ["currency", "payment_term", "default_tax_code"]
+    checks = {"code": "vendor-code", "name": "similar-vendor-name"}
 
     class Meta:
         model = Vendor
@@ -160,17 +160,27 @@ class VendorForm(PartyFormMixin, forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        for fld in self.fields.values():
-            widget = fld.widget
-            if isinstance(widget, forms.CheckboxInput):
-                widget.attrs.setdefault(
-                    "class", "h-4 w-4 rounded border-line text-brand focus:ring-brand/30"
-                )
-            elif isinstance(widget, forms.Textarea):
-                widget.attrs.setdefault(
-                    "class",
-                    "block w-full rounded-xl border border-line bg-white px-3 py-2 text-sm "
-                    "focus:border-brand focus:ring-2 focus:ring-brand/30 focus:outline-none",
-                )
-            else:
-                widget.attrs.setdefault("class", "field")
+
+
+class AddressForm(UIFormMixin, forms.ModelForm):
+    """PTY-003. The owning party is set by the view, never by the browser."""
+
+    class Meta:
+        model = Address
+        fields = [
+            "label",
+            "address_type",
+            "line1",
+            "line2",
+            "city",
+            "state",
+            "postal_code",
+            "country",
+            "is_default",
+        ]
+
+
+class ContactForm(UIFormMixin, forms.ModelForm):
+    class Meta:
+        model = Contact
+        fields = ["name", "job_title", "email", "phone", "is_primary"]

@@ -34,6 +34,8 @@ from apps.sales.models import (
     SalesInvoice,
     SalesInvoiceLine,
     SalesOrder,
+    SalesReturn,
+    SalesReturnLine,
 )
 
 # ---------------------------------------------------------------------------
@@ -1040,3 +1042,341 @@ def post_invoice(invoice, user):
         audit.record(audit.AuditAction.POST, invoice, user=user)
         invoice.refresh_from_db()
     return invoice
+
+
+# ---------------------------------------------------------------------------
+# Sales returns (RET-001..RET-009)
+# ---------------------------------------------------------------------------
+
+
+def allocate_return_number(series="DEFAULT"):
+    """RET sequence, same shape as allocate_so_number."""
+    with transaction.atomic():
+        seq = (
+            DocumentSequence.objects.select_for_update()
+            .filter(document_type="RET", series=series, is_active=True)
+            .first()
+        )
+        if seq is None:
+            raise ValueError(
+                "No active document sequence for RET / DEFAULT. "
+                "Ask an administrator to create one in Settings."
+            )
+        num = seq.next_number
+        seq.next_number = F("next_number") + 1
+        seq.save(update_fields=["next_number"])
+        return f"RET-{str(num).zfill(seq.padding)}"
+
+
+def remaining_to_return(invoice_line):
+    """RET-001: how many units can still be returned on this invoice line."""
+    return (invoice_line.quantity or ZERO) - (invoice_line.quantity_returned or ZERO)
+
+
+def build_return_lines_from_invoice(invoice):
+    """Return (SalesInvoiceLine, remaining_to_return) pairs."""
+    rows = []
+    for il in invoice.lines.select_related("product", "unit").order_by("line_no"):
+        rem = remaining_to_return(il)
+        if rem > ZERO:
+            rows.append((il, rem))
+    return rows
+
+
+def draft_return_from_invoice(invoice, user, quantities, reason, disposition="RESTOCK"):
+    """
+    Create a DRAFT SalesReturn + SalesReturnLines from an invoice.
+
+    quantities: {invoice_line.pk: quantity_to_return}
+    disposition: RESTOCK / WRITE_OFF / NO_STOCK_EFFECT
+    """
+    if invoice.status not in (
+        DocumentStatus.POSTED,
+        DocumentStatus.PARTIAL,
+        DocumentStatus.COMPLETED,
+    ):
+        raise ValueError(
+            f"Cannot return from invoice {invoice.number}: status is {invoice.status}, "
+            "expected POSTED/PARTIAL/COMPLETED."
+        )
+    if not quantities:
+        raise ValueError("Choose at least one line to return.")
+
+    with transaction.atomic():
+        ret = SalesReturn.objects.create(
+            number=allocate_return_number(),
+            document_date=timezone.localdate(),
+            customer=invoice.customer,
+            warehouse=invoice.warehouse or invoice.lines.first().warehouse,
+            original_invoice=invoice,
+            original_delivery=(
+                DeliveryNote.objects.filter(lines__invoice_lines__invoice=invoice)
+                .distinct()
+                .first()
+            ),
+            status=DocumentStatus.DRAFT,
+            reason=reason,
+        )
+
+        line_no = 0
+        for il_pk, qty in quantities.items():
+            il = SalesInvoiceLine.objects.select_for_update().get(pk=il_pk)
+            if il.invoice_id != invoice.pk:
+                raise ValueError("Invoice line does not belong to this invoice.")
+            if qty <= ZERO:
+                raise ValueError(f"Return quantity must be positive for line {il.line_no}.")
+            rem = remaining_to_return(il)
+            if qty > rem:
+                raise ValueError(
+                    f"Line {il.line_no}: can return at most {rem} "
+                    f"of {il.product}; requested {qty}. (RET-001)"
+                )
+            il.quantity_returned = F("quantity_returned") + qty
+            il.save(update_fields=["quantity_returned"])
+            il.refresh_from_db()
+
+            line_no += 1
+            SalesReturnLine.objects.create(
+                sales_return=ret,
+                line_no=line_no,
+                invoice_line=il,
+                delivery_line=il.delivery_line,
+                product=il.product,
+                quantity=qty,
+                disposition=disposition,
+                unit_cost=il.delivery_line.unit_cost if il.delivery_line else ZERO,
+                total_cost=(il.delivery_line.unit_cost or ZERO) * qty
+                if il.delivery_line
+                else ZERO,
+                note="",
+            )
+
+        recalculate_return(ret)
+        audit.record_action(None, audit.AuditAction.CREATE, ret)
+        return ret
+
+
+def recalculate_return(ret):
+    """Recalculate the total_cost_base on a SalesReturn."""
+    total = sum(ln.total_cost for ln in ret.lines.all())
+    ret.total_cost_base = total
+    ret.save(update_fields=["total_cost_base", "updated_at"])
+
+
+def submit_return(return_obj, user):
+    """DRAFT → SUBMITTED."""
+    if return_obj.status not in (DocumentStatus.DRAFT, DocumentStatus.REJECTED):
+        raise ValueError(
+            f"Cannot submit return {return_obj.number}: status is {return_obj.status}, "
+            "expected DRAFT or REJECTED."
+        )
+    return_obj.status = DocumentStatus.SUBMITTED
+    return_obj.submitted_at = timezone.now()
+    return_obj.submitted_by = user
+    return_obj.save(
+        update_fields=[
+            "status",
+            "submitted_at",
+            "submitted_by",
+            "updated_at",
+        ]
+    )
+    audit.record_action(None, audit.AuditAction.SUBMIT, return_obj)
+    return return_obj
+
+
+def approve_return(return_obj, user, reason=""):
+    """SUBMITTED → APPROVED."""
+    if return_obj.status != DocumentStatus.SUBMITTED:
+        raise ValueError(
+            f"Cannot approve return {return_obj.number}: status is {return_obj.status}, "
+            "expected SUBMITTED."
+        )
+    return_obj.status = DocumentStatus.APPROVED
+    return_obj.approved_at = timezone.now()
+    return_obj.approved_by = user
+    return_obj.approval_reason = reason
+    return_obj.save(
+        update_fields=[
+            "status",
+            "approved_at",
+            "approved_by",
+            "approval_reason",
+            "updated_at",
+        ]
+    )
+    audit.record_action(None, audit.AuditAction.APPROVE, return_obj, reason=reason)
+    return return_obj
+
+
+def reject_return(return_obj, user, reason=""):
+    """SUBMITTED → REJECTED."""
+    if return_obj.status != DocumentStatus.SUBMITTED:
+        raise ValueError(
+            f"Cannot reject return {return_obj.number}: status is {return_obj.status}, "
+            "expected SUBMITTED."
+        )
+    if not reason:
+        raise ValueError("A reason is required to reject a return (ACC-008).")
+    return_obj.status = DocumentStatus.REJECTED
+    return_obj.approval_reason = reason
+    return_obj.save(
+        update_fields=[
+            "status",
+            "approval_reason",
+            "updated_at",
+        ]
+    )
+    audit.record_action(None, audit.AuditAction.REJECT, return_obj, reason=reason)
+    return return_obj
+
+
+def build_sales_return_journal(return_obj, *, user):
+    """
+    Reversal journal for a return (RET-003).
+
+    Credits AR (customer owes less), debits revenue, debits output tax.
+    If any line is RESTOCK, also debits Inventory / credits COGS at the
+    delivery's unit cost.
+    """
+    from apps.ledger.services import JournalDraft, JournalLineDraft
+
+    inv = return_obj.original_invoice
+    if inv is None:
+        raise ValueError("Return has no linked invoice to reverse.")
+
+    lines = []
+    total_revenue = ZERO
+    total_tax = ZERO
+
+    for rl in return_obj.lines.select_related("invoice_line", "delivery_line").order_by(
+        "line_no"
+    ):
+        il = rl.invoice_line
+        if il is None:
+            continue
+        proportion = (rl.quantity or ZERO) / (il.quantity or ZERO) if il.quantity else ZERO
+        reversed_revenue = (il.unit_price or ZERO) * (il.quantity or ZERO) * proportion
+        total_revenue += reversed_revenue
+        if il.tax_rate_percent:
+            reversed_tax = reversed_revenue * il.tax_rate_percent / 100
+            total_tax += reversed_tax
+
+    # AR credit (customer owes less)
+    lines.append(
+        JournalLineDraft(
+            account=_resolve_account(MappingKey.ACCOUNTS_RECEIVABLE),
+            credit_base=total_revenue + total_tax,
+            customer=inv.customer,
+            description=f"Sales return {return_obj.number}",
+        )
+    )
+    # Revenue debit (reverse revenue)
+    lines.append(
+        JournalLineDraft(
+            account=_resolve_account(MappingKey.SALES_REVENUE),
+            debit_base=total_revenue,
+            description=f"Revenue reversal {return_obj.number}",
+        )
+    )
+    # Output tax debit (reverse tax, if any)
+    if total_tax > ZERO:
+        lines.append(
+            JournalLineDraft(
+                account=_resolve_account(MappingKey.OUTPUT_TAX),
+                debit_base=total_tax,
+                description=f"Tax reversal {return_obj.number}",
+            )
+        )
+
+    # COGS / Inventory for RESTOCK lines
+    total_cogs = ZERO
+    for rl in return_obj.lines.filter(disposition="RESTOCK").select_related("delivery_line"):
+        dl = rl.delivery_line
+        if dl and (dl.unit_cost or ZERO) > ZERO:
+            cogs_amount = (dl.unit_cost or ZERO) * (rl.quantity or ZERO)
+            total_cogs += cogs_amount
+
+    if total_cogs > ZERO:
+        lines.append(
+            JournalLineDraft(
+                account=_resolve_account(MappingKey.COGS),
+                credit_base=total_cogs,
+                description=f"COGS reversal {return_obj.number}",
+            )
+        )
+        lines.append(
+            JournalLineDraft(
+                account=_resolve_account(MappingKey.INVENTORY),
+                debit_base=total_cogs,
+                description=f"Inventory restock {return_obj.number}",
+            )
+        )
+
+    return JournalDraft(
+        entry_date=return_obj.document_date,
+        journal_type=JournalType.SALES,
+        narration=f"Sales return {return_obj.number}",
+        currency=inv.currency,
+        exchange_rate=inv.exchange_rate,
+        source_doc_type="RET",
+        source_doc_number=return_obj.number,
+        lines=tuple(lines),
+    )
+
+
+def _return_required_mappings(return_obj):
+    """Mirrors build_sales_return_journal's conditional lines."""
+    keys = [
+        MappingKey.ACCOUNTS_RECEIVABLE,
+        MappingKey.SALES_REVENUE,
+    ]
+    inv = return_obj.original_invoice
+    if inv and inv.tax_base:
+        keys.append(MappingKey.OUTPUT_TAX)
+    has_restock_cogs = any(
+        (
+            rl.disposition == "RESTOCK"
+            and rl.delivery_line is not None
+            and (rl.delivery_line.unit_cost or ZERO) > ZERO
+        )
+        for rl in return_obj.lines.select_related("delivery_line").iterator()
+    )
+    if has_restock_cogs:
+        keys.extend([MappingKey.COGS, MappingKey.INVENTORY])
+    return tuple(keys)
+
+
+def post_return(return_obj, user, request=None):
+    """SUBMITTED → POSTED, write the reversal journal via the engine."""
+    if return_obj.status != DocumentStatus.SUBMITTED:
+        raise ValueError(
+            f"Cannot post return {return_obj.number}: status is {return_obj.status}, "
+            "expected SUBMITTED."
+        )
+    with transaction.atomic():
+        result = posting_service.post(
+            PostingRequest(
+                source=return_obj,
+                user=user,
+                idempotency_key=f"sales-return:{return_obj.pk}:post:v1",
+                build_journal=build_sales_return_journal,
+                required_mappings=_return_required_mappings(return_obj),
+                reason="Return posting",
+            )
+        )
+        return_obj.status = DocumentStatus.POSTED
+        return_obj.journal_entry = result.journal_entry
+        return_obj.posted_at = timezone.now()
+        return_obj.posted_by = user
+        return_obj.save(
+            update_fields=[
+                "status",
+                "journal_entry",
+                "posted_at",
+                "posted_by",
+                "updated_at",
+            ]
+        )
+        audit.record_action(request, audit.AuditAction.POST, return_obj)
+        return return_obj

@@ -186,14 +186,16 @@ class RenderingTests(TestCase):
         """Eight unlabelled glyphs is a map you have to hover to read."""
         nav = self.nav_of(self.full)
         labels = re.findall(r'nav-rail-label">([^<]+)<', nav)
-        self.assertEqual(len(labels), 8)
-        self.assertIn("Finance", labels)
+        # Counted from the menu rather than written as a number: a module added
+        # to navigation.py should not have to be counted again here, but one
+        # that fails to reach the rail still fails this.
+        self.assertEqual(labels, [section.label for section in SECTIONS])
 
     def test_every_rail_glyph_links_somewhere_real(self):
         """Without JavaScript the rail is the only way into a module."""
         nav = self.nav_of(self.full)
         rail = re.findall(r"<a[^>]*class=\"nav-rail-btn[^\"]*\"[^>]*>", nav)
-        self.assertEqual(len(rail), 8)
+        self.assertEqual(len(rail), len(SECTIONS))
         for tag in rail:
             href = re.search(r'href="([^"]*)"', tag).group(1)
             with self.subTest(href=href):

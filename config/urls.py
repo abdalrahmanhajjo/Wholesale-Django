@@ -80,6 +80,7 @@ urlpatterns = [
     path("reports/", include("apps.reports.urls")),
     path("settings/", include("apps.core.urls")),
     path("admin/", admin.site.urls),
+    path("catalog/", include("apps.catalog.urls")),
 ]
 
 if settings.DEBUG:

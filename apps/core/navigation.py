@@ -292,6 +292,38 @@ SECTIONS: tuple[Section, ...] = (
             ),
         ),
     ),
+    # Ported from PR #39 (Product Catalog). The rows are that branch's, name
+    # for name: the same labels, url names, permissions and active rules it
+    # declared inline against the old markup. Only the shape changed, because
+    # the markup it was written against no longer exists.
+    Section(
+        key="catalog",
+        icon="sec-catalog",
+        label="Catalog",
+        items=(
+            Item(
+                "Products",
+                "catalog:product_list",
+                "nav-product",
+                permission="catalog.view_product",
+                path="/catalog/products/",
+            ),
+            Item(
+                "Categories",
+                "catalog:category_list",
+                "nav-category",
+                permission="catalog.view_productcategory",
+                path="/catalog/categories/",
+            ),
+            Item(
+                "Units",
+                "catalog:unit_list",
+                "nav-unit",
+                permission="catalog.view_unitofmeasure",
+                path="/catalog/units/",
+            ),
+        ),
+    ),
     Section(
         key="inventory",
         icon="sec-inventory",

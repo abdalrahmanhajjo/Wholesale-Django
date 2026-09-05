@@ -166,7 +166,7 @@
 
   /* --------------------------------------------------------------- sidebar */
   .nav-link {
-    @apply relative flex min-h-[40px] items-center gap-3 rounded-xl px-3 text-sm
+    @apply relative flex min-h-[44px] items-center gap-3 rounded-xl px-3 text-sm
            font-medium text-nav-fg transition-colors duration-200
            hover:bg-white/[.06] hover:text-white;
   }
@@ -267,6 +267,20 @@
   }
 
   /* ------------------------------------------------------- collapse control */
+  /* ------------------------------------------------------------- surface --
+     Fixed, behind everything, and inert: it must never sit between a nav row
+     and the pointer. */
+  .app-sidebar { background-color: #071a2f; }
+  .app-sidebar::before {
+    content: "";
+    @apply pointer-events-none absolute inset-0 z-0;
+    background:
+      radial-gradient(120% 55% at 100% 0%, rgba(75, 210, 125, 0.10), transparent 62%),
+      radial-gradient(90% 40% at 0% 100%, rgba(75, 210, 125, 0.05), transparent 60%);
+  }
+  /* Everything else rides above it. */
+  .app-sidebar > * { @apply relative z-10; }
+
   .nav-collapse-btn {
     @apply ml-auto hidden h-8 w-8 shrink-0 place-items-center rounded-lg
            text-nav-muted transition-colors hover:bg-white/10 hover:text-white

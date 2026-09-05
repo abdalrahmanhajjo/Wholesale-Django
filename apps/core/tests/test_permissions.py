@@ -120,8 +120,13 @@ class DirectUrlAccessTests(TestCase):
 class AuthenticationTests(TestCase):
     """ACC-001, ACC-002."""
 
-    def test_protected_page_redirects_anonymous_user_to_login(self):
+    def test_home_shows_landing_page_to_anonymous_user(self):
         response = self.client.get(reverse("dashboard"))
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "core/landing.html")
+
+    def test_protected_page_redirects_anonymous_user_to_login(self):
+        response = self.client.get(reverse("core:currency_list"))
         self.assertEqual(response.status_code, 302)
         self.assertIn(reverse("login"), response["Location"])
 

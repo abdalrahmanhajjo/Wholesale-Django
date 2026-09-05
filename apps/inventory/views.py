@@ -384,6 +384,50 @@ class StockValuationListView(FilteredListView):
 
 
 # ---------------------------------------------------------------------------
+# Low stock (RPT-018)
+# ---------------------------------------------------------------------------
+class LowStockListView(FilteredListView):
+    """
+    Balances at or below the product's reorder level — what a buyer should
+    look at before writing the next purchase order. A trimmed view over the
+    same `StockBalance` rows as inventory valuation, not a separate model.
+    """
+
+    model = StockBalance
+    required_permission = "inventory.view_stockbalance"
+    page_title = "Low stock"
+    page_subtitle = "Balances at or below their reorder level."
+    export_permission = EXPORT_DATA
+    export_filename = "low-stock"
+    default_ordering = "product__sku"
+    show_summary = False
+
+    columns = [
+        Column("product", "Product"),
+        Column("warehouse", "Warehouse", sortable=True, order_by="warehouse__code"),
+        Column("quantity_on_hand", "On hand", align="right", sortable=True),
+        Column("product__reorder_level", "Reorder level", align="right"),
+        Column("average_cost", "Avg cost", align="right", money=True),
+    ]
+    search_fields = ["product__sku", "product__name"]
+
+    @property
+    def filters(self):
+        warehouses = [(w.pk, str(w)) for w in Warehouse.objects.filter(is_active=True)]
+        return [ChoiceFilter("warehouse", "Warehouse", warehouses)]
+
+    def get_queryset(self):
+        return (
+            super()
+            .get_queryset()
+            .select_related("product", "warehouse")
+            .filter(
+                product__is_inventory=True, quantity_on_hand__lte=F("product__reorder_level")
+            )
+        )
+
+
+# ---------------------------------------------------------------------------
 # Stock transfers: list, create/edit, detail, post (INV-008)
 # ---------------------------------------------------------------------------
 class StockTransferListView(FilteredListView):

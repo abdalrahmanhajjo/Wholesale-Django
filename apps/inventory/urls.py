@@ -18,6 +18,7 @@ urlpatterns = [
     path("receipts/<int:pk>/post/", views.GoodsReceiptPostView.as_view(), name="gr_post"),
     path("stock/ledger/", views.StockLedgerListView.as_view(), name="stock_ledger"),
     path("stock/valuation/", views.StockValuationListView.as_view(), name="stock_valuation"),
+    path("stock/low/", views.LowStockListView.as_view(), name="low_stock"),
     path("transfers/", views.StockTransferListView.as_view(), name="st_list"),
     path("transfers/new/", views.StockTransferCreateView.as_view(), name="st_create"),
     path("transfers/<int:pk>/", views.StockTransferDetailView.as_view(), name="st_detail"),

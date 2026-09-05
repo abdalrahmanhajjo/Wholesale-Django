@@ -163,6 +163,32 @@ class RenderingTests(TestCase):
                 ]
                 self.assertEqual(len(open_panels), 1, open_panels)
 
+    def test_the_rail_marks_where_you_are_separately_from_what_you_are_reading(self):
+        """Two states, because peeking must not erase your anchor.
+
+        `current` is the module holding the open page; `selected` is the module
+        whose rows are on screen. They coincide on load - it is clicking
+        another glyph that separates them, and a rail that moved its only
+        marker then would leave no way to see where you actually were.
+        """
+        nav = self.nav_of(self.full, "/sales/invoices/")
+        tags = re.findall(r"<a[^>]*class=\"nav-rail-btn[^\"]*\"[^>]*>", nav)
+
+        def keys(marker):
+            return [
+                re.search(r'data-rail="(\w+)"', tag).group(1) for tag in tags if marker in tag
+            ]
+
+        self.assertEqual(keys("nav-rail-btn-current"), ["sales"])
+        self.assertEqual(keys("nav-rail-btn-selected"), ["sales"])
+
+    def test_every_module_glyph_carries_a_readable_name(self):
+        """Eight unlabelled glyphs is a map you have to hover to read."""
+        nav = self.nav_of(self.full)
+        labels = re.findall(r'nav-rail-label">([^<]+)<', nav)
+        self.assertEqual(len(labels), 8)
+        self.assertIn("Finance", labels)
+
     def test_every_rail_glyph_links_somewhere_real(self):
         """Without JavaScript the rail is the only way into a module."""
         nav = self.nav_of(self.full)

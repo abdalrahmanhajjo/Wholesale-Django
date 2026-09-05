@@ -242,9 +242,12 @@
     panels.forEach(function (panel) {
       panel.hidden = panel.getAttribute("data-panel") !== key;
     });
+    // Only the selection moves. `nav-rail-btn-current` marks the module that
+    // holds the page actually open and is never touched here, so peeking at
+    // another module cannot make the sidebar forget where you are.
     rail.forEach(function (btn) {
       var on = btn.getAttribute("data-rail") === key;
-      btn.classList.toggle("nav-rail-btn-active", on);
+      btn.classList.toggle("nav-rail-btn-selected", on);
       btn.setAttribute("aria-selected", String(on));
     });
   }
@@ -310,6 +313,13 @@
     if (empty) empty.hidden = !term || any;
   }
 
+  // Rows still on screen after filtering, in the order they are drawn.
+  function visibleRows() {
+    return rows.filter(function (row) {
+      return !row.parentNode.hidden && row.offsetParent !== null;
+    });
+  }
+
   if (search) {
     search.addEventListener("input", function () { filter(search.value); });
     search.addEventListener("keydown", function (event) {
@@ -317,7 +327,39 @@
         search.value = "";
         filter("");
         search.blur();
+        return;
       }
+      // Down from the box walks the results and Enter opens the first one, so
+      // a menu of 35 rows can be reached without the mouse ever moving.
+      if (event.key === "ArrowDown") {
+        var first = visibleRows()[0];
+        if (first) { event.preventDefault(); first.focus(); }
+        return;
+      }
+      if (event.key === "Enter") {
+        var top = visibleRows()[0];
+        if (top) { event.preventDefault(); top.click(); }
+      }
+    });
+
+    // Once inside the results, arrows continue through them and Escape returns
+    // to the box rather than dropping focus somewhere unrelated.
+    rows.forEach(function (row) {
+      row.addEventListener("keydown", function (event) {
+        var step = event.key === "ArrowDown" ? 1 : event.key === "ArrowUp" ? -1 : 0;
+        if (step) {
+          var live = visibleRows();
+          var at = live.indexOf(row);
+          if (at !== -1) {
+            event.preventDefault();
+            var next = live[at + step];
+            if (next) next.focus();
+            else if (step === -1) search.focus();
+          }
+          return;
+        }
+        if (event.key === "Escape") { event.preventDefault(); search.focus(); }
+      });
     });
 
     // "/" focuses the box, the convention everywhere text is searched. Not

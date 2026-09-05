@@ -27,8 +27,15 @@ here.
   {# ------------------------------------------------------------- rail #}
   <div class="nav-rail" role="tablist" aria-label="Modules" data-nav-rail>
     {% for section in nav_sections %}
+      {% comment %}
+      Two states, not one. `current` is the module holding the page you are on
+      and never moves until you navigate; `selected` is the module you are
+      looking at, which changes the moment you click another glyph. They are
+      the same until you peek, and a sidebar that forgets where you are the
+      instant you look elsewhere has lost the thing it is for.
+      {% endcomment %}
       <a href="{% url section.first_url_name %}"
-         class="nav-rail-btn {% if section.has_active %}nav-rail-btn-active{% endif %}"
+         class="nav-rail-btn {% if section.has_active %}nav-rail-btn-current nav-rail-btn-selected{% endif %}"
          role="tab"
          id="rail-{{ section.key }}"
          aria-controls="panel-{{ section.key }}"
@@ -36,7 +43,7 @@ here.
          data-rail="{{ section.key }}"
          data-label="{{ section.label }}">
         <svg class="icon" aria-hidden="true"><use href="#i-{{ section.icon }}"></use></svg>
-        <span class="sr-only">{{ section.label }}</span>
+        <span class="nav-rail-label">{{ section.label }}</span>
       </a>
     {% endfor %}
   </div>

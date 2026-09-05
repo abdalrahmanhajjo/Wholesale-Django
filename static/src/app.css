@@ -276,43 +276,63 @@
   .nav-shell { @apply flex min-h-0 flex-1; }
 
   .nav-rail {
-    @apply flex w-[58px] shrink-0 flex-col items-center gap-1 overflow-y-auto
+    @apply flex w-[74px] shrink-0 flex-col items-center gap-0.5 overflow-y-auto
            border-r border-white/[.07] py-3;
     scrollbar-width: none;
   }
   .nav-rail::-webkit-scrollbar { display: none; }
 
+  /* Labelled, because eight abstract glyphs with hover-only names make a map
+     nobody can read without pointing at every landmark first. Nine pixels is
+     enough to recognise a word already known and small enough that the glyph
+     stays the thing being read. */
   .nav-rail-btn {
-    @apply relative grid h-11 w-11 shrink-0 place-items-center rounded-xl
-           text-nav-muted transition-colors duration-200
+    @apply relative grid w-[62px] shrink-0 justify-items-center gap-1 rounded-xl
+           px-1 py-2 text-nav-muted transition-colors duration-200
            hover:bg-white/[.07] hover:text-white;
   }
   .nav-rail-btn .icon { @apply h-[22px] w-[22px]; }
+  .nav-rail-label {
+    @apply w-full truncate text-center text-[9px] font-semibold uppercase
+           leading-none tracking-[0.06em];
+  }
 
-  /* The selected module keeps the emerald rail the rows use, so the two tiers
-     say "current" the same way. */
-  .nav-rail-btn-active {
+  /* Selected: the module whose rows are on screen. Moves as you click. */
+  .nav-rail-btn-selected {
     @apply bg-brand/[.13] text-emerald-300 hover:bg-brand/[.16] hover:text-emerald-300;
   }
-  .nav-rail-btn-active::before {
+
+  /* Current: the module holding the page actually open. Does not move until
+     you navigate. Usually the same glyph as selected, and then the two read as
+     one; when you peek elsewhere the marker stays put and remains your way
+     back. A dot rather than a second bar, so it cannot be mistaken for the
+     selection. */
+  .nav-rail-btn-current::after {
     content: "";
-    @apply absolute -left-[9px] top-1/2 h-6 w-[2px] -translate-y-1/2 rounded-r bg-brand;
+    @apply absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-brand;
+  }
+  .nav-rail-btn-current.nav-rail-btn-selected::before {
+    content: "";
+    @apply absolute -left-[9px] top-1/2 h-7 w-[2px] -translate-y-1/2 rounded-r bg-brand;
   }
   .nav-rail-btn:focus-visible {
     @apply outline-none ring-2 ring-brand/70 ring-offset-2 ring-offset-sidebar;
   }
 
-  /* Module name on hover, from the same attribute the search reads. */
-  .nav-rail-btn::after {
-    content: attr(data-label);
-    @apply pointer-events-none absolute left-full z-50 ml-2 hidden whitespace-nowrap
-           rounded-lg bg-navy-2 px-2.5 py-1.5 text-xs font-medium text-white
-           shadow-lg ring-1 ring-white/10;
-  }
-  .nav-rail-btn:hover::after,
-  .nav-rail-btn:focus-visible::after { @apply block; }
-
   .nav-panel { @apply min-w-0 flex-1 overflow-y-auto px-2.5 pb-6 pt-3; }
+
+  /* A panel that swaps with no motion at all reads as a redraw rather than a
+     move, and the eye has to re-find the top of the list. The animation
+     re-runs on its own each time the element returns from display:none, so
+     nothing has to trigger it. Short enough not to be waited on. */
+  @keyframes nav-panel-in {
+    from { opacity: 0; transform: translateX(-4px); }
+    to   { opacity: 1; transform: none; }
+  }
+  .nav-panel-body:not([hidden]) { animation: nav-panel-in 180ms ease-out; }
+  @media (prefers-reduced-motion: reduce) {
+    .nav-panel-body:not([hidden]) { animation: none; }
+  }
   /* Searching shows every module at once; the rail has nothing to select so it
      steps back rather than lying about which module you are in. */
   .nav-searching .nav-rail { @apply opacity-40; }

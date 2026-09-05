@@ -131,11 +131,47 @@ class RenderingTests(TestCase):
         active = re.findall(r'nav-link-active[^>]*>.*?nav-label">([^<]+)<', nav, re.S)
         self.assertNotIn("Dashboard", active)
 
-    def test_the_section_holding_the_current_page_starts_open(self):
-        """A collapsed section that hides where you are is worse than no memory."""
+    def test_the_module_holding_the_current_page_is_the_one_on_screen(self):
+        """A sidebar that hides where you are is worse than one with no memory.
+
+        Was asserted against <details open> when every section shared one
+        column. The column is now a rail of modules and a panel showing one of
+        them, so the same property is that the current page's module is the
+        panel that is not hidden - and that its rail glyph says so.
+        """
         nav = self.nav_of(self.full, "/reports/trial-balance/")
-        finance = nav[nav.find('data-nav-section="finance"') :]
-        self.assertTrue(finance[: finance.find(">")].strip().endswith("open"))
+        panel = nav[nav.find('data-panel="finance"') :]
+        self.assertNotIn("hidden", panel[: panel.find(">")])
+
+        rail = re.findall(r"<a[^>]*class=\"nav-rail-btn[^\"]*\"[^>]*>", nav)
+        selected = [
+            re.search(r'data-rail="([a-z]+)"', tag).group(1)
+            for tag in rail
+            if 'aria-selected="true"' in tag
+        ]
+        self.assertEqual(selected, ["finance"])
+
+    def test_exactly_one_module_is_ever_on_screen(self):
+        """Two visible panels would be two menus, and neither would be right."""
+        for path in ("/", "/sales/invoices/", "/settings/company/"):
+            with self.subTest(path=path):
+                nav = self.nav_of(self.full, path)
+                open_panels = [
+                    m.group(1)
+                    for m in re.finditer(r'data-panel="([a-z]+)"((?:(?!>).)*)>', nav, re.S)
+                    if "hidden" not in m.group(2)
+                ]
+                self.assertEqual(len(open_panels), 1, open_panels)
+
+    def test_every_rail_glyph_links_somewhere_real(self):
+        """Without JavaScript the rail is the only way into a module."""
+        nav = self.nav_of(self.full)
+        rail = re.findall(r"<a[^>]*class=\"nav-rail-btn[^\"]*\"[^>]*>", nav)
+        self.assertEqual(len(rail), 8)
+        for tag in rail:
+            href = re.search(r'href="([^"]*)"', tag).group(1)
+            with self.subTest(href=href):
+                self.assertTrue(href.startswith("/"), f"{href} is not a path")
 
     def test_every_rendered_href_is_a_real_path(self):
         nav = self.nav_of(self.full)

@@ -212,7 +212,6 @@
   var nav = document.querySelector("[data-nav]");
   if (!nav) return;
 
-  var STORE_SECTIONS = "lw.nav.closed";
   var STORE_COLLAPSED = "lw.nav.collapsed";
 
   // Private-mode browsers throw on access rather than returning null.
@@ -226,23 +225,51 @@
     try { window.localStorage.setItem(key, JSON.stringify(value)); } catch (e) {}
   }
 
-  /* ---------------------------------------------------- section memory --- */
-  var sections = Array.prototype.slice.call(nav.querySelectorAll("[data-nav-section]"));
-  var closed = read(STORE_SECTIONS, []);
-  if (!Array.isArray(closed)) closed = [];
+  /* ------------------------------------------------------ module rail --- */
+  // Every panel is already in the page; the rail only decides which is shown.
+  // Nothing is fetched, so a module opens instantly and the search below can
+  // read rows that are not on screen.
+  var rail = Array.prototype.slice.call(nav.querySelectorAll("[data-rail]"));
+  var panels = Array.prototype.slice.call(nav.querySelectorAll("[data-panel]"));
+  // The module holding the current page. Peeking at another one must never
+  // lose it — going back is one click, not a page load.
+  var current = "";
+  panels.forEach(function (panel) {
+    if (panel.querySelector(".nav-link-active")) current = panel.getAttribute("data-panel");
+  });
 
-  sections.forEach(function (section) {
-    var key = section.getAttribute("data-nav-section");
-    // A section holding the current page opens regardless of what was stored:
-    // remembering a closed section is useful, hiding where you are is not.
-    var hasActive = !!section.querySelector(".nav-link-active");
-    if (!hasActive && closed.indexOf(key) !== -1) section.open = false;
+  function show(key) {
+    panels.forEach(function (panel) {
+      panel.hidden = panel.getAttribute("data-panel") !== key;
+    });
+    rail.forEach(function (btn) {
+      var on = btn.getAttribute("data-rail") === key;
+      btn.classList.toggle("nav-rail-btn-active", on);
+      btn.setAttribute("aria-selected", String(on));
+    });
+  }
 
-    section.addEventListener("toggle", function () {
-      var at = closed.indexOf(key);
-      if (section.open && at !== -1) closed.splice(at, 1);
-      else if (!section.open && at === -1) closed.push(key);
-      write(STORE_SECTIONS, closed);
+  rail.forEach(function (btn, index) {
+    btn.addEventListener("click", function (event) {
+      // Modifier clicks and middle clicks belong to the browser: the glyph is
+      // a real link to the module's first screen, and someone opening it in a
+      // new tab means it.
+      if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
+      event.preventDefault();
+      show(btn.getAttribute("data-rail"));
+      var panel = nav.querySelector('[data-panel="' + btn.getAttribute("data-rail") + '"]');
+      var first = panel && panel.querySelector(".nav-link");
+      if (first) first.focus();
+    });
+
+    // A tablist is arrow-navigable; without this the rail is eight tab stops.
+    btn.addEventListener("keydown", function (event) {
+      var step = event.key === "ArrowDown" ? 1 : event.key === "ArrowUp" ? -1 : 0;
+      if (!step) return;
+      event.preventDefault();
+      var next = rail[(index + step + rail.length) % rail.length];
+      next.focus();
+      show(next.getAttribute("data-rail"));
     });
   });
 
@@ -251,15 +278,16 @@
   var empty = nav.querySelector("[data-nav-empty]");
   var rows = Array.prototype.slice.call(nav.querySelectorAll("[data-nav-item]"));
 
-  // Sections that are not collapsible still have a header and rows that must
-  // disappear together, so the template wraps them.
-  var loose = Array.prototype.slice.call(nav.querySelectorAll("[data-nav-block]"));
-
   function matchesIn(root) {
     return Array.prototype.slice.call(root.querySelectorAll("[data-nav-item]"))
       .some(function (row) { return !row.parentNode.hidden; });
   }
 
+  // Searching looks through every module, not the one on screen — a menu
+  // search that only finds what you can already see is not worth having. While
+  // a term is typed the rail steps aside and every module with a hit is shown
+  // at once, under its own heading; clearing puts the reader back where they
+  // were.
   function filter(term) {
     term = term.trim().toLowerCase();
     var any = false;
@@ -272,16 +300,11 @@
       if (hit) any = true;
     });
 
-    // A section with nothing left in it should go rather than sit there as an
-    // empty header; one that still has a match has to be open to show it.
-    sections.forEach(function (section) {
-      var live = matchesIn(section);
-      section.hidden = !!term && !live;
-      if (term && live) section.open = true;
-    });
-
-    loose.forEach(function (block) {
-      block.hidden = !!term && !matchesIn(block);
+    nav.classList.toggle("nav-searching", !!term);
+    panels.forEach(function (panel) {
+      panel.hidden = term
+        ? !matchesIn(panel)
+        : panel.getAttribute("data-panel") !== (current || panels[0].getAttribute("data-panel"));
     });
 
     if (empty) empty.hidden = !term || any;

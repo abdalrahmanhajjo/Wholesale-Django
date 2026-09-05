@@ -85,6 +85,9 @@ class Section:
     subgroups: tuple[Subgroup, ...] = field(default=())
     #: Sections a reader is always oriented by stay open and lose the control.
     collapsible: bool = True
+    #: The module rail's glyph. One per section, so the rail is a list of
+    #: modules rather than a second copy of the row icons.
+    icon: str = "nav-dashboard"
 
 
 # ---------------------------------------------------------------------------
@@ -98,12 +101,14 @@ class Section:
 SECTIONS: tuple[Section, ...] = (
     Section(
         key="overview",
+        icon="nav-dashboard",
         label="Overview",
         collapsible=False,
         items=(Item("Dashboard", "dashboard", "nav-dashboard", exact=("dashboard",)),),
     ),
     Section(
         key="sales",
+        icon="sec-sales",
         label="Sales",
         items=(
             Item(
@@ -131,6 +136,7 @@ SECTIONS: tuple[Section, ...] = (
     ),
     Section(
         key="purchasing",
+        icon="sec-purchasing",
         label="Purchasing",
         items=(
             Item(
@@ -165,6 +171,7 @@ SECTIONS: tuple[Section, ...] = (
     ),
     Section(
         key="finance",
+        icon="sec-finance",
         label="Finance",
         items=(
             Item(
@@ -266,6 +273,7 @@ SECTIONS: tuple[Section, ...] = (
     ),
     Section(
         key="relationships",
+        icon="nav-customers",
         label="Relationships",
         items=(
             Item(
@@ -286,6 +294,7 @@ SECTIONS: tuple[Section, ...] = (
     ),
     Section(
         key="inventory",
+        icon="sec-inventory",
         label="Inventory",
         items=(
             Item(
@@ -325,6 +334,7 @@ SECTIONS: tuple[Section, ...] = (
     ),
     Section(
         key="settings",
+        icon="sec-settings",
         label="Settings",
         items=(
             Item("Company", "core:company_settings", "nav-company", path="/settings/company/"),
@@ -369,6 +379,7 @@ SECTIONS: tuple[Section, ...] = (
     ),
     Section(
         key="system",
+        icon="shield",
         label="System",
         items=(
             Item(

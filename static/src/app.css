@@ -211,12 +211,14 @@
   /* A hairline above the label rather than beneath it: the rule belongs to the
      gap between groups, and drawing it under the words attaches it to the
      wrong one. The first group in the list has no gap above it to divide. */
+  /* Now only the search results use this: that list is flat, so its rows need
+     labelling by the module they came from. The dividers went with the single
+     column - the rail separates modules now. */
   .nav-group {
-    @apply mt-5 border-t border-white/[.06] px-3 pb-1 pt-5 text-[10px]
-           font-bold uppercase tracking-[0.16em] text-nav-muted/90;
+    @apply mt-4 px-3 pb-1 pt-2 text-[10px] font-bold uppercase
+           tracking-[0.16em] text-nav-muted/90;
   }
-  .nav-section:first-of-type > summary.nav-group,
-  .nav-group-static:first-child { @apply mt-0 border-t-0 pt-1; }
+  .nav-group:first-child { @apply mt-0 pt-1; }
 
   /* ------------------------------------------------- collapsible sections */
   /* <details>/<summary> rather than a div and a click handler: the element
@@ -267,6 +269,58 @@
   }
 
   /* ------------------------------------------------------- collapse control */
+  /* ---------------------------------------------------------- two tiers ---
+     A rail of modules beside a panel of one module's rows. The rail is the
+     only part that is always the same height as the sidebar; the panel
+     scrolls on its own so switching modules never moves the rail. */
+  .nav-shell { @apply flex min-h-0 flex-1; }
+
+  .nav-rail {
+    @apply flex w-[58px] shrink-0 flex-col items-center gap-1 overflow-y-auto
+           border-r border-white/[.07] py-3;
+    scrollbar-width: none;
+  }
+  .nav-rail::-webkit-scrollbar { display: none; }
+
+  .nav-rail-btn {
+    @apply relative grid h-11 w-11 shrink-0 place-items-center rounded-xl
+           text-nav-muted transition-colors duration-200
+           hover:bg-white/[.07] hover:text-white;
+  }
+  .nav-rail-btn .icon { @apply h-[22px] w-[22px]; }
+
+  /* The selected module keeps the emerald rail the rows use, so the two tiers
+     say "current" the same way. */
+  .nav-rail-btn-active {
+    @apply bg-brand/[.13] text-emerald-300 hover:bg-brand/[.16] hover:text-emerald-300;
+  }
+  .nav-rail-btn-active::before {
+    content: "";
+    @apply absolute -left-[9px] top-1/2 h-6 w-[2px] -translate-y-1/2 rounded-r bg-brand;
+  }
+  .nav-rail-btn:focus-visible {
+    @apply outline-none ring-2 ring-brand/70 ring-offset-2 ring-offset-sidebar;
+  }
+
+  /* Module name on hover, from the same attribute the search reads. */
+  .nav-rail-btn::after {
+    content: attr(data-label);
+    @apply pointer-events-none absolute left-full z-50 ml-2 hidden whitespace-nowrap
+           rounded-lg bg-navy-2 px-2.5 py-1.5 text-xs font-medium text-white
+           shadow-lg ring-1 ring-white/10;
+  }
+  .nav-rail-btn:hover::after,
+  .nav-rail-btn:focus-visible::after { @apply block; }
+
+  .nav-panel { @apply min-w-0 flex-1 overflow-y-auto px-2.5 pb-6 pt-3; }
+  /* Searching shows every module at once; the rail has nothing to select so it
+     steps back rather than lying about which module you are in. */
+  .nav-searching .nav-rail { @apply opacity-40; }
+  .nav-searching .nav-panel-title { @apply mt-4 first:mt-0; }
+  .nav-panel-title {
+    @apply px-3 pb-2 text-[11px] font-bold uppercase tracking-[0.16em] text-nav-muted/90;
+  }
+
   /* ------------------------------------------------------------- surface --
      Fixed, behind everything, and inert: it must never sit between a nav row
      and the pointer. */
@@ -303,12 +357,12 @@
     .sidebar-collapsed .nav-user-text,
     .sidebar-collapsed .nav-signout-label { @apply hidden; }
     .sidebar-collapsed .nav-collapse-btn .icon { @apply rotate-0; }
-    .sidebar-collapsed .nav-link,
     .sidebar-collapsed .company-switcher { @apply justify-center px-0; }
-    /* A closed section would hide its rows entirely, and there are no labels
-       left to click to reopen it. */
-    .sidebar-collapsed .nav-section-body { grid-template-rows: 1fr; }
-    .sidebar-collapsed .nav-group { @apply mx-3 h-0 overflow-hidden p-0; }
+    /* Collapsed is the rail on its own. The panel was already one module at a
+       time; dropping it entirely leaves eight glyphs and their tooltips, which
+       is a better narrow mode than a column of cropped labels. */
+    .sidebar-collapsed .nav-panel { @apply hidden; }
+    .sidebar-collapsed .nav-rail { @apply w-full border-r-0; }
 
     /* Label as a tooltip, from the same attribute the search filter reads. */
     .sidebar-collapsed .nav-link::after {

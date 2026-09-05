@@ -1,44 +1,64 @@
 {% comment %}
 The sidebar's navigation, rendered from apps/core/navigation.py.
 
+Two tiers, because there are 35 rows across 8 sections and a single scrolling
+column of that is a list nobody reads — by the time Finance is open it is 11
+rows deep and Settings is below the fold.
+
+  rail    one glyph per module, always visible, 8 of them
+  panel   the rows of one module at a time
+
+So the most a reader ever faces is 11 rows instead of 35, and which module they
+are in is legible without reading a word.
+
+Every panel is rendered server-side and all but one carries `hidden`. Switching
+is then a class change rather than a fetch, the search can look through rows
+that are not on screen, and the whole thing still works with no JavaScript at
+all: each rail glyph is a real link to the first row of its module, so clicking
+one navigates instead of switching. The peek is an enhancement, not the
+mechanism.
+
 This template knows about sections, rows and active state, and nothing about
 any particular module — adding a screen is an entry in that file, not markup
 here.
-
-Collapsible sections are <details>/<summary>. That is deliberate: the element
-already handles the disclosure, the keyboard, and the announcement of expanded
-state, and browsers find text inside a closed one when the user searches the
-page. A div with a click handler would need all of that rebuilding, worse.
 {% endcomment %}
-<nav class="flex-1 overflow-y-auto px-3 pb-6" aria-label="Primary navigation" data-nav>
+<nav class="nav-shell" aria-label="Primary navigation" data-nav>
 
-  <p class="nav-empty" data-nav-empty hidden>No menu item matches that.</p>
+  {# ------------------------------------------------------------- rail #}
+  <div class="nav-rail" role="tablist" aria-label="Modules" data-nav-rail>
+    {% for section in nav_sections %}
+      <a href="{% url section.first_url_name %}"
+         class="nav-rail-btn {% if section.has_active %}nav-rail-btn-active{% endif %}"
+         role="tab"
+         id="rail-{{ section.key }}"
+         aria-controls="panel-{{ section.key }}"
+         aria-selected="{% if section.has_active %}true{% else %}false{% endif %}"
+         data-rail="{{ section.key }}"
+         data-label="{{ section.label }}">
+        <svg class="icon" aria-hidden="true"><use href="#i-{{ section.icon }}"></use></svg>
+        <span class="sr-only">{{ section.label }}</span>
+      </a>
+    {% endfor %}
+  </div>
 
-  {% for section in nav_sections %}
-    {% if section.collapsible %}
-      <details class="nav-section" data-nav-section="{{ section.key }}"
-               {% if section.has_active %}open{% endif %}>
-        <summary class="nav-group">
-          <span>{{ section.label }}</span>
-          <svg class="icon nav-group-caret" aria-hidden="true"><use href="#i-chevron-right"></use></svg>
-        </summary>
-        <div class="nav-section-body">
-          {% include "core/_nav_rows.html" with items=section.items %}
-          {% for group in section.subgroups %}
-            <p class="nav-subgroup">{{ group.label }}</p>
-            {% include "core/_nav_rows.html" with items=group.items %}
-          {% endfor %}
-        </div>
-      </details>
-    {% else %}
-      {% comment %}
-      Overview is one row; a control to hide one row is noise. Wrapped so the
-      search filter can hide the header and its row together.
-      {% endcomment %}
-      <div class="nav-static-section" data-nav-block>
-        <p class="nav-group nav-group-static">{{ section.label }}</p>
+  {# ------------------------------------------------------------ panel #}
+  <div class="nav-panel">
+    <p class="nav-empty" data-nav-empty hidden>No menu item matches that.</p>
+
+    {% for section in nav_sections %}
+      <section class="nav-panel-body"
+               id="panel-{{ section.key }}"
+               role="tabpanel"
+               aria-labelledby="rail-{{ section.key }}"
+               data-panel="{{ section.key }}"
+               {% if not section.has_active %}hidden{% endif %}>
+        <h2 class="nav-panel-title">{{ section.label }}</h2>
         {% include "core/_nav_rows.html" with items=section.items %}
-      </div>
-    {% endif %}
-  {% endfor %}
+        {% for group in section.subgroups %}
+          <p class="nav-subgroup">{{ group.label }}</p>
+          {% include "core/_nav_rows.html" with items=group.items %}
+        {% endfor %}
+      </section>
+    {% endfor %}
+  </div>
 </nav>

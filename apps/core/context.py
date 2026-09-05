@@ -97,19 +97,32 @@ def navigation(request):
         ]
         if not items and not subgroups:
             continue  # every row filtered out; the header would label nothing
+        rows = items + [row for group in subgroups for row in group["items"]]
         sections.append(
             {
                 "key": section.key,
                 "label": section.label,
+                "icon": section.icon,
                 "items": items,
                 "subgroups": subgroups,
                 "collapsible": section.collapsible,
+                # Where the rail sends someone with no JavaScript: the first row
+                # they are allowed to see. Permission filtering has already run,
+                # so this is never a door they cannot open.
+                "first_url_name": rows[0]["url_name"] if rows else "",
+                "count": len(rows),
                 # A collapsed section that holds the current page would hide it,
                 # so a section containing the active row starts open.
                 "has_active": any(row["active"] for row in items)
                 or any(r["active"] for g in subgroups for r in g["items"]),
             }
         )
+    # Which module the panel opens on. Normally the one holding the current
+    # page; on a page the menu does not list - a detail screen reached from a
+    # link, say - nothing would be active and every panel would be hidden, so
+    # the first module stands in. The sidebar is never blank.
+    if sections and not any(section["has_active"] for section in sections):
+        sections[0]["has_active"] = True
     return {"nav_sections": sections}
 
 

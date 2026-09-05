@@ -1,0 +1,256 @@
+{% load static %}<!doctype html>
+{% comment %}
+The public home page, shown to signed-out visitors at "/".
+
+It deliberately does not extend base.html: there is no navigation to show
+before authentication, no company context to read, and no permission to check.
+It carries its own document and only the pieces a visitor needs, exactly like
+the auth pages in registration/ — this is the front door those pages sit behind.
+
+Signed-in users never see this page: the root view hands them to the dashboard
+(and to the login gate for a rejected role) before this template is rendered.
+{% endcomment %}
+<html lang="en" class="h-full">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Ledgerwise is a financial operating system for wholesale teams — sales, purchasing, warehouse, and finance on one coherent record.">
+  <title>Ledgerwise · Wholesale finance, connected from order to close</title>
+  {% include "_theme.html" %}
+</head>
+
+<body class="auth-body">
+<a class="sr-only" href="#main-content">Skip to main content</a>
+{% include "core/_icons.html" %}
+
+<header class="sticky top-0 z-40 border-b border-line bg-white/90 backdrop-blur">
+  <div class="mx-auto flex w-full max-w-6xl items-center justify-between gap-5 px-6 py-4">
+    <a href="/" class="flex items-center gap-3" style="text-decoration:none">
+      <span class="logo-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+      <span class="auth-wordmark">
+        <strong>ledgerwise</strong>
+        <small>Wholesale finance</small>
+      </span>
+    </a>
+    <nav class="hidden items-center gap-5 sm:inline-flex" aria-label="Ledgerwise">
+      <a href="#workflows" class="text-sm font-semibold text-muted-fg hover:text-brand-deep">Workflows</a>
+      <a href="#roles" class="text-sm font-semibold text-muted-fg hover:text-brand-deep">Roles</a>
+      <a href="#access" class="text-sm font-semibold text-muted-fg hover:text-brand-deep">Access</a>
+    </nav>
+    <div class="flex items-center gap-2.5">
+      <a href="{% url 'login' %}" class="btn-ghost btn-sm">Sign in</a>
+      <a href="{% url 'signup' %}" class="btn-accent btn-sm">Request access</a>
+    </div>
+  </div>
+</header>
+
+<main id="main-content">
+
+  <section class="mx-auto w-full max-w-6xl px-6 py-12">
+    <div class="welcome-strip flex-col items-start">
+      <div class="relative z-10 w-full">
+        <p class="mb-6 flex items-center gap-2">
+          <span class="rounded-full bg-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-emerald-300 ring-1 ring-white/10">New</span>
+          <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">Wholesale finance, now connected from order to close</span>
+        </p>
+        <h1 class="display text-4xl text-white">Every team moves faster when <span class="text-emerald-300">the handoffs make sense.</span></h1>
+        <p class="mt-4 max-w-3xl text-base leading-6 text-slate-400">
+          Ledgerwise gives each role a focused workspace while keeping the financial
+          record coherent across the operation.
+        </p>
+        <p class="mt-6 flex items-center gap-2 text-sm font-bold text-white">
+          <svg class="icon" aria-hidden="true"><use href="#i-bolt"></use></svg>
+          One operating rhythm&nbsp;·&nbsp;Sales&nbsp;·&nbsp;Purchasing&nbsp;·&nbsp;Warehouse&nbsp;·&nbsp;Finance
+        </p>
+        <div class="mt-7 flex flex-wrap items-center gap-3">
+          <a href="{% url 'login' %}" class="btn-accent">Explore the live workbench <svg class="icon" aria-hidden="true"><use href="#i-arrow-right"></use></svg></a>
+          <a href="{% url 'signup' %}" class="btn-ghost">Book a walkthrough</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="roles" class="mx-auto w-full max-w-6xl px-6 py-12">
+    <p class="eyebrow">Role-based by design</p>
+    <h2 class="mt-3 max-w-3xl text-2xl font-extrabold tracking-tight text-ink">The right context for the person doing the work.</h2>
+    <p class="mt-3 max-w-3xl text-base leading-6 text-muted-fg">
+      Users act inside familiar workflows. Permissions, states, and posting rules
+      protect what happens next.
+    </p>
+
+    <div class="mt-7 grid gap-4 lg:grid-cols-2">
+      <article class="surface p-6">
+        <div class="flex items-center gap-3">
+          <span class="grid h-10 w-10 place-items-center rounded-xl bg-emerald-400 text-navy"><svg class="icon" aria-hidden="true"><use href="#i-sec-sales"></use></svg></span>
+          <p class="font-bold text-ink">Sales</p>
+        </div>
+        <h3 class="mt-4 text-lg font-bold text-ink">Sell without creating downstream cleanup.</h3>
+        <p class="mt-2 text-sm leading-6 text-muted-fg">
+          Controlled pricing, credit awareness, deliveries, invoices, returns, and
+          receipts preserve the customer story.
+        </p>
+        <ul class="mt-4 space-y-2">
+          <li class="flex items-start gap-2 text-sm text-slate-600"><svg class="icon text-brand" aria-hidden="true"><use href="#i-check"></use></svg> Customer position before commitment</li>
+          <li class="flex items-start gap-2 text-sm text-slate-600"><svg class="icon text-brand" aria-hidden="true"><use href="#i-check"></use></svg> Linked delivery and invoice states</li>
+          <li class="flex items-start gap-2 text-sm text-slate-600"><svg class="icon text-brand" aria-hidden="true"><use href="#i-check"></use></svg> Clear credits and returns</li>
+        </ul>
+      </article>
+
+      <article class="surface p-6">
+        <div class="flex items-center gap-3">
+          <span class="grid h-10 w-10 place-items-center rounded-xl bg-emerald-400 text-navy"><svg class="icon" aria-hidden="true"><use href="#i-sec-purchasing"></use></svg></span>
+          <p class="font-bold text-ink">Purchasing</p>
+        </div>
+        <h3 class="mt-4 text-lg font-bold text-ink">Buy with obligations and stock in view.</h3>
+        <p class="mt-2 text-sm leading-6 text-muted-fg">
+          Plan orders, receive goods, record vendor bills, and understand what is
+          owed without duplicate entry.
+        </p>
+        <ul class="mt-4 space-y-2">
+          <li class="flex items-start gap-2 text-sm text-slate-600"><svg class="icon text-brand" aria-hidden="true"><use href="#i-check"></use></svg> Vendor balance visibility</li>
+          <li class="flex items-start gap-2 text-sm text-slate-600"><svg class="icon text-brand" aria-hidden="true"><use href="#i-check"></use></svg> Receipt-to-bill control</li>
+          <li class="flex items-start gap-2 text-sm text-slate-600"><svg class="icon text-brand" aria-hidden="true"><use href="#i-check"></use></svg> Purchasing analysis</li>
+        </ul>
+      </article>
+
+      <article class="surface p-6">
+        <div class="flex items-center gap-3">
+          <span class="grid h-10 w-10 place-items-center rounded-xl bg-emerald-400 text-navy"><svg class="icon" aria-hidden="true"><use href="#i-sec-inventory"></use></svg></span>
+          <p class="font-bold text-ink">Warehouse</p>
+        </div>
+        <h3 class="mt-4 text-lg font-bold text-ink">Know what moved, where, and why.</h3>
+        <p class="mt-2 text-sm leading-6 text-muted-fg">
+          Every receipt, delivery, transfer, return, and adjustment writes a
+          visible inventory trail.
+        </p>
+        <ul class="mt-4 space-y-2">
+          <li class="flex items-start gap-2 text-sm text-slate-600"><svg class="icon text-brand" aria-hidden="true"><use href="#i-check"></use></svg> Perpetual quantity</li>
+          <li class="flex items-start gap-2 text-sm text-slate-600"><svg class="icon text-brand" aria-hidden="true"><use href="#i-check"></use></svg> Multi-location movements</li>
+          <li class="flex items-start gap-2 text-sm text-slate-600"><svg class="icon text-brand" aria-hidden="true"><use href="#i-check"></use></svg> Cost-aware adjustments</li>
+        </ul>
+      </article>
+
+      <article class="surface p-6">
+        <div class="flex items-center gap-3">
+          <span class="grid h-10 w-10 place-items-center rounded-xl bg-emerald-400 text-navy"><svg class="icon" aria-hidden="true"><use href="#i-sec-finance"></use></svg></span>
+          <p class="font-bold text-ink">Finance</p>
+        </div>
+        <h3 class="mt-4 text-lg font-bold text-ink">Review a system that already tells the story.</h3>
+        <p class="mt-2 text-sm leading-6 text-muted-fg">
+          Automatic journals, allocations, reconciliation, tax views, and period
+          control make close more disciplined.
+        </p>
+        <ul class="mt-4 space-y-2">
+          <li class="flex items-start gap-2 text-sm text-slate-600"><svg class="icon text-brand" aria-hidden="true"><use href="#i-check"></use></svg> Source-linked accounting</li>
+          <li class="flex items-start gap-2 text-sm text-slate-600"><svg class="icon text-brand" aria-hidden="true"><use href="#i-check"></use></svg> AR and AP controls</li>
+          <li class="flex items-start gap-2 text-sm text-slate-600"><svg class="icon text-brand" aria-hidden="true"><use href="#i-check"></use></svg> Defensible close</li>
+        </ul>
+      </article>
+    </div>
+  </section>
+
+  <section id="workflows" class="mx-auto w-full max-w-6xl px-6 py-12">
+    <p class="eyebrow">Made for wholesale complexity</p>
+    <h2 class="mt-3 max-w-3xl text-2xl font-extrabold tracking-tight text-ink">Enough control for the edge cases. Clear enough for the everyday.</h2>
+    <p class="mt-3 max-w-3xl text-base leading-6 text-muted-fg">
+      Wholesale businesses carry operational complexity that lightweight invoicing
+      tools miss: partial fulfilment, returns, warehouse transfers, customer
+      credit, multi-invoice payments, stock value, and close.
+    </p>
+
+    <div class="mt-7 grid gap-4 sm:grid-cols-3">
+      <article class="card card-pad">
+        <p class="card-title">Distributors</p>
+        <p class="mt-2 text-sm leading-6 text-muted-fg">High-volume sell, deliver, invoice, and collect cycles.</p>
+      </article>
+      <article class="card card-pad">
+        <p class="card-title">Importers &amp; traders</p>
+        <p class="mt-2 text-sm leading-6 text-muted-fg">Currency snapshots, supplier obligations, tax, and stock value.</p>
+      </article>
+      <article class="card card-pad">
+        <p class="card-title">Multi-warehouse teams</p>
+        <p class="mt-2 text-sm leading-6 text-muted-fg">Location-aware movement, availability, transfer, and valuation.</p>
+      </article>
+    </div>
+  </section>
+
+  <section id="access" class="mx-auto w-full max-w-6xl px-6 py-12">
+    <div class="cashflow-panel text-white">
+      <div class="grid gap-5 lg:grid-cols-2">
+        <div>
+          <p class="eyebrow !text-emerald-300">Clarity with guardrails</p>
+          <h2 class="mt-3 text-2xl font-extrabold tracking-tight">Access follows responsibility.</h2>
+          <p class="mt-3 max-w-3xl text-base leading-6 text-slate-400">
+            People see the functions and companies they need. Sensitive financial
+            actions remain controlled and reviewable.
+          </p>
+          <div class="mt-7">
+            <div class="grid grid-cols-2 gap-x-6 gap-y-4 text-sm sm:grid-cols-3">
+              <p><span class="block font-bold text-white">Owner</span><span class="text-slate-200">Everything</span></p>
+              <p><span class="block font-bold text-white">Accountant</span><span class="text-slate-200">Finance &amp; close</span></p>
+              <p><span class="block font-bold text-white">Sales</span><span class="text-slate-200">Orders &amp; receivables</span></p>
+              <p><span class="block font-bold text-white">Purchasing</span><span class="text-slate-200">Orders &amp; payables</span></p>
+              <p><span class="block font-bold text-white">Warehouse</span><span class="text-slate-200">Movement &amp; stock</span></p>
+              <p><span class="block font-bold text-white">Posting &amp; close</span><span class="text-slate-200">Finance only</span></p>
+            </div>
+          </div>
+        </div>
+        <div class="flex flex-col justify-center gap-4">
+          <div class="rounded-2xl border border-white/10 bg-white/[.06] p-5">
+            <svg class="icon text-emerald-300" aria-hidden="true"><use href="#i-shield"></use></svg>
+            <strong class="mt-3 block text-lg text-white">Give every team a cleaner handoff.</strong>
+            <p class="mt-1 text-sm leading-6 text-slate-400">
+              We’ll map Ledgerwise to your roles, documents, approvals, and close process.
+            </p>
+            <a href="{% url 'signup' %}" class="btn-accent mt-5">Book a walkthrough</a>
+          </div>
+          <div class="rounded-2xl border border-white/10 bg-white/[.06] p-5">
+            <strong class="block text-sm text-emerald-300">Live product</strong>
+            <p class="mt-1 text-sm leading-6 text-slate-400">Sign in to explore the connected workbench and the financial record behind it.</p>
+            <a href="{% url 'login' %}" class="mt-4 inline-block text-sm font-semibold text-brand-deep">Sign in to the workbench →</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="mx-auto w-full max-w-6xl px-6 py-12">
+    <div class="surface grid gap-5 p-6 sm:grid-cols-2 lg:grid-cols-3">
+      <div>
+        <p class="eyebrow">Everything on one record</p>
+        <p class="mt-3 text-base leading-6 text-muted-fg">A financial operating system for wholesale businesses that need control without slowing down.</p>
+      </div>
+      <div>
+        <p class="eyebrow">The connected flow</p>
+        <ul class="mt-3 space-y-2 text-sm text-slate-600">
+          <li>Sales &amp; receivables</li>
+          <li>Purchasing &amp; payables</li>
+          <li>Inventory &amp; costing</li>
+          <li>Reporting &amp; close</li>
+        </ul>
+      </div>
+      <div>
+        <p class="eyebrow">Get started</p>
+        <ul class="mt-3 space-y-2 text-sm text-slate-600">
+          <li><a class="font-semibold text-brand-deep" href="{% url 'login' %}">Sign in</a></li>
+          <li><a class="font-semibold text-brand-deep" href="{% url 'signup' %}">Request access</a></li>
+          <li><a class="font-semibold text-brand-deep" href="#roles">How the roles work</a></li>
+          <li><a class="font-semibold text-brand-deep" href="#workflows">Wholesale workflows</a></li>
+        </ul>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="border-t border-line bg-white py-8">
+  <div class="mx-auto w-full max-w-6xl px-6">
+    <p class="auth-privacy">
+      <svg class="icon" aria-hidden="true"><use href="#i-shield"></use></svg>
+      Every sign-in and every change to an account is recorded. We value your privacy and security.
+    </p>
+    <p class="mt-4 text-center text-xs text-muted-fg">© 2026 Ledgerwise. Product prototype. Accounting policy and jurisdiction-specific compliance require qualified professional validation.</p>
+  </div>
+</footer>
+
+</body>
+</html>

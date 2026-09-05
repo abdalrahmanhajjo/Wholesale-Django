@@ -16,7 +16,7 @@ from apps.core import health as core_health
 from apps.core import views as core_views
 
 urlpatterns = [
-    path("", core_views.dashboard, name="dashboard"),
+    path("", core_views.home, name="dashboard"),
     # Probes for the load balancer. Unauthenticated by necessity - see the
     # module docstring for what they are careful not to say.
     path("healthz/", core_health.healthz, name="healthz"),

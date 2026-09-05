@@ -170,7 +170,7 @@ ROLE_MATRIX = {
             "post_sales_invoice",
             "post_purchase_bill",
             "post_payment",
-"post_credit_note",
+            "post_credit_note",
             "approve_sales_credit_note",
             "post_debit_note",
             "post_journal",

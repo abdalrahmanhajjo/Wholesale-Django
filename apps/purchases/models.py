@@ -26,6 +26,17 @@ from apps.sales.models import DiscountKind, ReturnDisposition
 ZERO = Decimal("0")
 
 
+class ThreeWayMatchStatus(models.TextChoices):
+    """PUR-003 / PUR-012: how a PO line's ordered qty compares to what was
+    received and billed against it."""
+
+    OPEN = "OPEN", "Not received"
+    PARTIAL = "PARTIAL", "Partial"
+    MATCHED = "MATCHED", "Matched"
+    OVER = "OVER", "Over-billed"
+    CANCELLED = "CANCELLED", "Cancelled"
+
+
 # ---------------------------------------------------------------------------
 # Purchase order (PUR-001, PUR-002)
 # ---------------------------------------------------------------------------
@@ -114,6 +125,23 @@ class PurchaseOrderLine(DocumentLineBase):
             ),
         ]
         indexes = [models.Index(fields=["product"], name="ix_po_line_product")]
+
+    @property
+    def match_status(self):
+        """Three-way match: ordered (minus cancelled) vs received vs billed."""
+        effective_qty = self.quantity - self.quantity_cancelled
+        if effective_qty <= 0:
+            return ThreeWayMatchStatus.CANCELLED
+        if self.quantity_billed > self.quantity_received:
+            return ThreeWayMatchStatus.OVER
+        if self.quantity_received >= effective_qty and self.quantity_billed >= effective_qty:
+            return ThreeWayMatchStatus.MATCHED
+        if self.quantity_received > 0 or self.quantity_billed > 0:
+            return ThreeWayMatchStatus.PARTIAL
+        return ThreeWayMatchStatus.OPEN
+
+    def get_match_status_display(self):
+        return ThreeWayMatchStatus(self.match_status).label
 
 
 # ---------------------------------------------------------------------------

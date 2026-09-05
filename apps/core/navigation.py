@@ -376,6 +376,12 @@ SECTIONS: tuple[Section, ...] = (
                 "nav-valuation",
                 exact=("stock_valuation",),
             ),
+            Item(
+                "Low stock",
+                "inventory:low_stock",
+                "alert",
+                exact=("low_stock",),
+            ),
         ),
     ),
     Section(

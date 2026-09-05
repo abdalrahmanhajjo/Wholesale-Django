@@ -33,7 +33,7 @@ class ReturnServicesTest(TestCase):
         make_sequence("SO", prefix="SO-")
         make_sequence("DN", prefix="DN-")
         make_sequence("SI", prefix="INV-")
-        make_sequence("RET", prefix="RET-")
+        make_sequence("SR", prefix="SRT-")
         make_sequence("JE", prefix="JV-")
         ensure_account_mappings()
         ensure_open_period_for_today()

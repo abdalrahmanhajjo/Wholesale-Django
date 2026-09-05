@@ -61,4 +61,36 @@ urlpatterns = [
         "returns/<int:pk>/reject/", views.SalesReturnRejectView.as_view(), name="return_reject"
     ),
     path("returns/<int:pk>/post/", views.SalesReturnPostView.as_view(), name="return_post"),
+    # Sales credit notes (RET-003, RET-004, SAL-007)
+    path("credit-notes/", views.CreditNoteListView.as_view(), name="credit_note_list"),
+    path(
+        "credit-notes/new/",
+        views.CreditNoteCreateView.as_view(),
+        name="credit_note_create",
+    ),
+    path(
+        "credit-notes/<int:pk>/",
+        views.CreditNoteDetailView.as_view(),
+        name="credit_note_detail",
+    ),
+    path(
+        "credit-notes/<int:pk>/submit/",
+        views.CreditNoteSubmitView.as_view(),
+        name="credit_note_submit",
+    ),
+    path(
+        "credit-notes/<int:pk>/approve/",
+        views.CreditNoteApproveView.as_view(),
+        name="credit_note_approve",
+    ),
+    path(
+        "credit-notes/<int:pk>/reject/",
+        views.CreditNoteRejectView.as_view(),
+        name="credit_note_reject",
+    ),
+    path(
+        "credit-notes/<int:pk>/post/",
+        views.CreditNotePostView.as_view(),
+        name="credit_note_post",
+    ),
 ]

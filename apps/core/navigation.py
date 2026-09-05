@@ -127,6 +127,20 @@ SECTIONS: tuple[Section, ...] = (
                 permission="sales.view_salesinvoice",
                 prefix="invoice_",
             ),
+            Item(
+                "Returns",
+                "sales:return_list",
+                "nav-return",
+                permission="sales.view_salesreturn",
+                prefix="return_",
+            ),
+            Item(
+                "Credit notes",
+                "sales:credit_note_list",
+                "nav-credit-note",
+                permission="sales.view_salescreditnote",
+                prefix="credit_note_",
+            ),
         ),
     ),
     Section(

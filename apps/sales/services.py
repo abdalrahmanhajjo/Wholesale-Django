@@ -10,6 +10,7 @@ from decimal import ROUND_HALF_UP, Decimal
 
 from django.db import transaction
 from django.db.models import F, Sum
+from django.db.models.functions import Coalesce
 from django.utils import timezone
 
 from apps.core import audit
@@ -31,6 +32,8 @@ from apps.ledger.services import (
 )
 from apps.sales.models import (
     DiscountKind,
+    SalesCreditNote,
+    SalesCreditNoteLine,
     SalesInvoice,
     SalesInvoiceLine,
     SalesOrder,
@@ -1050,22 +1053,22 @@ def post_invoice(invoice, user):
 
 
 def allocate_return_number(series="DEFAULT"):
-    """RET sequence, same shape as allocate_so_number."""
+    """SR sequence, same shape as allocate_so_number."""
     with transaction.atomic():
         seq = (
             DocumentSequence.objects.select_for_update()
-            .filter(document_type="RET", series=series, is_active=True)
+            .filter(document_type="SR", series=series, is_active=True)
             .first()
         )
         if seq is None:
             raise ValueError(
-                "No active document sequence for RET / DEFAULT. "
+                "No active document sequence for SR / DEFAULT. "
                 "Ask an administrator to create one in Settings."
             )
         num = seq.next_number
         seq.next_number = F("next_number") + 1
         seq.save(update_fields=["next_number"])
-        return f"RET-{str(num).zfill(seq.padding)}"
+        return f"{seq.prefix}{str(num).zfill(seq.padding)}{seq.suffix}"
 
 
 def remaining_to_return(invoice_line):
@@ -1319,7 +1322,7 @@ def build_sales_return_journal(return_obj, *, user):
         narration=f"Sales return {return_obj.number}",
         currency=inv.currency,
         exchange_rate=inv.exchange_rate,
-        source_doc_type="RET",
+        source_doc_type="SR",
         source_doc_number=return_obj.number,
         lines=tuple(lines),
     )
@@ -1380,3 +1383,335 @@ def post_return(return_obj, user, request=None):
         )
         audit.record_action(request, audit.AuditAction.POST, return_obj)
         return return_obj
+
+
+# ---------------------------------------------------------------------------
+# Sales credit notes (RET-003, RET-004, SAL-007)
+# ---------------------------------------------------------------------------
+
+
+def allocate_credit_note_number(series="DEFAULT"):
+    """CN sequence, same shape as allocate_return_number."""
+    with transaction.atomic():
+        seq = (
+            DocumentSequence.objects.select_for_update()
+            .filter(document_type="CN", series=series, is_active=True)
+            .first()
+        )
+        if seq is None:
+            raise ValueError(
+                "No active document sequence for CN / DEFAULT. "
+                "Ask an administrator to create one in Settings."
+            )
+        num = seq.next_number
+        seq.next_number = F("next_number") + 1
+        seq.save(update_fields=["next_number"])
+        return f"CN-{str(num).zfill(seq.padding)}"
+
+
+def remaining_to_credit(invoice_line):
+    """RET-004: how many units can still be credited off this invoice line."""
+    credited = (
+        SalesCreditNoteLine.objects.filter(invoice_line=invoice_line).aggregate(
+            total=Coalesce(Sum("quantity"), ZERO)
+        )["total"]
+        or ZERO
+    )
+    return (invoice_line.quantity or ZERO) - Decimal(credited)
+
+
+def build_credit_lines_from_invoice(invoice):
+    """Return (SalesInvoiceLine, credited_qty, remaining_qty) rows, financial only."""
+    rows = []
+    for il in invoice.lines.select_related("product", "unit").order_by("line_no"):
+        rem = remaining_to_credit(il)
+        if rem > ZERO:
+            rows.append((il, (il.quantity or ZERO) - rem, rem))
+    return rows
+
+
+def draft_credit_note_from_invoice(invoice, user, quantities, reason, sales_return=None):
+    """
+    Create a DRAFT SalesCreditNote + lines from an invoice (RET-003).
+
+    quantities: {sales_invoice_line.pk: quantity_to_credit}. Financial only —
+    it never touches inventory or the return eligibility counter.
+    """
+    if invoice.status not in (
+        DocumentStatus.POSTED,
+        DocumentStatus.PARTIAL,
+        DocumentStatus.COMPLETED,
+    ):
+        raise ValueError(
+            f"Cannot credit from invoice {invoice.number}: status is "
+            f"{invoice.status}, expected POSTED/PARTIAL/COMPLETED."
+        )
+    if not quantities:
+        raise ValueError("Choose at least one line to credit.")
+    if not reason or not reason.strip():
+        raise ValueError("A reason is required for the credit note (RET-008).")
+    if sales_return is not None and sales_return.original_invoice_id != invoice.pk:
+        raise ValueError("The return is not for this invoice.")
+
+    with transaction.atomic():
+        cn = SalesCreditNote.objects.create(
+            number=allocate_credit_note_number(),
+            document_date=timezone.localdate(),
+            posting_date=timezone.localdate(),
+            due_date=invoice.due_date,
+            customer=invoice.customer,
+            original_invoice=invoice,
+            sales_return=sales_return,
+            reason=reason,
+            currency=invoice.currency,
+            exchange_rate=invoice.exchange_rate,
+            customer_name_snapshot=invoice.customer.name,
+            status=DocumentStatus.DRAFT,
+        )
+
+        line_no = 0
+        for il_pk, qty in quantities.items():
+            il = SalesInvoiceLine.objects.select_for_update().get(pk=il_pk)
+            if il.invoice_id != invoice.pk:
+                raise ValueError("Invoice line does not belong to this invoice.")
+            if qty <= ZERO:
+                raise ValueError(f"Credit quantity must be positive for line {il.line_no}.")
+            rem = remaining_to_credit(il)
+            if qty > rem:
+                raise ValueError(
+                    f"Line {il.line_no}: cannot credit more than the {rem} "
+                    f"remaining of {il.product} (RET-004)."
+                )
+
+            line_no += 1
+            return_line = (
+                sales_return.lines.filter(invoice_line=il).first() if sales_return else None
+            )
+            SalesCreditNoteLine.objects.create(
+                credit_note=cn,
+                line_no=line_no,
+                invoice_line=il,
+                return_line=return_line,
+                product=il.product,
+                unit=il.unit,
+                tax_code=il.tax_code,
+                description=il.description,
+                quantity=qty,
+                unit_price=il.unit_price,
+                discount_percent=il.discount_percent,
+                tax_rate_percent=il.tax_rate_percent,
+                tax_is_inclusive=il.tax_is_inclusive,
+                tax_is_recoverable=il.tax_is_recoverable,
+                revenue_account=il.revenue_account,
+            )
+
+        recalculate_credit_note(cn)
+        audit.record_action(None, audit.AuditAction.CREATE, cn)
+        return cn
+
+
+def recalculate_credit_note(cn):
+    """Totals (SAL-007). Reuses the Day-2 arithmetic unchanged."""
+    for ln in cn.lines.all():
+        calculate_line(ln)
+        ln.save(
+            update_fields=[
+                "gross_txn",
+                "line_discount_txn",
+                "allocated_document_discount_txn",
+                "net_txn",
+                "taxable_base_txn",
+                "tax_txn",
+                "total_txn",
+                "net_base",
+                "taxable_base_base",
+                "tax_base",
+                "total_base",
+            ]
+        )
+    calculate_totals(cn)
+    cn.save()
+
+
+def submit_credit_note(cn, user):
+    """DRAFT → SUBMITTED."""
+    if cn.status not in (DocumentStatus.DRAFT, DocumentStatus.REJECTED):
+        raise ValueError(
+            f"Cannot submit credit note {cn.number}: status is {cn.status}, "
+            "expected DRAFT or REJECTED."
+        )
+    cn.status = DocumentStatus.SUBMITTED
+    cn.submitted_at = timezone.now()
+    cn.submitted_by = user
+    cn.save(
+        update_fields=[
+            "status",
+            "submitted_at",
+            "submitted_by",
+            "updated_at",
+        ]
+    )
+    audit.record_action(None, audit.AuditAction.SUBMIT, cn)
+    return cn
+
+
+def approve_credit_note(cn, user, reason=""):
+    """SUBMITTED → APPROVED."""
+    if cn.status != DocumentStatus.SUBMITTED:
+        raise ValueError(
+            f"Cannot approve credit note {cn.number}: status is {cn.status}, "
+            "expected SUBMITTED."
+        )
+    cn.status = DocumentStatus.APPROVED
+    cn.approved_at = timezone.now()
+    cn.approved_by = user
+    cn.approval_reason = reason
+    cn.save(
+        update_fields=[
+            "status",
+            "approved_at",
+            "approved_by",
+            "approval_reason",
+            "updated_at",
+        ]
+    )
+    audit.record_action(None, audit.AuditAction.APPROVE, cn, reason=reason)
+    return cn
+
+
+def reject_credit_note(cn, user, reason=""):
+    """SUBMITTED → REJECTED."""
+    if cn.status != DocumentStatus.SUBMITTED:
+        raise ValueError(
+            f"Cannot reject credit note {cn.number}: status is {cn.status}, "
+            "expected SUBMITTED."
+        )
+    if not reason:
+        raise ValueError("A reason is required to reject a credit note (ACC-008).")
+    cn.status = DocumentStatus.REJECTED
+    cn.approval_reason = reason
+    cn.save(
+        update_fields=[
+            "status",
+            "approval_reason",
+            "updated_at",
+        ]
+    )
+    audit.record_action(None, audit.AuditAction.REJECT, cn, reason=reason)
+    return cn
+
+
+def build_sales_credit_note_journal(cn, *, user):
+    """
+    Reversal journal for a credit note (RET-003, SAL-007).
+
+    Mirrors build_sales_return_journal without the stock lines: credits AR
+    (customer owes less / open credit), debits revenue, debits output tax —
+    all proportional to the original invoice snapshots.
+    """
+    inv = cn.original_invoice
+    if inv is None:
+        raise ValueError("Credit note has no linked invoice to reverse.")
+
+    lines = []
+    total_revenue = ZERO
+    total_tax = ZERO
+
+    for cl in cn.lines.select_related("invoice_line").order_by("line_no"):
+        il = cl.invoice_line
+        if il is None:
+            continue
+        proportion = (cl.quantity or ZERO) / (il.quantity or ZERO) if il.quantity else ZERO
+        reversed_revenue = (il.unit_price or ZERO) * (il.quantity or ZERO) * proportion
+        total_revenue += reversed_revenue
+        if il.tax_rate_percent:
+            reversed_tax = reversed_revenue * il.tax_rate_percent / 100
+            total_tax += reversed_tax
+
+    # AR credit (customer owes less; the unapplied part is open customer credit)
+    lines.append(
+        JournalLineDraft(
+            account=_resolve_account(MappingKey.ACCOUNTS_RECEIVABLE),
+            credit_base=total_revenue + total_tax,
+            customer=cn.customer,
+            description=f"Credit note {cn.number}",
+        )
+    )
+    # Revenue debit (reverse revenue)
+    lines.append(
+        JournalLineDraft(
+            account=_resolve_account(MappingKey.SALES_REVENUE),
+            debit_base=total_revenue,
+            description=f"Revenue reversal {cn.number}",
+        )
+    )
+    # Output tax debit (reverse tax, if any)
+    if total_tax > ZERO:
+        lines.append(
+            JournalLineDraft(
+                account=_resolve_account(MappingKey.OUTPUT_TAX),
+                debit_base=total_tax,
+                description=f"Tax reversal {cn.number}",
+            )
+        )
+
+    return JournalDraft(
+        entry_date=cn.posting_date,
+        journal_type=JournalType.SALES,
+        narration=f"Sales credit note {cn.number}",
+        currency=cn.currency,
+        exchange_rate=cn.exchange_rate,
+        source_doc_type="CN",
+        source_doc_number=cn.number,
+        lines=tuple(lines),
+    )
+
+
+def _credit_note_required_mappings(cn):
+    """Mappings the journal will reference for this credit note."""
+    keys = [
+        MappingKey.ACCOUNTS_RECEIVABLE,
+        MappingKey.SALES_REVENUE,
+    ]
+    has_tax = any(
+        cl.invoice_line is not None and cl.invoice_line.tax_rate_percent
+        for cl in cn.lines.select_related("invoice_line").iterator()
+    )
+    if has_tax:
+        keys.append(MappingKey.OUTPUT_TAX)
+    return tuple(keys)
+
+
+def post_credit_note(cn, user, request=None):
+    """SUBMITTED → POSTED, write the reversal journal via the engine."""
+    if cn.status != DocumentStatus.SUBMITTED:
+        raise ValueError(
+            f"Cannot post credit note {cn.number}: status is {cn.status}, "
+            "expected SUBMITTED."
+        )
+    with transaction.atomic():
+        result = posting_service.post(
+            PostingRequest(
+                source=cn,
+                user=user,
+                idempotency_key=f"sales-credit-note:{cn.pk}:post:v1",
+                build_journal=build_sales_credit_note_journal,
+                required_mappings=_credit_note_required_mappings(cn),
+                reason="Credit note posting",
+            )
+        )
+        cn.status = DocumentStatus.POSTED
+        cn.journal_entry = result.journal_entry
+        cn.posted_at = timezone.now()
+        cn.posted_by = user
+        cn.save(
+            update_fields=[
+                "status",
+                "journal_entry",
+                "posted_at",
+                "posted_by",
+                "updated_at",
+            ]
+        )
+        audit.record_action(request, audit.AuditAction.POST, cn)
+        return cn

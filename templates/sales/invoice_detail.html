@@ -28,6 +28,14 @@
       </form>
     {% endif %}
   {% endif %}
+  {% if invoice.status == "POSTED" or invoice.status == "PARTIAL" or invoice.status == "COMPLETED" %}
+    {% if perms.sales.add_salesreturn %}
+      <a href="{% url 'sales:return_create' %}?invoice={{ invoice.pk }}" class="btn-ghost">Return goods</a>
+    {% endif %}
+    {% if perms.sales.add_salescreditnote %}
+      <a href="{% url 'sales:credit_note_create' %}?invoice={{ invoice.pk }}" class="btn-ghost">Credit note</a>
+    {% endif %}
+  {% endif %}
 {% endblock %}
 {% block content %}
 <div class="grid gap-4 lg:grid-cols-3">

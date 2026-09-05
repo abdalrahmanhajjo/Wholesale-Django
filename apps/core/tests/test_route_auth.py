@@ -15,6 +15,8 @@ from django.urls import URLPattern, URLResolver, get_resolver
 
 #: Routes that are anonymous on purpose, each with the reason.
 PUBLIC_ROUTES = {
+    "dashboard": "The public home page: a marketing landing for anonymous "
+    "visitors, and the dashboard for signed-in users.",
     "login": "Somewhere to sign in from.",
     "logout": "Ends a session; harmless without one.",
     "password_reset": "Requested precisely because nobody can log in.",

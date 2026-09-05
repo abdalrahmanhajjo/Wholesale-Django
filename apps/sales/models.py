@@ -349,6 +349,24 @@ class SalesReturn(TimeStampedModel):
         related_name="+",
     )
 
+    submitted_at = models.DateTimeField(null=True, blank=True)
+    submitted_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="+",
+    )
+    approved_at = models.DateTimeField(null=True, blank=True)
+    approved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="+",
+    )
+    approval_reason = models.CharField(max_length=255, blank=True)
+
     class Meta:
         db_table = "sales_return"
         ordering = ["-document_date", "-id"]

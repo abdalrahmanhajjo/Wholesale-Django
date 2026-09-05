@@ -45,4 +45,20 @@ urlpatterns = [
     path(
         "invoices/<int:pk>/print/", views.SalesInvoicePrintView.as_view(), name="invoice_print"
     ),
+    # Sales returns (RET-001..RET-009)
+    path("returns/", views.SalesReturnListView.as_view(), name="return_list"),
+    path("returns/new/", views.SalesReturnCreateView.as_view(), name="return_create"),
+    path("returns/<int:pk>/", views.SalesReturnDetailView.as_view(), name="return_detail"),
+    path(
+        "returns/<int:pk>/submit/", views.SalesReturnSubmitView.as_view(), name="return_submit"
+    ),
+    path(
+        "returns/<int:pk>/approve/",
+        views.SalesReturnApproveView.as_view(),
+        name="return_approve",
+    ),
+    path(
+        "returns/<int:pk>/reject/", views.SalesReturnRejectView.as_view(), name="return_reject"
+    ),
+    path("returns/<int:pk>/post/", views.SalesReturnPostView.as_view(), name="return_post"),
 ]

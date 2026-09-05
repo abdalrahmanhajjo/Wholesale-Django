@@ -388,6 +388,11 @@ class SalesReturn(TimeStampedModel):
     def __str__(self):
         return self.number
 
+    def get_absolute_url(self):
+        from django.urls import reverse
+
+        return reverse("sales:return_detail", args=[self.pk])
+
 
 class SalesReturnLine(models.Model):
     sales_return = models.ForeignKey(
@@ -461,6 +466,13 @@ class SalesCreditNote(FinancialDocumentBase):
     reason = models.TextField(help_text="Mandatory (RET-008).")
     customer_name_snapshot = models.CharField(max_length=200, blank=True)
     billing_address_text = models.TextField(blank=True)
+    submitted_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="+",
+    )
 
     # Unapplied credit still available to allocate or refund (RET-009, BR-016).
     refunded_txn = models.DecimalField(**MONEY, default=ZERO)
@@ -499,6 +511,11 @@ class SalesCreditNote(FinancialDocumentBase):
                 fields=["customer"], condition=Q(open_txn__gt=0), name="ix_cn_open_credit"
             ),
         ]
+
+    def get_absolute_url(self):
+        from django.urls import reverse
+
+        return reverse("sales:credit_note_detail", args=[self.pk])
 
 
 class SalesCreditNoteLine(DocumentLineBase):

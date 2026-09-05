@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+{% block header_title %}{{ return_obj.number }}{% endblock %}
+{% block breadcrumb %}
+  <a href="{% url 'sales:return_list' %}"
+     class="mb-4 inline-flex items-center gap-1.5 text-sm font-medium text-muted-fg transition-colors hover:text-brand">
+    <span aria-hidden="true">&larr;</span> Back to returns
+  </a>
+{% endblock %}
+{% block actions %}
+  {% if return_obj.status == "DRAFT" or return_obj.status == "REJECTED" %}
+    {% if perms.sales.change_salesreturn %}
+      <form method="post"
+            data-confirm="Submit {{ return_obj.number }} for approval? It becomes read-only until approved or rejected."
+            action="{% url 'sales:return_submit' return_obj.pk %}">
+        {% csrf_token %}
+        <button type="submit" class="btn-accent">Submit</button>
+      </form>
+    {% endif %}
+  {% endif %}
+{% endblock %}
+{% block content %}
+<div class="grid gap-4 lg:grid-cols-3">
+  <div class="space-y-4 lg:col-span-2">
+    <div class="card card-pad">
+      <div class="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p class="eyebrow">Sales return</p>
+          <h2 class="display mt-1 text-2xl">{{ return_obj.customer }}</h2>
+          <p class="font-mono text-xs text-muted-fg">{{ return_obj.number }}</p>
+        </div>
+        {% include "core/_status_badge.html" with value=return_obj.status display=return_obj.get_status_display %}
+      </div>
+      <dl class="mt-6 grid gap-x-6 gap-y-4 sm:grid-cols-2">
+        <div><dt class="eyebrow">Document date</dt><dd class="mt-1 text-sm">{{ return_obj.document_date }}</dd></div>
+        <div><dt class="eyebrow">Warehouse</dt><dd class="mt-1 text-sm">{{ return_obj.warehouse }}</dd></div>
+        <div><dt class="eyebrow">Original invoice</dt>
+          <dd class="mt-1 text-sm">
+            {% if return_obj.original_invoice %}
+              <a class="font-mono text-xs hover:text-brand" href="{% url 'sales:invoice_detail' return_obj.original_invoice.pk %}">{{ return_obj.original_invoice.number }}</a>
+            {% else %}standalone{% endif %}
+          </dd></div>
+        <div><dt class="eyebrow">Reason</dt>
+          <dd class="mt-1 text-sm">{{ return_obj.reason }}</dd>
+        </div>
+      </dl>
+    </div>
+
+    <div class="card card-pad">
+      <p class="eyebrow">Lines</p>
+      <table class="w-full text-sm">
+        <thead><tr class="border-b border-line bg-muted-bg text-[11px] font-bold uppercase text-muted-fg">
+          <th class="px-4 py-2 text-left">Product</th><th class="px-4 py-2 text-right">Qty</th>
+          <th class="px-4 py-2 text-right">Disposition</th><th class="px-4 py-2 text-right">Cost</th>
+        </tr></thead>
+        <tbody>
+          {% for line in return_obj.lines.all %}
+          <tr class="border-b border-line">
+            <td class="px-4 py-2">{{ line.product|default:"—" }}</td>
+            <td class="px-4 py-2 text-right tabular-nums">{{ line.quantity }}</td>
+            <td class="px-4 py-2 text-right">{{ line.get_disposition_display }}</td>
+            <td class="px-4 py-2 text-right tabular-nums">{{ line.total_cost|floatformat:2 }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+        <tfoot>
+          <tr class="border-t-2 border-line bg-muted-bg font-semibold">
+            <td colspan="3" class="px-4 py-2 text-right text-xs uppercase text-muted-fg">Total cost</td>
+            <td class="px-4 py-2 text-right tabular-nums text-brand-deep text-base">{{ return_obj.total_cost_base|floatformat:2 }}</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  </div>
+
+  <div class="space-y-4">
+    <div class="card card-pad">
+      <p class="eyebrow">Status</p>
+      {% include "core/_status_badge.html" with value=return_obj.status display=return_obj.get_status_display %}
+
+      {% if return_obj.status == "SUBMITTED" %}
+        {% if perms.core.post_sales_return %}
+          <form method="post"
+                data-confirm="Post {{ return_obj.number }}? It writes the reversal journal for the returned stock."
+                action="{% url 'sales:return_post' return_obj.pk %}" class="mt-4">
+            {% csrf_token %}
+            <button type="submit" class="btn-primary w-full">Post to ledger</button>
+          </form>
+        {% endif %}
+        {% if perms.core.approve_sales_return %}
+          <form method="post"
+                data-confirm="Approve {{ return_obj.number }}?"
+                action="{% url 'sales:return_approve' return_obj.pk %}" class="mt-4 space-y-3">
+            {% csrf_token %}
+            <input type="hidden" name="confirm" value="yes">
+            <label for="approval-reason" class="sr-only">Reason for approval</label>
+            <input type="text" id="approval-reason" name="reason"
+                   placeholder="Reason for approval (required)"
+                   class="field" required>
+            <button type="submit" class="btn-accent w-full">Approve</button>
+          </form>
+          <form method="post"
+                data-confirm="Reject {{ return_obj.number }}? The reason you entered is recorded in the audit trail."
+                action="{% url 'sales:return_reject' return_obj.pk %}" class="mt-3 space-y-3">
+            {% csrf_token %}
+            <input type="hidden" name="confirm" value="yes">
+            <label for="rejection-reason" class="sr-only">Reason for rejection</label>
+            <input type="text" id="rejection-reason" name="reason"
+                   placeholder="Reason for rejection (required)"
+                   class="field" required>
+            <button type="submit" class="btn-danger w-full">Reject</button>
+          </form>
+        {% endif %}
+      {% endif %}
+
+      {% if return_obj.status == "POSTED" and return_obj.journal_entry %}
+        <p class="mt-3 text-xs text-muted-fg">Journal {{ return_obj.journal_entry.number }} · posted by {{ return_obj.posted_by|default:"—" }} · {{ return_obj.posted_at|date:"j M Y, H:i"|default:"—" }}</p>
+      {% endif %}
+      {% if return_obj.approval_reason %}
+        <div class="mt-4 border-t border-line pt-4">
+          <p class="eyebrow">Approval reason</p>
+          <p class="mt-1 text-sm text-muted-fg">{{ return_obj.approval_reason }}</p>
+          {% if return_obj.approved_by %}
+            <p class="mt-1 text-xs text-muted-fg">by {{ return_obj.approved_by }} at {{ return_obj.approved_at|date:"j M Y, H:i" }}</p>
+          {% endif %}
+        </div>
+      {% endif %}
+    </div>
+    <div class="card card-pad">
+      <p class="eyebrow">Audit history</p>
+      <ul class="mt-4 max-h-64 space-y-4 overflow-y-auto pr-1">
+        {% for event in audit_events %}
+          <li class="border-l-2 border-line pl-3">
+            <p class="text-xs font-bold uppercase text-brand-deep">{{ event.get_action_display }}</p>
+            <p class="text-sm">{{ event.user|default:"system" }}</p>
+            <p class="text-xs text-muted-fg">{{ event.occurred_at|date:"j M Y, H:i" }}</p>
+            {% if event.reason %}<p class="mt-1 text-xs italic text-muted-fg">{{ event.reason }}</p>{% endif %}
+          </li>
+        {% empty %}<li class="text-sm text-muted-fg">No changes recorded yet.</li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -46,7 +46,7 @@ APPROVE_PURCHASE_ORDER = _p("approve_purchase_order")
 APPROVE_STOCK_ADJUSTMENT = _p("approve_stock_adjustment")
 APPROVE_REFUND = _p("approve_refund")
 APPROVE_SALES_RETURN = _p("approve_sales_return")
-
+APPROVE_SALES_CREDIT_NOTE = _p("approve_sales_credit_note")
 # Posting (GL-001, SAL-009, PUR-008, PAY-001, INV-006, INV-007)
 POST_SALES_INVOICE = _p("post_sales_invoice")
 POST_PURCHASE_BILL = _p("post_purchase_bill")
@@ -91,6 +91,7 @@ ACTION_PERMISSIONS = [
     ("approve_sales_order", "Can approve or reject a sales order"),
     ("approve_purchase_order", "Can approve or reject a purchase order"),
     ("approve_sales_return", "Can approve a customer return"),
+    ("approve_sales_credit_note", "Can approve a sales credit note"),
     ("approve_stock_adjustment", "Can approve a stock adjustment"),
     ("approve_refund", "Can approve a refund"),
     ("post_sales_invoice", "Can post a sales invoice"),
@@ -170,6 +171,7 @@ ROLE_MATRIX = {
             "post_purchase_bill",
             "post_payment",
             "post_credit_note",
+            "approve_sales_credit_note",
             "post_debit_note",
             "post_journal",
             "post_stock_movement",

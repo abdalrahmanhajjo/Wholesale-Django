@@ -37,9 +37,11 @@ from apps.core.models import (
     TaxCode,
 )
 from apps.core.permissions import (
+    APPROVE_SALES_CREDIT_NOTE,
     APPROVE_SALES_ORDER,
     APPROVE_SALES_RETURN,
     EXPORT_DATA,
+    POST_CREDIT_NOTE,
     POST_DELIVERY,
     POST_SALES_INVOICE,
     POST_SALES_RETURN,
@@ -54,7 +56,7 @@ from apps.sales.forms import (
     SalesOrderForm,
     SalesOrderLineFormSet,
 )
-from apps.sales.models import SalesInvoice, SalesOrder, SalesReturn
+from apps.sales.models import SalesCreditNote, SalesInvoice, SalesOrder, SalesReturn
 
 
 def _tax_rate_map():
@@ -1194,3 +1196,239 @@ class SalesReturnPostView(ActionPermissionMixin, View):
         except (ValueError, PostingError) as exc:
             messages.error(request, str(exc))
         return redirect("sales:return_detail", pk=pk)
+
+
+# ---------------------------------------------------------------------------
+# Sales credit notes (RET-003, RET-004, SAL-007)
+# ---------------------------------------------------------------------------
+
+
+class CreditNoteListView(FilteredListView):
+    model = SalesCreditNote
+    required_permission = "sales.view_salescreditnote"
+    page_title = "Sales credit notes"
+    page_subtitle = "Reduces AR and reverses revenue/tax (RET-003)."
+    create_url_name = "sales:credit_note_create"
+    create_label = "New credit note"
+    export_permission = EXPORT_DATA
+    export_filename = "sales_credit_notes"
+    default_ordering = "-document_date"
+    paginate_by = 25
+
+    columns = [
+        Column("number", "Number", sortable=True, link=True, css="font-mono text-xs"),
+        Column("customer", "Customer", sortable=True, order_by="customer__name"),
+        Column("original_invoice", "Invoice", order_by="original_invoice__number"),
+        Column("document_date", "Date", sortable=True),
+        Column("status", "Status", badge=True, align="center"),
+        Column("total_txn", "Amount", align="right", money=True, sortable=True),
+        Column("open_txn", "Open", align="right", money=True, sortable=True),
+    ]
+
+    search_fields = [
+        "number",
+        "customer__name",
+        "customer__code",
+        "original_invoice__number",
+    ]
+    trigram_search_fields = ["customer__name"]
+
+    filters = [
+        ChoiceFilter("status", "Status", list(DocumentStatus.choices)),
+        DateRangeFilter("document_date", "Date range"),
+    ]
+
+    def get_queryset(self):
+        return super().get_queryset().select_related("customer", "original_invoice")
+
+    def get_summary(self):
+        agg = SalesCreditNote.objects.aggregate(
+            draft=Count("id", filter=Q(status="DRAFT")),
+            submitted=Count("id", filter=Q(status="SUBMITTED")),
+            posted=Count("id", filter=Q(status="POSTED")),
+        )
+        return [
+            ("Draft", agg["draft"] or 0),
+            ("Submitted", agg["submitted"] or 0),
+            ("Posted", agg["posted"] or 0),
+        ]
+
+
+class CreditNoteInvoiceSelectForm(forms.Form):
+    invoice = forms.ModelChoiceField(
+        queryset=SalesInvoice.objects.none(),
+        label="Posted sales invoice",
+        empty_label="Select an invoice…",
+        widget=forms.Select(attrs={"class": "field"}),
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["invoice"].queryset = (
+            SalesInvoice.objects.filter(
+                status__in=[
+                    DocumentStatus.POSTED,
+                    DocumentStatus.PARTIAL,
+                    DocumentStatus.COMPLETED,
+                ]
+            )
+            .select_related("customer")
+            .order_by("-document_date")
+        )
+
+
+class CreditNoteCreateView(BackLinkMixin, ActionPermissionMixin, TemplateView):
+    back_url_name = "sales:credit_note_list"
+    back_label = "Back to credit notes"
+    template_name = "sales/credit_note_form.html"
+    required_permission = "sales.add_salescreditnote"
+
+    def get_invoice(self):
+        pk = self.request.GET.get("invoice") or self.request.POST.get("invoice")
+        if not pk:
+            return None
+        invoice = get_object_or_404(SalesInvoice, pk=pk)
+        if invoice.status not in (
+            DocumentStatus.POSTED,
+            DocumentStatus.PARTIAL,
+            DocumentStatus.COMPLETED,
+        ):
+            return None
+        return invoice
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        invoice = self.get_invoice()
+        if invoice is None:
+            ctx["invoice_picker"] = CreditNoteInvoiceSelectForm()
+            ctx["step"] = "pick"
+            ctx["page_title"] = "New credit note"
+            ctx["page_subtitle"] = "Choose the invoice to credit against."
+            return ctx
+        rows = kwargs.get("rows")
+        if rows is None:
+            rows = services.build_credit_lines_from_invoice(invoice)
+        ctx["invoice"] = invoice
+        ctx["rows"] = rows
+        ctx["page_title"] = f"Credit against {invoice.number}"
+        ctx["page_subtitle"] = f"{invoice.customer} · {invoice.document_date}"
+        return ctx
+
+    def get(self, request, *args, **kwargs):
+        if request.GET.get("invoice") and self.get_invoice() is not None:
+            return self.render_to_response(self.get_context_data())
+        return super().get(request, *args, **kwargs)
+
+    def post(self, request, *args, **kwargs):
+        invoice = self.get_invoice()
+        if invoice is None:
+            messages.error(request, "Choose a posted sales invoice to credit against.")
+            return redirect("sales:credit_note_create")
+
+        rows = services.build_credit_lines_from_invoice(invoice)
+        quantities = {}
+        for il, _credited, _remaining in rows:
+            raw = request.POST.get(f"qty_{il.pk}")
+            if raw:
+                try:
+                    qty = Decimal(raw)
+                except InvalidOperation:
+                    qty = ZERO
+                if qty > ZERO:
+                    quantities[il.pk] = qty
+
+        reason = (request.POST.get("reason") or "").strip()
+
+        if not quantities:
+            messages.error(request, "Choose at least one quantity to credit.")
+            return self.render_to_response(self.get_context_data(rows=rows))
+        if not reason:
+            messages.error(request, "A reason is required for the credit note (RET-008).")
+            return self.render_to_response(self.get_context_data(rows=rows))
+
+        try:
+            cn = services.draft_credit_note_from_invoice(
+                invoice=invoice,
+                user=request.user,
+                quantities=quantities,
+                reason=reason,
+            )
+            messages.success(request, f"Credit note {cn.number} drafted.")
+            return redirect("sales:credit_note_detail", pk=cn.pk)
+        except ValueError as exc:
+            messages.error(request, str(exc))
+            return self.render_to_response(self.get_context_data(rows=rows))
+
+
+class CreditNoteDetailView(BackLinkMixin, ActionPermissionMixin, DetailView):
+    back_url_name = "sales:credit_note_list"
+    back_label = "Back to credit notes"
+    model = SalesCreditNote
+    template_name = "sales/credit_note_detail.html"
+    context_object_name = "credit_note"
+    required_permission = "sales.view_salescreditnote"
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        ctx["page_title"] = self.object.number
+        ctx["page_subtitle"] = f"Credit for {self.object.customer}"
+        ctx["audit_events"] = AuditEvent.objects.filter(
+            content_type__app_label="sales",
+            content_type__model="salescreditnote",
+            object_id=self.object.pk,
+        ).select_related("user")[:20]
+        return ctx
+
+
+class CreditNoteSubmitView(ActionPermissionMixin, View):
+    required_permission = "sales.change_salescreditnote"
+
+    def post(self, request, pk):
+        cn = get_object_or_404(SalesCreditNote, pk=pk)
+        try:
+            services.submit_credit_note(cn, request.user)
+            messages.success(request, f"Credit note {cn.number} submitted.")
+        except ValueError as exc:
+            messages.error(request, str(exc))
+        return redirect("sales:credit_note_detail", pk=pk)
+
+
+class CreditNoteApproveView(ConfirmationRequiredMixin, View):
+    required_permission = APPROVE_SALES_CREDIT_NOTE
+
+    def post(self, request, pk):
+        cn = get_object_or_404(SalesCreditNote, pk=pk)
+        reason = self.get_confirmation_reason(request)
+        try:
+            services.approve_credit_note(cn, request.user, reason=reason)
+            messages.success(request, f"Credit note {cn.number} approved.")
+        except ValueError as exc:
+            messages.error(request, str(exc))
+        return redirect("sales:credit_note_detail", pk=pk)
+
+
+class CreditNoteRejectView(ConfirmationRequiredMixin, View):
+    required_permission = APPROVE_SALES_CREDIT_NOTE
+
+    def post(self, request, pk):
+        cn = get_object_or_404(SalesCreditNote, pk=pk)
+        reason = self.get_confirmation_reason(request)
+        try:
+            services.reject_credit_note(cn, request.user, reason=reason)
+            messages.success(request, f"Credit note {cn.number} rejected.")
+        except ValueError as exc:
+            messages.error(request, str(exc))
+        return redirect("sales:credit_note_detail", pk=pk)
+
+
+class CreditNotePostView(ActionPermissionMixin, View):
+    required_permission = POST_CREDIT_NOTE
+
+    def post(self, request, pk):
+        cn = get_object_or_404(SalesCreditNote, pk=pk)
+        try:
+            services.post_credit_note(cn, request.user, request)
+            messages.success(request, f"Credit note {cn.number} posted to the ledger.")
+        except (ValueError, PostingError) as exc:
+            messages.error(request, str(exc))
+        return redirect("sales:credit_note_detail", pk=pk)

@@ -68,6 +68,19 @@ from apps.payments.models import Payment, PaymentDirection
 from apps.sales.models import SalesOrder
 
 
+def home(request):
+    """
+    The public home page at "/".
+
+    Signed-out visitors get the marketing landing page. Signed-in users are
+    handed straight to the dashboard, where the existing login and permission
+    gates apply: a user with no role still receives the 403 they get today.
+    """
+    if request.user.is_authenticated:
+        return dashboard(request)
+    return render(request, "core/landing.html")
+
+
 @login_required
 @permission_required("core.view_company", raise_exception=True)
 def dashboard(request):

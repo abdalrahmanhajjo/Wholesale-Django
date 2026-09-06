@@ -421,6 +421,36 @@ Enforcement is not only in this code. `wams_journal_period_check()` rejects any
 journal entry aimed at a closed period at the database level, so a period that
 is closed is closed to everything, not merely to the screens.
 
+## Giving a product its first stock
+
+A newly created product has a quantity of zero, and the **Add product** form has
+no quantity field. That is deliberate, not an omission.
+
+Quantity on hand is not stored on the product. It is derived from posted stock
+movements, and inventory is simultaneously a control account in the general
+ledger — so a number typed into a catalogue form would be stock that no movement
+explains and no journal balances. The stock ledger and account 1310 would
+disagree from that moment on, and `/reports/reconciliation/` would report the
+difference without being able to say where it came from.
+
+There are two supported routes, and which one is right depends on how the stock
+actually arrived:
+
+| You are | Use | It posts |
+|---|---|---|
+| buying the goods | **Goods receipt** (`/inventory/receipts/`) | `Dr Inventory` / `Cr Goods received not invoiced` |
+| recording stock you already own | **Stock adjustment**, reason `OPENING` (`/inventory/adjustments/`) | `Dr Inventory` / `Cr Opening balance equity` |
+
+Use the goods receipt whenever a vendor is involved — it leaves the purchase
+trail intact and the bill later clears the accrual. Use the opening adjustment
+only when migrating stock that predates the system, which is what account 3900
+is there to absorb.
+
+A count that finds more than the system expected is a third case and has its own
+reason, `COUNT-UP`, which books the difference to inventory adjustment gain
+rather than to equity. Reaching for `OPENING` there would bury a real gain in the
+opening balance.
+
 ## Pending accountant sign-off
 
 These are placeholders (BRD §14.4) and will change. Don't hard-code them.

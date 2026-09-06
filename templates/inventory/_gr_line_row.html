@@ -2,7 +2,7 @@
 One goods-receipt line, used both for existing rows and — via `empty_form`
 with __prefix__ substituted by JS — for a freshly added row.
 {% endcomment %}
-<tr data-gr-row class="border-b border-line last:border-0 {% if form.instance.pk and form.DELETE.value %}hidden{% endif %}">
+<tr data-gr-row class="border-b border-line last:border-0 {% if form.DELETE.value %}hidden{% endif %}">
   {{ form.id }}
   {{ form.purchase_order_line }}
   <td class="px-3 py-2 align-top">

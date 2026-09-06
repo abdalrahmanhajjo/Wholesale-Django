@@ -258,9 +258,10 @@ class StockAdjustmentLineForm(forms.ModelForm):
         return self.cleaned_data.get("unit_cost") or Decimal("0")
 
     def _is_blank(self):
-        return not self.cleaned_data.get("product") and self.cleaned_data.get(
-            "quantity_delta"
-        ) is None
+        return (
+            not self.cleaned_data.get("product")
+            and self.cleaned_data.get("quantity_delta") is None
+        )
 
     def clean(self):
         if self._is_blank():

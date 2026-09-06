@@ -319,6 +319,7 @@ class ProductPayloadEmbeddingTests(TestCase):
         response = self.client.get(reverse("purchases:po_create"))
         body = response.content.decode()
         import json
+
         start = body.index('id="po-products-data"')
         end = body.index("</script>", start)
         raw = body[start + body[start:].index(">") + 1 : end]

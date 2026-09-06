@@ -53,6 +53,7 @@ which the add-line script swaps for the real number when it clones the row.
       {% a11y_field lf.quantity label="Quantity" line=line %}
     </div>
     {% if lf.quantity.errors %}<p class="error-text" id="{% error_id lf.quantity %}">{{ lf.quantity.errors|join:" " }}</p>{% endif %}
+    <p class="field-note" data-stock-note></p>
     <div class="line-sub line-sub-secondary">
       <span class="line-sub-label" aria-hidden="true">Unit</span>
       {% a11y_field lf.unit label="Unit" line=line %}

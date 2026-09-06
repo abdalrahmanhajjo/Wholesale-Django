@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>{{ credit_note.number }}</title>
+<style>
+  body { font-family: "Georgia", serif; color: #111; margin: 48px; }
+  .muted { color: #666; }
+  table { width: 100%; border-collapse: collapse; margin-top: 24px; }
+  th, td { padding: 6px 8px; text-align: left; border-bottom: 1px solid #ddd; }
+  th { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: #888; }
+  .num { text-align: right; font-variant-numeric: tabular-nums; }
+  .tot { font-weight: bold; }
+  .head { display: flex; justify-content: space-between; }
+  .badge { border: 1px solid; padding: 2px 10px; border-radius: 20px; font-size: 12px; }
+  .badge-posted { border-color: #2e8b57; color: #2e8b57; }
+  .badge-stubbed { border-color: #c98a2d; color: #c98a2d; }
+  @media print { body { margin: 12mm; } }
+</style>
+</head>
+<body>
+  <div class="head">
+    <div>
+      <h1>CREDIT NOTE</h1>
+      <p class="muted">{{ company.name|default:"" }} · {{ company.base_currency.code|default:"USD" }}</p>
+    </div>
+    <div style="text-align:right">
+      <p><strong>{{ credit_note.number }}</strong></p>
+      <span class="badge badge-{{ credit_note.status|lower }}">{{ credit_note.get_status_display }}</span>
+    </div>
+  </div>
+
+  <table style="margin-top:32px">
+    <tr><th>Credit to</th><th>Invoice no.</th><th>Date</th><th>Reason</th></tr>
+    <tr>
+      <td>
+        {{ credit_note.customer_name_snapshot|default:credit_note.customer }}<br>
+        {{ credit_note.billing_address_text|linebreaksbr }}
+      </td>
+      <td>
+        {% if credit_note.original_invoice %}
+          {{ credit_note.original_invoice.number }}
+        {% else %}—{% endif %}
+      </td>
+      <td>{{ credit_note.document_date }}</td>
+      <td>{{ credit_note.reason }}</td>
+    </tr>
+  </table>
+
+  <table>
+    <thead><tr><th>#</th><th>Item</th><th class="num">Qty</th><th class="num">Price</th>
+      <th class="num">Disc %</th><th class="num">Tax</th><th class="num">Total</th></tr></thead>
+    <tbody>
+      {% for line in credit_note.lines.all %}
+      <tr>
+        <td>{{ forloop.counter }}</td>
+        <td>{{ line.product|default:"—" }} — {{ line.description }}</td>
+        <td class="num">{{ line.quantity }}</td>
+        <td class="num">{{ line.unit_price|floatformat:2 }}</td>
+        <td class="num">{{ line.discount_percent|floatformat:1 }}%</td>
+        <td class="num">{{ line.tax_txn|floatformat:2 }}</td>
+        <td class="num">{{ line.total_txn|floatformat:2 }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <table style="width:auto; margin-left:auto; margin-top:16px">
+    <tr><td class="muted">Subtotal</td><td class="num">{{ credit_note.subtotal_txn|floatformat:2 }}</td></tr>
+    <tr><td class="muted">Discount</td><td class="num">{{ credit_note.document_discount_txn|floatformat:2 }}</td></tr>
+    <tr><td class="muted">Taxable base</td><td class="num">{{ credit_note.taxable_base_txn|floatformat:2 }}</td></tr>
+    <tr><td class="muted">Tax ({{ credit_note.currency_id }})</td><td class="num">{{ credit_note.tax_txn|floatformat:2 }}</td></tr>
+    <tr><td class="muted">Rounding</td><td class="num">{{ credit_note.rounding_txn|floatformat:2 }}</td></tr>
+    <tr class="tot"><td>Total</td><td class="num">{{ credit_note.total_txn|floatformat:2 }} {{ credit_note.currency_id }}</td></tr>
+  </table>
+</body>
+</html>

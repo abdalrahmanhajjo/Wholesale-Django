@@ -132,6 +132,10 @@
       {% endif %}
     </div>
     <div class="card card-pad">
+      <p class="eyebrow">Print</p>
+      <a href="{% url 'sales:credit_note_print' credit_note.pk %}" target="_blank" class="btn-primary w-full">Printable credit note</a>
+    </div>
+    <div class="card card-pad">
       <p class="eyebrow">Audit history</p>
       <ul class="mt-4 max-h-64 space-y-4 overflow-y-auto pr-1">
         {% for event in audit_events %}

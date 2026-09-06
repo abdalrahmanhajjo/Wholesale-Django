@@ -140,9 +140,11 @@ wrong total on the server.
         const unit = row.querySelector('[data-role="unit"]');
         const price = row.querySelector('[data-role="unit_price"]');
         const tax = row.querySelector('[data-role="tax_code"]');
+        const desc = row.querySelector('[name$="-description"]');
         if (unit && info.unit) unit.value = info.unit;
-        if (price && !price.value) price.value = info.price;
+        if (price && info.price) price.value = info.price;
         if (tax && info.tax_code) tax.value = info.tax_code;
+        if (desc) desc.value = info.description;
         recalculate();
       });
     }

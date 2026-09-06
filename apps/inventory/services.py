@@ -131,6 +131,15 @@ def recalculate_receipt(receipt):
 # balance arithmetic so "what is a unit of this product worth right now" is
 # never computed two different ways in two different services.
 # ---------------------------------------------------------------------------
+def _negative_stock_allowed(warehouse):
+    """BR-017 opt-in: the warehouse or the company may allow negative stock."""
+    if getattr(warehouse, "allow_negative_stock", False):
+        return True
+    company = Company.objects.first()
+    return bool(company and company.allow_negative_stock)
+
+
+# ---------------------------------------------------------------------------
 def post_stock_movement(
     *,
     product,
@@ -172,6 +181,18 @@ def post_stock_movement(
         warehouse=warehouse,
         defaults={"quantity_on_hand": ZERO, "average_cost": ZERO, "total_value": ZERO},
     )
+
+    if (
+        direction == -1
+        and balance.quantity_on_hand - quantity < ZERO
+        and not _negative_stock_allowed(warehouse)
+    ):
+        raise ValidationError(
+            f"Not enough stock of {product.sku} in {warehouse.name}: "
+            f"{balance.quantity_on_hand} on hand, {quantity} needed. Receive "
+            "goods into this warehouse first, or allow negative stock for the "
+            "warehouse or company in Settings."
+        )
 
     if direction == 1:
         cost = _cost(unit_cost)

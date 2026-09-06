@@ -6,7 +6,9 @@ Run:  python manage.py test apps.sales.tests.test_credit_note --keepdb
 
 from decimal import Decimal
 
+from django.contrib.auth.models import Permission
 from django.test import TestCase
+from django.urls import reverse
 
 from apps.core.models import DocumentStatus
 from apps.sales import services
@@ -358,3 +360,36 @@ class CreditNoteServicesTest(TestCase):
         posted.refresh_from_db()
         self.assertEqual(posted.status, DocumentStatus.POSTED)
         self.assertIsNotNone(posted.journal_entry)
+
+    def test_print_renders(self):
+        invoice = self._make_posted_invoice()
+        il = invoice.lines.get(line_no=1)
+        cn = services.draft_credit_note_from_invoice(
+            invoice=invoice,
+            user=self.user,
+            quantities={il.pk: Decimal("3")},
+            reason="Defective",
+        )
+        viewer = make_user("cn-viewer")
+        viewer.user_permissions.add(Permission.objects.get(codename="view_salescreditnote"))
+        self.client.force_login(viewer)
+        response = self.client.get(reverse("sales:credit_note_print", args=[cn.pk]))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "CREDIT NOTE")
+        self.assertContains(response, cn.number)
+
+    def test_detail_shows_print_button(self):
+        invoice = self._make_posted_invoice()
+        il = invoice.lines.get(line_no=1)
+        cn = services.draft_credit_note_from_invoice(
+            invoice=invoice,
+            user=self.user,
+            quantities={il.pk: Decimal("3")},
+            reason="Defective",
+        )
+        viewer = make_user("cn-viewer-2")
+        viewer.user_permissions.add(Permission.objects.get(codename="view_salescreditnote"))
+        self.client.force_login(viewer)
+        response = self.client.get(reverse("sales:credit_note_detail", args=[cn.pk]))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Printable credit note")

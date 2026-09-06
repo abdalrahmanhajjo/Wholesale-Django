@@ -4,7 +4,7 @@ with __prefix__ substituted by JS — for a freshly added row. A line is either
 a stock line (product, hits Inventory/GRNI) or a non-stock line (expense
 account, Appendix A).
 {% endcomment %}
-<tr data-bill-row class="border-b border-line last:border-0 {% if form.instance.pk and form.DELETE.value %}hidden{% endif %}">
+<tr data-bill-row class="border-b border-line last:border-0 {% if form.DELETE.value %}hidden{% endif %}">
   {{ form.id }}
   {{ form.purchase_order_line }}
   {{ form.receipt_line }}

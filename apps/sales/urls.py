@@ -93,4 +93,9 @@ urlpatterns = [
         views.CreditNotePostView.as_view(),
         name="credit_note_post",
     ),
+    path(
+        "credit-notes/<int:pk>/print/",
+        views.CreditNotePrintView.as_view(),
+        name="credit_note_print",
+    ),
 ]

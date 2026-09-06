@@ -12,6 +12,8 @@ from decimal import Decimal
 
 from django import forms
 from django.forms import inlineformset_factory
+from django.forms.formsets import DELETION_FIELD_NAME
+from django.forms.models import BaseInlineFormSet
 
 from apps.catalog.models import Product, UnitOfMeasure
 from apps.inventory.models import (
@@ -132,7 +134,7 @@ GoodsReceiptLineFormSet = inlineformset_factory(
     GoodsReceiptLine,
     form=GoodsReceiptLineForm,
     fk_name="receipt",
-    extra=1,
+    extra=0,
     can_delete=True,
     min_num=1,
     validate_min=True,
@@ -193,7 +195,7 @@ StockTransferLineFormSet = inlineformset_factory(
     StockTransferLine,
     form=StockTransferLineForm,
     fk_name="transfer",
-    extra=1,
+    extra=0,
     can_delete=True,
     min_num=1,
     validate_min=True,
@@ -232,6 +234,12 @@ class StockAdjustmentLineForm(forms.ModelForm):
         )
         self.fields["unit_cost"].required = False
         self.fields["note"].required = False
+        # Blank rows are dropped by the formset below, not rejected: a user who
+        # clicks "Add line" and then fills only one of the two rows should save
+        # that one row instead of hitting a "this field is required" error on
+        # the empty one. Content is still validated in `clean()`.
+        self.fields["product"].required = False
+        self.fields["quantity_delta"].required = False
         _style(self.fields)
         for name in ("product", "quantity_delta"):
             self.fields[name].widget.attrs["data-role"] = name
@@ -249,13 +257,42 @@ class StockAdjustmentLineForm(forms.ModelForm):
         # than None.
         return self.cleaned_data.get("unit_cost") or Decimal("0")
 
+    def _is_blank(self):
+        return (
+            not self.cleaned_data.get("product")
+            and self.cleaned_data.get("quantity_delta") is None
+        )
+
+    def clean(self):
+        if self._is_blank():
+            # Fully-empty row — the formset marks it for deletion.
+            return self.cleaned_data
+        if not self.cleaned_data.get("product"):
+            self.add_error("product", "Choose a product for this line.")
+        if self.cleaned_data.get("quantity_delta") is None:
+            self.add_error("quantity_delta", "Enter the quantity change.")
+        return self.cleaned_data
+
+
+class StockAdjustmentLineFormSet(BaseInlineFormSet):
+    """Drops line rows that are entirely empty so a leftover blank "Add line"
+    row never blocks saving, while the `min_num=1` guard still requires at
+    least one real line."""
+
+    def clean(self):
+        super().clean()
+        for form in self.forms:
+            if form._is_blank():
+                form.cleaned_data[DELETION_FIELD_NAME] = True
+
 
 StockAdjustmentLineFormSet = inlineformset_factory(
     StockAdjustment,
     StockAdjustmentLine,
     form=StockAdjustmentLineForm,
+    formset=StockAdjustmentLineFormSet,
     fk_name="adjustment",
-    extra=1,
+    extra=0,
     can_delete=True,
     min_num=1,
     validate_min=True,

@@ -11,6 +11,7 @@ from decimal import Decimal, InvalidOperation
 
 from django import forms
 from django.contrib import messages
+from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.db.models import Count, Q, Sum
 from django.shortcuts import get_object_or_404, redirect
@@ -46,7 +47,7 @@ from apps.core.permissions import (
     POST_SALES_INVOICE,
     POST_SALES_RETURN,
 )
-from apps.inventory.models import DeliveryNote
+from apps.inventory.models import DeliveryNote, StockBalance
 from apps.ledger.services import PostingError
 from apps.payments import stripe_gateway, stripe_service
 from apps.sales import services
@@ -69,10 +70,20 @@ def _tax_rate_map():
 
 def _product_map():
     """
-    JS-serializable map of Product pk → {sales_price, tax_code, unit, name}.
-    Used to auto-fill a sales-order line when its product is chosen (UX).
+    JS-serializable map of Product pk → {sales_price, tax_code, unit, name,
+    on-hand stock per warehouse and in total}. Used to auto-fill a sales-order
+    line when its product is chosen (UX) and to validate the quantity live
+    against the warehouse's on-hand (BR-017) before the server checks it.
     """
     from apps.catalog.models import Product
+
+    stock_by_wh = {}
+    totals = {}
+    for b in StockBalance.objects.values("product_id", "warehouse_id", "quantity_on_hand"):
+        stock_by_wh.setdefault(b["product_id"], {})[str(b["warehouse_id"])] = str(
+            b["quantity_on_hand"]
+        )
+        totals[b["product_id"]] = totals.get(b["product_id"], ZERO) + b["quantity_on_hand"]
 
     return {
         p.pk: {
@@ -80,6 +91,8 @@ def _product_map():
             "tax_code": p.default_sales_tax_code_id,
             "unit": p.unit_id,
             "name": p.name,
+            "stock": stock_by_wh.get(p.pk, {}),
+            "stock_total": str(totals.get(p.pk, ZERO)),
         }
         for p in Product.objects.filter(is_active=True)
     }
@@ -104,6 +117,39 @@ def _number_lines(formset):
             continue
         lf.instance.line_no = n
         n += 1
+
+
+def _show_stock(field_placeholder):
+    return f"{field_placeholder}".rstrip("0").rstrip(".") or "0"
+
+
+def _check_line_stock(formset, warehouse):
+    """
+    BR-017 shown early, at order entry instead of at delivery posting: a line
+    that asks for more of a product than the chosen warehouse currently has
+    on hand gets an inline error, so the person sees the problem before a
+    document exists. The database trigger stays the authoritative backstop in
+    case stock moves between order and delivery.
+    """
+    if warehouse is None:
+        return
+    for form in formset.forms:
+        if not form.cleaned_data or form.cleaned_data.get("DELETE"):
+            continue
+        product = form.cleaned_data.get("product")
+        quantity = form.cleaned_data.get("quantity")
+        if product is None or quantity is None or quantity <= 0:
+            continue
+        balance = StockBalance.objects.filter(product=product, warehouse=warehouse).first()
+        on_hand = balance.quantity_on_hand if balance else ZERO
+        if quantity > on_hand:
+            form.add_error(
+                "quantity",
+                f"Only {_show_stock(on_hand)} of {product.sku} are in stock "
+                f"in {warehouse.name} right now, but you are ordering "
+                f"{_show_stock(quantity)}. Load this warehouse first or "
+                "lower the quantity.",
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -203,7 +249,10 @@ class SalesOrderCreateView(BackLinkMixin, ActionPermissionMixin, CreateView):
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
-        ctx["line_formset"] = self.get_formset()
+        formset = kwargs.get("line_formset")
+        if formset is None:
+            formset = self.get_formset()
+        ctx["line_formset"] = formset
         ctx["tax_rates"] = _tax_rate_map()
         ctx["product_map"] = _product_map()
         ctx["page_subtitle"] = "Create a new order for a customer."
@@ -224,6 +273,12 @@ class SalesOrderCreateView(BackLinkMixin, ActionPermissionMixin, CreateView):
         """
         formset = self.get_formset()
         if not formset.is_valid():
+            return self.render_to_response(
+                self.get_context_data(form=form, line_formset=formset)
+            )
+
+        _check_line_stock(formset, form.cleaned_data.get("warehouse"))
+        if any(f.errors for f in formset.forms):
             return self.render_to_response(
                 self.get_context_data(form=form, line_formset=formset)
             )
@@ -283,7 +338,10 @@ class SalesOrderUpdateView(BackLinkMixin, ActionPermissionMixin, UpdateView):
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
-        ctx["line_formset"] = self.get_formset()
+        formset = kwargs.get("line_formset")
+        if formset is None:
+            formset = self.get_formset()
+        ctx["line_formset"] = formset
         ctx["tax_rates"] = _tax_rate_map()
         ctx["product_map"] = _product_map()
         ctx["page_title"] = f"Edit {self.object.number}"
@@ -292,6 +350,12 @@ class SalesOrderUpdateView(BackLinkMixin, ActionPermissionMixin, UpdateView):
     def form_valid(self, form):
         formset = self.get_formset()
         if not formset.is_valid():
+            return self.render_to_response(
+                self.get_context_data(form=form, line_formset=formset)
+            )
+
+        _check_line_stock(formset, form.cleaned_data.get("warehouse"))
+        if any(f.errors for f in formset.forms):
             return self.render_to_response(
                 self.get_context_data(form=form, line_formset=formset)
             )
@@ -652,6 +716,11 @@ class DeliveryNoteCreateView(BackLinkMixin, ActionPermissionMixin, TemplateView)
             return self.render_to_response(
                 self.get_context_data(header_form=header, line_formset=formset)
             )
+        except ValidationError as exc:
+            messages.error(request, exc.messages[0] if exc.messages else str(exc))
+            return self.render_to_response(
+                self.get_context_data(header_form=header, line_formset=formset)
+            )
 
 
 class DeliveryNoteDetailView(BackLinkMixin, ActionPermissionMixin, DetailView):
@@ -702,6 +771,8 @@ class DeliveryNotePostView(ActionPermissionMixin, View):
             )
         except ValueError as exc:
             messages.error(request, str(exc))
+        except ValidationError as exc:
+            messages.error(request, exc.messages[0] if exc.messages else str(exc))
         return redirect("sales:delivery_detail", pk=pk)
 
 
@@ -1432,3 +1503,24 @@ class CreditNotePostView(ActionPermissionMixin, View):
         except (ValueError, PostingError) as exc:
             messages.error(request, str(exc))
         return redirect("sales:credit_note_detail", pk=pk)
+
+
+class CreditNotePrintView(BackLinkMixin, ActionPermissionMixin, TemplateView):
+    """Printable credit note (PTY-003) — snapshots only, no dynamic values."""
+
+    back_url_name = "sales:credit_note_list"
+    back_label = "Back to credit notes"
+
+    template_name = "sales/credit_note_print.html"
+    required_permission = "sales.view_salescreditnote"
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        ctx["credit_note"] = get_object_or_404(
+            SalesCreditNote.objects.select_related(
+                "customer", "original_invoice"
+            ).prefetch_related("lines__product"),
+            pk=self.kwargs["pk"],
+        )
+        ctx["company"] = Company.objects.select_related("base_currency").first()
+        return ctx

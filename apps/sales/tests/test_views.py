@@ -8,6 +8,8 @@ test client as users with and without the right permissions.
 Run:  python manage.py test apps.sales.tests.test_views
 """
 
+import json
+import re
 from decimal import Decimal
 
 from django.contrib.auth.models import Group, Permission
@@ -84,6 +86,25 @@ class SalesOrderEditTests(TestCase):
         self.warehouse = f.make_warehouse()
         self.product_a = f.make_product(sku="P-EDIT-1", price=Decimal("100"))
         self.product_b = f.make_product(sku="P-EDIT-2", price=Decimal("250"))
+        # Order entry now refuses a line asking for more than the warehouse
+        # holds (BR-017, shown at entry rather than at delivery), so an order
+        # this test expects to save has to have stock behind both its lines.
+        f.seed_stock(
+            self.product_a,
+            self.warehouse,
+            Decimal("50"),
+            Decimal("100"),
+            self.editor,
+            "so-edit-a",
+        )
+        f.seed_stock(
+            self.product_b,
+            self.warehouse,
+            Decimal("50"),
+            Decimal("250"),
+            self.editor,
+            "so-edit-b",
+        )
         self.order = f.make_order(customer=self.customer, warehouse=self.warehouse)
         f.make_line(
             self.order,
@@ -287,6 +308,48 @@ class SalesOrderEntryTests(TestCase):
         self.assertFalse(SalesOrder.objects.filter(customer_reference="TEST-PO").exists())
         self.sequence.refresh_from_db()
         self.assertEqual(self.sequence.next_number, next_number)
+
+    def test_order_line_exceeding_stock_is_rejected_inline(self):
+        data = self._post_data(quantity="5")
+        response = self.client.post(reverse("sales:so_create"), data)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Only 0 of")
+        self.assertContains(response, "in stock in")
+        self.assertTrue(response.context["line_formset"].errors)
+        self.assertFalse(SalesOrder.objects.filter(customer_reference="TEST-PO").exists())
+
+    def test_order_line_within_stock_is_created(self):
+        f.seed_stock(
+            self.product,
+            self.warehouse,
+            Decimal("5"),
+            Decimal("10"),
+            self.editor,
+            "so-stock-check",
+        )
+        response = self.client.post(reverse("sales:so_create"), self._post_data(quantity="5"))
+
+        self.assertEqual(response.status_code, 302)
+        order = SalesOrder.objects.get(customer_reference="TEST-PO")
+        self.assertEqual(order.lines.get().quantity, Decimal("5"))
+
+    def test_product_map_exposes_on_hand_stock(self):
+        f.seed_stock(
+            self.product, self.warehouse, Decimal("7"), Decimal("10"), self.editor, "map-stock"
+        )
+        response = self.client.get(reverse("sales:so_create"))
+
+        self.assertEqual(response.status_code, 200)
+        match = re.search(
+            r'<script id="product-map" type="application/json">(.*?)</script>',
+            response.content.decode(),
+            re.DOTALL,
+        )
+        self.assertIsNotNone(match)
+        entry = json.loads(match.group(1))[str(self.product.pk)]
+        self.assertEqual(entry["stock"][str(self.warehouse.pk)], "7.0000")
+        self.assertEqual(entry["stock_total"], "7.0000")
 
     def test_non_editable_order_cannot_be_opened_in_update_view(self):
         order = f.make_order(status=DocumentStatus.APPROVED)

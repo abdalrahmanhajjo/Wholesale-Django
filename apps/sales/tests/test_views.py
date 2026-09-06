@@ -86,6 +86,25 @@ class SalesOrderEditTests(TestCase):
         self.warehouse = f.make_warehouse()
         self.product_a = f.make_product(sku="P-EDIT-1", price=Decimal("100"))
         self.product_b = f.make_product(sku="P-EDIT-2", price=Decimal("250"))
+        # Order entry now refuses a line asking for more than the warehouse
+        # holds (BR-017, shown at entry rather than at delivery), so an order
+        # this test expects to save has to have stock behind both its lines.
+        f.seed_stock(
+            self.product_a,
+            self.warehouse,
+            Decimal("50"),
+            Decimal("100"),
+            self.editor,
+            "so-edit-a",
+        )
+        f.seed_stock(
+            self.product_b,
+            self.warehouse,
+            Decimal("50"),
+            Decimal("250"),
+            self.editor,
+            "so-edit-b",
+        )
         self.order = f.make_order(customer=self.customer, warehouse=self.warehouse)
         f.make_line(
             self.order,

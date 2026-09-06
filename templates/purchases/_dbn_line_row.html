@@ -4,7 +4,7 @@ One vendor-debit-note line, used both for existing rows and — via
 line is either a stock line (product, credits Inventory) or a non-stock line
 (expense account, Appendix A) — same split as a purchase-bill line.
 {% endcomment %}
-<tr data-dbn-row class="border-b border-line last:border-0 {% if form.instance.pk and form.DELETE.value %}hidden{% endif %}">
+<tr data-dbn-row class="border-b border-line last:border-0 {% if form.DELETE.value %}hidden{% endif %}">
   {{ form.id }}
   {{ form.bill_line }}
   {{ form.return_line }}

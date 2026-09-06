@@ -313,6 +313,20 @@ class ProductPayloadEmbeddingTests(TestCase):
         self.assertIn('id="po-products-data"', body)
         self.assertIn('type="application/json"', body)
 
+    def test_product_payload_includes_description(self):
+        """The JS auto-fills description when a product is picked; the
+        description must be present in the payload shipped to the page."""
+        response = self.client.get(reverse("purchases:po_create"))
+        body = response.content.decode()
+        import json
+        start = body.index('id="po-products-data"')
+        end = body.index("</script>", start)
+        raw = body[start + body[start:].index(">") + 1 : end]
+        payload = json.loads(raw)
+        entry = payload[str(Product.objects.get(sku="SKU-EMBED").pk)]
+        self.assertEqual(entry["description"], "Widget </script><script>alert(1)</script>")
+        self.assertIn("price", entry)
+
     def test_no_unescaped_closing_script_tag_reaches_the_page(self):
         response = self.client.get(reverse("purchases:po_create"))
         body = response.content.decode()

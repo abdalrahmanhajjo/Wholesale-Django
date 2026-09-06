@@ -56,6 +56,7 @@ def _products_payload():
     """
     return {
         product.pk: {
+            "description": product.name,
             "unit": product.unit_id,
             "price": str(product.purchase_price),
             "tax_code": product.default_purchase_tax_code_id,

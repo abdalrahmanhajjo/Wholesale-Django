@@ -199,11 +199,50 @@ simply visible.
     const findInRow = (row, field) =>
       row.querySelector(`[name$="-${field}"]`);
 
-    const setField = (row, field, value) => {
-      const el = findInRow(row, field);
-      if (el && value !== undefined && value !== null) {
-        el.value = value;
-        el.dispatchEvent(new Event('input', { bubbles: true }));
+    const warehouseSel = document.getElementById('id_warehouse');
+    const fmt = v =>
+      Number(v).toFixed(4).replace(/\.?0+$/, '');
+    // On-hand for the line's product: the chosen warehouse if one is picked,
+    // otherwise the total across warehouses (the server decides on save; this
+    // is live feedback only).
+    const availableFor = p => {
+      if (!p) return 0;
+      if (warehouseSel && warehouseSel.value && p.stock && p.stock[warehouseSel.value] !== undefined) {
+        return Number(p.stock[warehouseSel.value]);
+      }
+      return Number(p.stock_total) || 0;
+    };
+    const setStockNote = (row, text, isError) => {
+      const note = row.querySelector('[data-stock-note]');
+      if (note) {
+        note.className = isError ? 'error-text' : 'field-note';
+        note.textContent = text;
+      }
+    };
+    const validateStock = row => {
+      const prodEl = findInRow(row, 'product');
+      const qtyEl = findInRow(row, 'quantity');
+      if (!prodEl || !qtyEl) return;
+      const p = PRODUCTS[prodEl.value];
+      if (!p) return setStockNote(row, '', false);
+      const stock = availableFor(p);
+      const raw = qtyEl.value;
+      const qty = parseFloat(raw);
+      if (!raw) {
+        return setStockNote(
+          row,
+          stock > 0 ? fmt(stock) + ' in stock' : 'Out of stock — nothing on hand right now',
+          stock <= 0,
+        );
+      }
+      if (!isFinite(qty) || qty <= 0) return setStockNote(row, '', false);
+      if (stock <= 0) {
+        setStockNote(row, 'Out of stock — there is nothing on hand to sell right now.', true);
+      } else if (qty > stock) {
+        setStockNote(row, 'Only ' + fmt(stock) + ' in stock, but you are ordering ' +
+          fmt(qty) + '. Load this warehouse first or lower the quantity.', true);
+      } else {
+        setStockNote(row, fmt(stock) + ' in stock', false);
       }
     };
 
@@ -220,6 +259,7 @@ simply visible.
         desc.value = p.name;
         desc.dispatchEvent(new Event('input', { bubbles: true }));
       }
+      validateStock(row);
       recalc();
     };
 
@@ -306,7 +346,20 @@ simply visible.
     recalc();
     table.querySelectorAll('tbody').forEach(tbody => {
       ['input', 'change'].forEach(evt => tbody.addEventListener(evt, recalc));
+      // Live BR-017 stock feedback as quantities change — server stays the
+      // authority, this just says what is wrong before submit.
+      ['input', 'change'].forEach(evt => tbody.addEventListener(evt, event => {
+        const row = event.target.closest('.line-row');
+        if (row && event.target.name && event.target.name.endsWith('-quantity')) {
+          validateStock(row);
+        }
+      }));
     });
+    table.querySelectorAll('tbody tr.line-row').forEach(validateStock);
+    if (warehouseSel) {
+      warehouseSel.addEventListener('change', () =>
+        table.querySelectorAll('tbody tr.line-row').forEach(validateStock));
+    }
     // Delegated, so a line added after load is covered without the add-line
     // script needing to know this handler exists.
     table.addEventListener('change', event => {

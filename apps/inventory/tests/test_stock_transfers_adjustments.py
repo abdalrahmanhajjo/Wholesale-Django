@@ -293,6 +293,31 @@ class StockAdjustmentTests(TestCase):
         with self.assertRaises(ValidationError):
             services.post_stock_adjustment(adjustment, self.owner, request=None)
 
+    def test_blank_extra_line_does_not_block_saving_the_filled_line(self):
+        data = {
+            "warehouse": self.warehouse.pk,
+            "reason": self.count_up.pk,
+            "document_date": "2026-08-31",
+            "narration": "",
+            "attachment_reference": "",
+            "lines-TOTAL_FORMS": "2",
+            "lines-INITIAL_FORMS": "0",
+            "lines-MIN_NUM_FORMS": "0",
+            "lines-MAX_NUM_FORMS": "1000",
+            "lines-0-product": "",
+            "lines-0-quantity_delta": "",
+            "lines-0-unit_cost": "",
+            "lines-0-note": "",
+            "lines-1-product": self.product.pk,
+            "lines-1-quantity_delta": "5",
+            "lines-1-unit_cost": "",
+            "lines-1-note": "",
+        }
+        response = self.client.post(reverse("inventory:sa_create"), data)
+        self.assertEqual(response.status_code, 302, getattr(response, "context", None))
+        adjustment = StockAdjustment.objects.latest("id")
+        self.assertEqual(adjustment.lines.count(), 1)
+
     def test_purchasing_cannot_approve_an_adjustment(self):
         from apps.core.permissions import PURCHASING
 

@@ -371,9 +371,7 @@ class CreditNoteServicesTest(TestCase):
             reason="Defective",
         )
         viewer = make_user("cn-viewer")
-        viewer.user_permissions.add(
-            Permission.objects.get(codename="view_salescreditnote")
-        )
+        viewer.user_permissions.add(Permission.objects.get(codename="view_salescreditnote"))
         self.client.force_login(viewer)
         response = self.client.get(reverse("sales:credit_note_print", args=[cn.pk]))
         self.assertEqual(response.status_code, 200)
@@ -390,9 +388,7 @@ class CreditNoteServicesTest(TestCase):
             reason="Defective",
         )
         viewer = make_user("cn-viewer-2")
-        viewer.user_permissions.add(
-            Permission.objects.get(codename="view_salescreditnote")
-        )
+        viewer.user_permissions.add(Permission.objects.get(codename="view_salescreditnote"))
         self.client.force_login(viewer)
         response = self.client.get(reverse("sales:credit_note_detail", args=[cn.pk]))
         self.assertEqual(response.status_code, 200)

@@ -79,15 +79,11 @@ def _product_map():
 
     stock_by_wh = {}
     totals = {}
-    for b in StockBalance.objects.values(
-        "product_id", "warehouse_id", "quantity_on_hand"
-    ):
-        stock_by_wh.setdefault(b["product_id"], {})[
-            str(b["warehouse_id"])
-        ] = str(b["quantity_on_hand"])
-        totals[b["product_id"]] = (
-            totals.get(b["product_id"], ZERO) + b["quantity_on_hand"]
+    for b in StockBalance.objects.values("product_id", "warehouse_id", "quantity_on_hand"):
+        stock_by_wh.setdefault(b["product_id"], {})[str(b["warehouse_id"])] = str(
+            b["quantity_on_hand"]
         )
+        totals[b["product_id"]] = totals.get(b["product_id"], ZERO) + b["quantity_on_hand"]
 
     return {
         p.pk: {
@@ -144,9 +140,7 @@ def _check_line_stock(formset, warehouse):
         quantity = form.cleaned_data.get("quantity")
         if product is None or quantity is None or quantity <= 0:
             continue
-        balance = StockBalance.objects.filter(
-            product=product, warehouse=warehouse
-        ).first()
+        balance = StockBalance.objects.filter(product=product, warehouse=warehouse).first()
         on_hand = balance.quantity_on_hand if balance else ZERO
         if quantity > on_hand:
             form.add_error(

@@ -301,7 +301,14 @@ class SalesOrderEntryTests(TestCase):
         self.assertFalse(SalesOrder.objects.filter(customer_reference="TEST-PO").exists())
 
     def test_order_line_within_stock_is_created(self):
-        f.seed_stock(self.product, self.warehouse, Decimal("5"), Decimal("10"), self.editor, "so-stock-check")
+        f.seed_stock(
+            self.product,
+            self.warehouse,
+            Decimal("5"),
+            Decimal("10"),
+            self.editor,
+            "so-stock-check",
+        )
         response = self.client.post(reverse("sales:so_create"), self._post_data(quantity="5"))
 
         self.assertEqual(response.status_code, 302)
@@ -309,7 +316,9 @@ class SalesOrderEntryTests(TestCase):
         self.assertEqual(order.lines.get().quantity, Decimal("5"))
 
     def test_product_map_exposes_on_hand_stock(self):
-        f.seed_stock(self.product, self.warehouse, Decimal("7"), Decimal("10"), self.editor, "map-stock")
+        f.seed_stock(
+            self.product, self.warehouse, Decimal("7"), Decimal("10"), self.editor, "map-stock"
+        )
         response = self.client.get(reverse("sales:so_create"))
 
         self.assertEqual(response.status_code, 200)

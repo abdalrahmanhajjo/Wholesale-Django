@@ -1,5 +1,5 @@
-# Runtime dependencies. Pinned to minor versions so all four machines and the
-# deployment target behave identically. Install with:
+# Runtime dependencies. Constrained to supported minor lines so patch-level
+# security and bug-fix releases are picked up consistently. Install with:
 #
 #     pip install -r requirements.txt
 #
@@ -7,5 +7,23 @@
 # in config/settings.py rather than a settings library, so there is no third
 # dependency to install, learn, or debug precedence rules for.
 
-Django==5.1.*
+Django==5.2.*
 psycopg[binary]==3.2.*
+# Required at runtime by Company.logo (ImageField), including production.
+Pillow==12.3.*
+# Only reached when Stripe is switched on (STRIPE_SECRET_KEY set). The import is
+# deliberately lazy and confined to apps/payments/stripe_gateway.py, so an
+# installation that has not run this file yet still boots and still posts
+# payments by hand - the Stripe screens report themselves unavailable instead of
+# taking the site down over a feature most deployments will not use.
+stripe==13.2.*
+
+# --- serving -------------------------------------------------------------
+# The WSGI server. `manage.py runserver` is a development tool and says so in
+# its own startup banner; it is single-threaded and does not belong in front of
+# real users.
+gunicorn==23.0.*
+# Lets the application serve its own static files with correct cache headers,
+# so a deployment needs no second process to be correct. Harmless behind nginx
+# or a CDN, which will simply answer first.
+whitenoise==6.12.*

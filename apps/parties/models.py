@@ -37,7 +37,10 @@ class PartyBase(TimeStampedModel):
         "core.Currency",
         on_delete=models.PROTECT,
         related_name="+",
-        help_text="Default transaction currency for this party (FTD-004).",
+        help_text=(
+            "Used on new documents for this party. Individual documents can "
+            "still be raised in another currency."
+        ),
     )
     payment_term = models.ForeignKey(
         "core.PaymentTerm", null=True, blank=True, on_delete=models.PROTECT, related_name="+"
@@ -148,7 +151,7 @@ class Vendor(PartyBase):
     def get_absolute_url(self):
         from django.urls import reverse
 
-        return reverse("parties:vendor_edit", args=[self.pk])
+        return reverse("parties:vendor_detail", args=[self.pk])
 
 
 # ---------------------------------------------------------------------------

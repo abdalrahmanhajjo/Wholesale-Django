@@ -8,6 +8,7 @@ from decimal import Decimal
 
 from django.db import models
 from django.db.models import F, Q
+from django.urls import reverse
 
 from apps.core.models import MONEY, PCT, QTY, TimeStampedModel
 
@@ -46,6 +47,9 @@ class UnitOfMeasure(models.Model):
     def __str__(self):
         return self.code
 
+    def get_absolute_url(self):
+        return reverse("catalog:unit_edit", args=[self.pk])
+
 
 class ProductCategory(models.Model):
     code = models.CharField(max_length=20, unique=True)
@@ -78,6 +82,9 @@ class ProductCategory(models.Model):
 
     def __str__(self):
         return self.name
+
+    def get_absolute_url(self):
+        return reverse("catalog:category_edit", args=[self.pk])
 
 
 class ProductType(models.TextChoices):
@@ -165,6 +172,9 @@ class Product(TimeStampedModel):
 
     def __str__(self):
         return f"{self.sku} {self.name}"
+
+    def get_absolute_url(self):
+        return reverse("catalog:product_detail", args=[self.pk])
 
 
 class PriceKind(models.TextChoices):

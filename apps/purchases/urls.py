@@ -1,4 +1,7 @@
-"""Purchase order and purchase bill routes (PUR-001, PUR-002, PUR-005..PUR-008). Purchase returns follow."""
+"""
+Purchase order, purchase bill, purchase return and vendor debit note routes
+(PUR-001, PUR-002, PUR-005..PUR-008, RET-005..RET-008).
+"""
 
 from django.urls import path
 
@@ -21,4 +24,24 @@ urlpatterns = [
     path("bills/<int:pk>/", views.PurchaseBillDetailView.as_view(), name="bill_detail"),
     path("bills/<int:pk>/edit/", views.PurchaseBillEditView.as_view(), name="bill_edit"),
     path("bills/<int:pk>/post/", views.PurchaseBillPostView.as_view(), name="bill_post"),
+    path("returns/", views.PurchaseReturnListView.as_view(), name="pr_list"),
+    path("returns/new/", views.PurchaseReturnCreateView.as_view(), name="pr_create"),
+    path("returns/<int:pk>/", views.PurchaseReturnDetailView.as_view(), name="pr_detail"),
+    path("returns/<int:pk>/edit/", views.PurchaseReturnEditView.as_view(), name="pr_edit"),
+    path("returns/<int:pk>/post/", views.PurchaseReturnPostView.as_view(), name="pr_post"),
+    path("debit-notes/", views.VendorDebitNoteListView.as_view(), name="dbn_list"),
+    path("debit-notes/new/", views.VendorDebitNoteCreateView.as_view(), name="dbn_create"),
+    path(
+        "debit-notes/<int:pk>/", views.VendorDebitNoteDetailView.as_view(), name="dbn_detail"
+    ),
+    path(
+        "debit-notes/<int:pk>/edit/",
+        views.VendorDebitNoteEditView.as_view(),
+        name="dbn_edit",
+    ),
+    path(
+        "debit-notes/<int:pk>/post/",
+        views.VendorDebitNotePostView.as_view(),
+        name="dbn_post",
+    ),
 ]

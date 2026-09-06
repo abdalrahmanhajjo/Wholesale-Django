@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% comment %}
+The frame every financial statement shares: a date control, an export, and the
+statement itself.
+
+Written once because the three statements differ in what they compute, not in
+how they are driven, and three copies of a date form is how they slowly stop
+behaving the same way. A child template supplies `date_controls` and
+`statement`.
+{% endcomment %}
+
+{% block actions %}
+  {% if perms.core.export_data %}
+    <a href="?{{ request.GET.urlencode }}{% if request.GET %}&{% endif %}export=csv" class="btn-ghost">
+      <svg class="icon" aria-hidden="true"><use href="#i-download"></use></svg>
+      <span>Export CSV</span>
+    </a>
+  {% endif %}
+  <button type="button" onclick="window.print()" class="btn-ghost">
+    <svg class="icon" aria-hidden="true"><use href="#i-printer"></use></svg>
+    <span>Print</span>
+  </button>
+{% endblock %}
+
+{% block content %}
+<form method="get" class="card card-pad mb-4 print:hidden">
+  <div class="flex flex-wrap items-end gap-3">
+    {% block date_controls %}{% endblock %}
+    <button type="submit" class="btn-primary">Update</button>
+  </div>
+  {% if periods %}
+    <div class="mt-4 flex flex-wrap items-center gap-2 border-t border-line pt-3">
+      <span class="eyebrow">Jump to</span>
+      {% for period in periods %}
+        <a href="{% block period_link %}{% endblock %}"
+           class="rounded border border-line px-2 py-1 text-xs transition-colors hover:border-brand hover:text-brand">{{ period.name }}</a>
+      {% endfor %}
+    </div>
+  {% endif %}
+</form>
+
+{% block statement %}{% endblock %}
+{% endblock %}

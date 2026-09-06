@@ -1,109 +1,20 @@
+{% load static %}
 {% comment %}
-The single source of truth for the visual design.
+The production CSS is compiled from static/src/app.css with the design tokens
+in tailwind.config.js. Run `npm run build:css` after changing either source or
+adding Tailwind classes to templates.
 
-Both `base.html` and the sign-in page include this, so a colour or type change
-is one edit rather than two that drift apart. Nothing else should define a
-colour: use the tokens and the component classes below.
-
-Tokens are taken from the approved Ledgerwise brand site
-(ledgerwise-wholesale.upfunding-6320.chatgpt.site), so the application and the
-brand read as one product.
-
-    navy        #07192d   sidebar ground
-    ink         #07172b   body text, primary buttons
-    green       #4bd27d   accent
-    green-dark  #1f7447   accent text on light grounds
-    mint        #edf9f1   accent surface
-    paper       #fbfcf9   page ground
-    line        #dce7e1   borders
-    radius      0.8rem
-
-Two deliberate departures from the brand site, both noted so they can be
-reversed if the designer disagrees:
-
-  * Headline weight is 900, not 950. The brand site specifies Aptos, which is
-    Microsoft's and is not on Google Fonts; Inter is the substitute and stops
-    at 900.
-  * Tracking is scaled to size (-0.06em on the large sign-in headline, -0.04em
-    on page titles) rather than the brand site's flat -0.075em. That value is
-    tuned for a 43px marketing hero; applied unchanged to a 30px page title
-    above a dense table it reads as cramped.
+Keeping compilation out of the browser removes the Tailwind Play CDN runtime
+from every Django page and makes the interface independent of third parties.
+Both the application shell and sign-in page include this partial.
 {% endcomment %}
-
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap">
-
-{# Tailwind Play CDN — right for this build, but a real deployment needs a
-   compiled stylesheet. On the Slice 7 hardening list. #}
-<script src="https://cdn.tailwindcss.com?plugins=forms"></script>
-<script>
-  tailwind.config = {
-    theme: {
-      extend: {
-        colors: {
-          ink:            '#07172b',
-          navy:           '#07192d',
-          'navy-2':       '#0b2943',
-          sidebar:        '#07192d',
-          brand:          '#4bd27d',
-          'brand-bright': '#66dc92',
-          'brand-deep':   '#1f7447',
-          'brand-tint':   '#edf9f1',
-          paper:          '#fbfcf9',
-          canvas:         '#fbfcf9',
-          cream:          '#f7f7f2',
-          line:           '#dce7e1',
-          'input-line':   '#d7e3dc',
-          'muted-bg':     '#f1f5f3',
-          'muted-fg':     '#667682',
-          danger:         '#dc2626',
-        },
-        fontFamily: {
-          sans: ['Inter', 'Segoe UI', 'system-ui', 'sans-serif'],
-        },
-        borderRadius: { xl2: '0.8rem' },
-      }
-    }
-  }
-</script>
-
-<style type="text/tailwindcss">
-  @layer components {
-    /* The shared component vocabulary. Use these rather than re-deriving
-       utility strings, so every module looks like the same product. */
-    .btn         { @apply inline-flex items-center justify-center gap-2 rounded-xl2 px-4 h-10 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none; }
-    .btn-primary { @apply btn bg-ink text-white hover:bg-navy-2; }
-    .btn-accent  { @apply btn bg-brand text-ink hover:bg-brand-bright; }
-    .btn-ghost   { @apply btn border border-line bg-white text-ink hover:bg-muted-bg; }
-    .btn-danger  { @apply btn bg-danger text-white hover:bg-danger/90; }
-    .btn-sm      { @apply h-8 px-3 text-xs rounded-lg; }
-
-    /* The page ground is near-white, so cards are separated by their border
-       and a soft lift rather than by a colour difference. */
-    .card        { @apply rounded-xl2 border border-line bg-white shadow-[0_1px_2px_rgba(7,23,43,.04),0_8px_24px_-18px_rgba(7,23,43,.25)]; }
-    .card-pad    { @apply p-5 sm:p-6; }
-    .card-title  { @apply text-base font-bold text-ink; }
-    .eyebrow     { @apply text-[11px] font-bold uppercase tracking-[0.14em] text-muted-fg; }
-
-    /* Display type. Tracking is tightened as size grows, not applied flat. */
-    .display     { @apply font-black tracking-[-0.04em]; }
-    .display-xl  { @apply font-black tracking-[-0.06em] leading-[1.05]; }
-
-    .field       { @apply block w-full rounded-xl2 border border-input-line bg-white px-3 h-10 text-sm text-ink placeholder:text-muted-fg focus:border-brand focus:ring-2 focus:ring-brand/30 focus:outline-none; }
-    .label       { @apply block text-sm font-semibold text-ink mb-1.5; }
-    .help        { @apply mt-1 text-xs text-muted-fg; }
-    .error-text  { @apply mt-1 text-xs font-medium text-danger; }
-
-    .badge         { @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide; }
-    .badge-draft   { @apply badge bg-muted-bg text-muted-fg; }
-    .badge-posted  { @apply badge bg-brand-tint text-brand-deep; }
-    .badge-partial { @apply badge bg-amber-50 text-amber-700; }
-    .badge-overdue { @apply badge bg-red-50 text-danger; }
-
-    .nav-link        { @apply flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-slate-300 transition-colors hover:bg-white/10 hover:text-white; }
-    .nav-link-active { @apply bg-white/10 text-white; }
-    .nav-group       { @apply px-3 pt-5 pb-1 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500; }
-  }
-</style>
+{% comment %}
+The font is fetched by the stylesheet, which the browser only parses after it
+has downloaded it — so without this the face is discovered one round trip late
+and the first paint is the fallback. Preloading it in parallel with the CSS is
+the difference between the heading arriving in Inter and arriving in Arial and
+changing. crossorigin is required even same-origin: fonts are always fetched in
+CORS mode, and a preload whose mode does not match is fetched twice.
+{% endcomment %}
+<link rel="preload" href="{% static 'fonts/inter-latin.woff2' %}" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="{% static 'css/app.css' %}">

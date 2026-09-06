@@ -1,0 +1,25 @@
+{% comment %}
+One purchase-return line, used both for existing rows and — via `empty_form`
+with __prefix__ substituted by JS — for a freshly added row.
+{% endcomment %}
+<tr data-pr-row class="border-b border-line last:border-0 {% if form.instance.pk and form.DELETE.value %}hidden{% endif %}">
+  {{ form.id }}
+  {{ form.bill_line }}
+  {{ form.receipt_line }}
+  <td class="px-3 py-2 align-top">
+    {{ form.product }}
+    {% for error in form.product.errors %}<p class="error-text">{{ error }}</p>{% endfor %}
+  </td>
+  <td class="px-3 py-2 align-top">
+    {{ form.quantity }}
+    {% for error in form.quantity.errors %}<p class="error-text">{{ error }}</p>{% endfor %}
+  </td>
+  <td class="px-3 py-2 align-top">{{ form.disposition }}</td>
+  <td class="px-3 py-2 align-top">{{ form.note }}</td>
+  <td class="px-3 py-2 text-right align-top">
+    <span class="hidden">{{ form.DELETE }}</span>
+    <button type="button" data-role="remove-line" class="text-xs font-semibold text-danger hover:underline">
+      Remove
+    </button>
+  </td>
+</tr>

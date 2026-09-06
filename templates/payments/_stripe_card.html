@@ -1,0 +1,75 @@
+{% comment %}
+PAY-013. Card payment for one invoice, from the staff side.
+
+Nothing here is customer-facing: a member of staff creates the link and passes
+it on. The card is only rendered when Stripe is configured, so an installation
+that does not use it never sees a dead button.
+
+The loudest thing on this card is deliberately the failure state. A checkout
+that was paid but never reached the ledger is money the business has and the
+books do not, and it stays visible until somebody clears it.
+{% endcomment %}
+<div class="card card-pad">
+  <p class="eyebrow">Card payment</p>
+
+  {% for checkout in stripe_checkouts %}
+    {% if checkout.needs_attention %}
+      <div class="mt-3 rounded border border-danger/40 bg-danger/5 p-3">
+        <p class="text-xs font-bold uppercase text-danger">Paid, not yet in the ledger</p>
+        <p class="mt-1 text-sm">
+          {{ checkout.amount_txn|floatformat:2 }} {{ checkout.currency_id }} was paid
+          {{ checkout.paid_at|date:"j M Y, H:i"|default:"recently" }}, but no receipt
+          could be posted:
+        </p>
+        <p class="mt-2 text-xs text-muted-fg">{{ checkout.settlement_error }}</p>
+        {% if perms.core.post_payment %}
+          <form method="post" action="{% url 'payments:stripe_settle' checkout.pk %}" class="mt-3">
+            {% csrf_token %}
+            <button type="submit" class="btn-primary w-full">Post the receipt now</button>
+          </form>
+        {% endif %}
+      </div>
+    {% elif checkout.payment_id %}
+      <div class="mt-3 border-l-2 border-line pl-3">
+        <p class="text-xs font-bold uppercase text-brand-deep">Paid</p>
+        <p class="mt-1 text-sm">
+          <a class="font-mono text-xs" href="{{ checkout.payment.get_absolute_url }}">{{ checkout.payment.number }}</a>
+          &middot; {{ checkout.amount_txn|floatformat:2 }} {{ checkout.currency_id }}
+        </p>
+        {% if checkout.fee_txn %}
+          <p class="text-xs text-muted-fg">Stripe kept {{ checkout.fee_txn|floatformat:2 }}</p>
+        {% endif %}
+      </div>
+    {% endif %}
+  {% endfor %}
+
+  {% if stripe_live %}
+    <div class="mt-3">
+      <p class="text-sm">A payment link is live for {{ stripe_live.amount_txn|floatformat:2 }} {{ stripe_live.currency_id }}.</p>
+      {# Not a plain link: staff send this to the customer rather than opening it. #}
+      <input type="text" readonly value="{{ stripe_live.url }}"
+             onclick="this.select()"
+             aria-label="Stripe payment link"
+             class="field mt-2 w-full font-mono text-xs">
+      <p class="mt-2 text-xs text-muted-fg">
+        {% if stripe_live.expires_at %}Expires {{ stripe_live.expires_at|date:"j M Y, H:i" }}.{% endif %}
+        The receipt posts by itself once the customer pays.
+      </p>
+    </div>
+  {% elif stripe_chargeable %}
+    {% if perms.core.post_payment %}
+      <form method="post" action="{% url 'payments:stripe_charge' invoice.pk %}" class="mt-3">
+        {% csrf_token %}
+        <button type="submit" class="btn-primary w-full">Create payment link</button>
+      </form>
+      <p class="mt-2 text-xs text-muted-fg">
+        Charges the {{ invoice.open_txn|floatformat:2 }} {{ invoice.currency_id }} still open.
+      </p>
+    {% endif %}
+  {% elif not stripe_checkouts %}
+    <p class="mt-3 text-sm text-muted-fg">
+      {% if invoice.open_txn <= 0 %}Nothing left to pay.
+      {% else %}This invoice has to be posted before it can be charged.{% endif %}
+    </p>
+  {% endif %}
+</div>

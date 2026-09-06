@@ -1,0 +1,54 @@
+{% comment %}
+The illustration beside the form: three bars settling on a plinth, and the
+badge that appears when they balance. Drawn rather than photographed, so it
+weighs nothing, stays sharp at any size, and needs no request.
+
+Decoration in full — aria-hidden, and hidden outright below xl, where the form
+column is the entire page and there is no room to spare beside it.
+
+The geometry is a plain isometric projection, x running right-down and y
+left-down at 30°, z straight up. Each solid draws three faces in the order
+back-to-front, with the top face lightest and the right-hand face darkest, so
+the light reads as coming from the upper left throughout.
+{% endcomment %}
+<div class="auth-art" aria-hidden="true">
+  <svg viewBox="62 104 296 292" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <filter id="art-soft" x="-40%" y="-40%" width="180%" height="180%">
+        <feGaussianBlur stdDeviation="14"/>
+      </filter>
+      <filter id="art-badge-shadow" x="-60%" y="-60%" width="220%" height="220%">
+        <feDropShadow dx="0" dy="8" stdDeviation="9" flood-color="#0d5c37" flood-opacity=".22"/>
+      </filter>
+      <linearGradient id="art-badge" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#5fdc98"/>
+        <stop offset="1" stop-color="#17a34a"/>
+      </linearGradient>
+    </defs>
+
+    <ellipse cx="205" cy="352" rx="116" ry="30" fill="#0f3d28" opacity=".10" filter="url(#art-soft)"/>
+
+    <polygon points="94.8,296.6 205.0,360.2 205.0,345.8 94.8,282.2" fill="#e5e5e5" stroke="#e5e5e5" stroke-width="5" stroke-linejoin="round"/>
+    <polygon points="315.2,296.6 205.0,360.2 205.0,345.8 315.2,282.2" fill="#d6d6d6" stroke="#d6d6d6" stroke-width="5" stroke-linejoin="round"/>
+    <polygon points="205.0,218.6 315.2,282.2 205.0,345.8 94.8,282.2" fill="#f7f7f7" stroke="#f7f7f7" stroke-width="5" stroke-linejoin="round"/>
+    <polygon points="85.5,282.2 205.0,351.2 205.0,338.0 85.5,269.0" fill="#f0f0f0" stroke="#f0f0f0" stroke-width="5" stroke-linejoin="round"/>
+    <polygon points="324.5,282.2 205.0,351.2 205.0,338.0 324.5,269.0" fill="#e5e5e5" stroke="#e5e5e5" stroke-width="5" stroke-linejoin="round"/>
+    <polygon points="205.0,200.0 324.5,269.0 205.0,338.0 85.5,269.0" fill="#ffffff" stroke="#ffffff" stroke-width="5" stroke-linejoin="round"/>
+
+    <polygon points="162.4,248.0 183.7,260.3 183.7,221.3 162.4,209.0" fill="#84d3a4" stroke="#84d3a4" stroke-width="4" stroke-linejoin="round"/>
+    <polygon points="205.0,248.0 183.7,260.3 183.7,221.3 205.0,209.0" fill="#75ba91" stroke="#75ba91" stroke-width="4" stroke-linejoin="round"/>
+    <polygon points="183.7,196.7 205.0,209.0 183.7,221.3 162.4,209.0" fill="#9ce6ba" stroke="#9ce6ba" stroke-width="4" stroke-linejoin="round"/>
+    <polygon points="191.0,264.5 212.3,276.8 212.3,207.8 191.0,195.5" fill="#2fba6e" stroke="#2fba6e" stroke-width="4" stroke-linejoin="round"/>
+    <polygon points="233.6,264.5 212.3,276.8 212.3,207.8 233.6,195.5" fill="#29a461" stroke="#29a461" stroke-width="4" stroke-linejoin="round"/>
+    <polygon points="212.3,183.2 233.6,195.5 212.3,207.8 191.0,195.5" fill="#4bce87" stroke="#4bce87" stroke-width="4" stroke-linejoin="round"/>
+    <polygon points="219.5,281.0 240.9,293.3 240.9,240.8 219.5,228.5" fill="#57c78c" stroke="#57c78c" stroke-width="4" stroke-linejoin="round"/>
+    <polygon points="262.2,281.0 240.9,293.3 240.9,240.8 262.2,228.5" fill="#4daf7b" stroke="#4daf7b" stroke-width="4" stroke-linejoin="round"/>
+    <polygon points="240.9,216.2 262.2,228.5 240.9,240.8 219.5,228.5" fill="#71daa3" stroke="#71daa3" stroke-width="4" stroke-linejoin="round"/>
+
+    <g filter="url(#art-badge-shadow)">
+      <circle cx="293" cy="163" r="33" fill="url(#art-badge)"/>
+      <path d="M280 163.5l9 9 17.5-18.5" stroke="#ffffff" stroke-width="4.5"
+            stroke-linecap="round" stroke-linejoin="round"/>
+    </g>
+  </svg>
+</div>

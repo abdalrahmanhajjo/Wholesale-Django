@@ -1,0 +1,1236 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ---------------------------------------------------------------------------
+   Type.
+
+   Inter v4, self-hosted. The stack used to be Aptos → Segoe UI → system-ui,
+   and neither of the first two exists outside Windows: the product rendered in
+   SF Pro on a Mac, Roboto on Android and Aptos on Windows, which is three
+   different sets of metrics and three different colours of grey text. It now
+   renders in one typeface everywhere, and that typeface arrives from this
+   origin — no Google Fonts request, for the same reason the Tailwind CDN
+   runtime was taken out.
+
+   One file per subset carries every weight and the optical-size axis, so the
+   whole product costs 73 kB of font and still has a real 100–900 range plus
+   `opsz`: at 44px the display cut tightens its spacing and thins its joins, at
+   13px the text cut opens up. `font-optical-sizing: auto` on <html> is what
+   turns that on; without it the variable font renders at one static optical
+   size and the display sizes look muddy.
+
+   Licence: SIL OFL 1.1, static/fonts/OFL.txt. Redistribution is permitted; the
+   licence file has to travel with the fonts, which is why it is committed too.
+--------------------------------------------------------------------------- */
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("../fonts/inter-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+    U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("../fonts/inter-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF,
+    U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020,
+    U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+/* The face the page is laid out in for the ~100ms before Inter arrives, with
+   its metrics overridden to match Inter's exactly. `font-display: swap` alone
+   shows the text immediately and then reflows the whole page when the real
+   font lands — every heading changes width and the layout jumps. Matched
+   metrics mean the swap is invisible: same line box, same wrap points, no
+   cumulative layout shift. The percentages are Inter-against-Arial and are not
+   guesses to be adjusted by eye. */
+@font-face {
+  font-family: "Inter Fallback";
+  src: local("Helvetica Neue"), local("Arial"), local("Liberation Sans");
+  size-adjust: 107.12%;
+  ascent-override: 90.49%;
+  descent-override: 22.56%;
+  line-gap-override: 0%;
+}
+
+/* ---------------------------------------------------------------------------
+   Focus.
+
+   Every interactive element previously used `outline-none` plus a 2px brand
+   ring. Brand green on white measures 1.94:1, so the only focus indicator in
+   the product failed WCAG 1.4.11 (3:1 for non-text) and left keyboard users
+   without a reliable "where am I". The ring is now ink (18:1 on white,
+   16.7:1 on the canvas) with a white offset so it reads on dark buttons too.
+
+   `--focus-ring` is the one place the colour is decided; the sidebar overrides
+   it to white because ink is invisible on navy.
+--------------------------------------------------------------------------- */
+@layer base {
+  /*
+   * `hidden` is an attribute, not a class, and its user-agent rule is
+   * display:none at the lowest possible specificity. Any utility that sets a
+   * display — and .btn sets inline-flex — beats it, so `el.hidden = true` did
+   * nothing to a button. The steps script relies on exactly that to keep Back
+   * off the first step and Save off every step but the last, and both were
+   * showing throughout.
+   */
+  [hidden] { display: none !important; }
+
+  :root {
+    --focus-ring: #07172b;
+    --focus-ring-offset: #ffffff;
+  }
+
+  :where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+    outline: 3px solid var(--focus-ring);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  /* Forced-colors mode replaces authored colours; keep a visible indicator. */
+  @media (forced-colors: active) {
+    :where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+      outline: 3px solid Highlight;
+    }
+  }
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex h-10 items-center justify-center gap-2 rounded-xl2 px-4 text-sm font-semibold transition-all duration-200 disabled:pointer-events-none disabled:opacity-50 active:scale-[.98];
+  }
+  .btn-primary { @apply btn bg-ink text-white hover:bg-navy-2; }
+  .btn-accent { @apply btn bg-brand text-ink hover:bg-brand-bright; }
+  .btn-ghost { @apply btn border border-input-line bg-white text-ink hover:bg-muted-bg; }
+  .btn-danger { @apply btn bg-danger text-white hover:bg-danger/90; }
+  /* 32px keeps the 24px minimum of WCAG 2.5.8 with room to spare. */
+  .btn-sm { @apply h-8 rounded-lg px-3 text-xs; }
+
+  .card {
+    @apply rounded-[18px] border border-line bg-white shadow-[0_1px_2px_rgba(7,26,47,.025),0_10px_30px_rgba(7,26,47,.035)];
+  }
+  .card-pad { @apply p-5 sm:p-6; }
+  .card-title { @apply text-base font-bold text-ink; }
+  /* Uppercase runs the curve the other way: caps have no ascenders or
+     descenders to separate them, so they need air rather than tightening. */
+  .eyebrow { @apply text-[11px] font-bold uppercase tracking-[0.14em] text-muted-fg; }
+
+  /* Section headings inside forms and detail cards. Same look as .eyebrow but
+     applied to real heading elements, so the page is navigable by heading. */
+  .section-heading { @apply text-[11px] font-bold uppercase tracking-[0.14em] text-muted-fg; }
+
+  /* -0.04em was set against a typeface that is not on this machine and was
+     never on most of them. Inter's curve flattens out around -0.022em at
+     display sizes; -0.028em is that plus a deliberate tightening, which is
+     what gives a headline its set-by-hand look without the letters touching. */
+  .display { @apply font-black tracking-[-0.028em]; }
+  .display-xl { @apply font-black leading-[1.03] tracking-[-0.034em]; }
+
+  .field {
+    @apply block h-10 w-full rounded-xl2 border border-input-line bg-white px-3 text-sm text-ink placeholder:text-muted-fg focus:border-ink;
+  }
+  /* aria-invalid is set by the a11y_field tag, so the styling and the
+     programmatic state can never disagree. */
+  .field[aria-invalid="true"] { @apply border-danger-strong bg-red-50/40; }
+  /* tracking(14) = -0.006em, inherited from body — nothing to add here. */
+  .label { @apply mb-1.5 block text-sm font-semibold text-ink; }
+  .label-optional { @apply ml-1 text-xs font-normal text-muted-fg; }
+  .help { @apply mt-1 text-[13px] leading-5 text-muted-fg; }
+  .error-text { @apply mt-1 flex items-start gap-1.5 text-[13px] font-medium leading-5 text-danger-strong; }
+
+  .badge {
+    @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide;
+  }
+  .badge-draft { @apply badge bg-muted-bg text-muted-fg; }
+  .badge-posted { @apply badge bg-brand-tint text-brand-deep; }
+  .badge-partial { @apply badge bg-amber-50 text-amber-800; }
+  .badge-overdue { @apply badge bg-red-50 text-danger-strong; }
+
+  /* -------------------------------------------------------------- messages */
+  /* Status is carried by the label word and the icon, not by colour alone
+     (WCAG 1.4.1). */
+  .alert { @apply flex items-start gap-3 rounded-xl2 border border-l-4 px-4 py-3; }
+  .alert-success { @apply alert border-line border-l-brand-deep bg-white; }
+  .alert-error { @apply alert border-red-200 border-l-danger-strong bg-red-50; }
+  .alert-warning { @apply alert border-amber-200 border-l-amber-600 bg-amber-50; }
+  .alert-info { @apply alert border-line border-l-muted-fg bg-white; }
+  .alert-title { @apply text-sm font-bold; }
+  .alert-body { @apply text-sm; }
+
+  /* --------------------------------------------------------------- sidebar */
+  .nav-link {
+    @apply relative flex min-h-[44px] items-center gap-3 rounded-xl px-3 text-sm
+           font-medium text-nav-fg transition-colors duration-200
+           hover:bg-white/[.06] hover:text-white;
+  }
+  /* The icon carries the hover, not the row. A whole row that lightens reads as
+     a button; an icon that brightens and edges over reads as a pointer, which
+     is what a nav row is. */
+  .nav-link .icon {
+    @apply text-nav-muted transition-[color,transform] duration-200;
+  }
+  .nav-link:hover .icon { @apply translate-x-px text-white; }
+
+  /* Active: a rail on the left edge rather than a filled pill. The fill alone
+     had to be strong enough to read at a glance, which made every active row
+     shout; a 2px rail is unmistakable at any weight of tint, so the tint can
+     stay quiet. */
+  .nav-link-active {
+    @apply bg-brand/[.10] font-semibold text-emerald-300;
+  }
+  .nav-link-active::before {
+    content: "";
+    @apply absolute left-0 top-1/2 h-5 w-[2px] -translate-y-1/2 rounded-r
+           bg-brand;
+  }
+  .nav-link-active .icon,
+  .nav-link-active:hover .icon { @apply text-emerald-300; }
+  /* Already where you are: nothing to travel to. */
+  .nav-link-active:hover { @apply bg-brand/[.14] text-emerald-300; }
+  .nav-link-active:hover .icon { @apply translate-x-0; }
+  /* Modules that exist in the model but have no screens yet. Announced as
+     disabled and given a visible reason instead of a hover-only title. */
+  .nav-link-pending {
+    @apply flex min-h-[40px] items-center gap-3 rounded-xl px-3 text-sm
+           font-medium text-nav-muted;
+  }
+  .nav-link-pending .icon { @apply text-nav-muted/60; }
+  /* Pushes the tag to the far edge without justify-between, which would have
+     spread the icon away from its label too. */
+  .nav-link-pending .nav-pending-tag { @apply ml-auto; }
+  .nav-pending-tag {
+    @apply rounded-md border border-white/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-nav-muted;
+  }
+  /* A hairline above the label rather than beneath it: the rule belongs to the
+     gap between groups, and drawing it under the words attaches it to the
+     wrong one. The first group in the list has no gap above it to divide. */
+  /* Now only the search results use this: that list is flat, so its rows need
+     labelling by the module they came from. The dividers went with the single
+     column - the rail separates modules now. */
+  .nav-group {
+    @apply mt-4 px-3 pb-1 pt-2 text-[10px] font-bold uppercase
+           tracking-[0.16em] text-nav-muted/90;
+  }
+  .nav-group:first-child { @apply mt-0 pt-1; }
+
+  /* ------------------------------------------------- collapsible sections */
+  /* <details>/<summary> rather than a div and a click handler: the element
+     already owns the disclosure, the keyboard and the expanded-state
+     announcement, and find-in-page can still reach a closed one. */
+  .nav-section > summary {
+    @apply flex cursor-pointer list-none items-center justify-between rounded-lg
+           transition-colors hover:text-nav-fg;
+  }
+  .nav-section > summary::-webkit-details-marker { display: none; }
+  .nav-section > summary:focus-visible {
+    @apply outline-none ring-2 ring-brand/70 ring-offset-2 ring-offset-sidebar;
+  }
+  .nav-group-caret { @apply text-nav-muted/70 transition-transform duration-200; }
+  .nav-section[open] > summary .nav-group-caret { @apply rotate-90; }
+
+  /* Height cannot be animated from `auto`, and a fixed max-height either clips
+     a long section or overshoots a short one. A grid row from 0fr to 1fr
+     animates to the content's own height, whatever that is. */
+  .nav-section-body {
+    @apply grid;
+    grid-template-rows: 1fr;
+  }
+  .nav-section:not([open]) .nav-section-body { grid-template-rows: 0fr; }
+  .nav-section-body > * { @apply min-h-0 overflow-hidden; }
+
+  .nav-subgroup {
+    @apply px-3 pb-1 pt-3 text-[10px] font-semibold uppercase
+           tracking-[.12em] text-nav-muted/70;
+  }
+  .nav-rows { @apply space-y-px; }
+  .nav-empty { @apply px-3 py-6 text-center text-xs text-nav-muted; }
+
+  /* --------------------------------------------------------- sidebar search */
+  .nav-search {
+    @apply mt-3 flex items-center gap-2 rounded-xl border border-white/10
+           bg-black/20 px-3 transition-colors focus-within:border-brand/40;
+  }
+  .nav-search .icon { @apply text-nav-muted; }
+  .nav-search-input {
+    @apply min-h-[38px] w-full border-0 bg-transparent p-0 text-sm text-white
+           placeholder:text-nav-muted focus:outline-none focus:ring-0;
+  }
+  .nav-search-input::-webkit-search-cancel-button { @apply hidden; }
+  .nav-kbd {
+    @apply rounded border border-white/15 px-1.5 py-0.5 font-mono text-[10px]
+           text-nav-muted;
+  }
+
+  /* ------------------------------------------------------- collapse control */
+  /* ---------------------------------------------------------- two tiers ---
+     A rail of modules beside a panel of one module's rows. The rail is the
+     only part that is always the same height as the sidebar; the panel
+     scrolls on its own so switching modules never moves the rail. */
+  .nav-shell { @apply flex min-h-0 flex-1; }
+
+  .nav-rail {
+    @apply flex w-[74px] shrink-0 flex-col items-center gap-0.5 overflow-y-auto
+           border-r border-white/[.07] py-3;
+    scrollbar-width: none;
+  }
+  .nav-rail::-webkit-scrollbar { display: none; }
+
+  /* Labelled, because eight abstract glyphs with hover-only names make a map
+     nobody can read without pointing at every landmark first. Nine pixels is
+     enough to recognise a word already known and small enough that the glyph
+     stays the thing being read. */
+  .nav-rail-btn {
+    @apply relative grid w-[62px] shrink-0 justify-items-center gap-1 rounded-xl
+           px-1 py-2 text-nav-muted transition-colors duration-200
+           hover:bg-white/[.07] hover:text-white;
+  }
+  .nav-rail-btn .icon { @apply h-[22px] w-[22px]; }
+  .nav-rail-label {
+    @apply w-full truncate text-center text-[9px] font-semibold uppercase
+           leading-none tracking-[0.06em];
+  }
+
+  /* Selected: the module whose rows are on screen. Moves as you click. */
+  .nav-rail-btn-selected {
+    @apply bg-brand/[.13] text-emerald-300 hover:bg-brand/[.16] hover:text-emerald-300;
+  }
+
+  /* Current: the module holding the page actually open. Does not move until
+     you navigate. Usually the same glyph as selected, and then the two read as
+     one; when you peek elsewhere the marker stays put and remains your way
+     back. A dot rather than a second bar, so it cannot be mistaken for the
+     selection. */
+  .nav-rail-btn-current::after {
+    content: "";
+    @apply absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-brand;
+  }
+  .nav-rail-btn-current.nav-rail-btn-selected::before {
+    content: "";
+    @apply absolute -left-[9px] top-1/2 h-7 w-[2px] -translate-y-1/2 rounded-r bg-brand;
+  }
+  .nav-rail-btn:focus-visible {
+    @apply outline-none ring-2 ring-brand/70 ring-offset-2 ring-offset-sidebar;
+  }
+
+  .nav-panel { @apply min-w-0 flex-1 overflow-y-auto px-2.5 pb-6 pt-3; }
+
+  /* A panel that swaps with no motion at all reads as a redraw rather than a
+     move, and the eye has to re-find the top of the list. The animation
+     re-runs on its own each time the element returns from display:none, so
+     nothing has to trigger it. Short enough not to be waited on. */
+  @keyframes nav-panel-in {
+    from { opacity: 0; transform: translateX(-4px); }
+    to   { opacity: 1; transform: none; }
+  }
+  .nav-panel-body:not([hidden]) { animation: nav-panel-in 180ms ease-out; }
+  @media (prefers-reduced-motion: reduce) {
+    .nav-panel-body:not([hidden]) { animation: none; }
+  }
+  /* Searching shows every module at once; the rail has nothing to select so it
+     steps back rather than lying about which module you are in. */
+  .nav-searching .nav-rail { @apply opacity-40; }
+  .nav-searching .nav-panel-title { @apply mt-4 first:mt-0; }
+  .nav-panel-title {
+    @apply px-3 pb-2 text-[11px] font-bold uppercase tracking-[0.16em] text-nav-muted/90;
+  }
+
+  /* ------------------------------------------------------------- surface --
+     Fixed, behind everything, and inert: it must never sit between a nav row
+     and the pointer. */
+  .app-sidebar { background-color: #071a2f; }
+  .app-sidebar::before {
+    content: "";
+    @apply pointer-events-none absolute inset-0 z-0;
+    background:
+      radial-gradient(120% 55% at 100% 0%, rgba(75, 210, 125, 0.10), transparent 62%),
+      radial-gradient(90% 40% at 0% 100%, rgba(75, 210, 125, 0.05), transparent 60%);
+  }
+  /* Everything else rides above it. */
+  .app-sidebar > * { @apply relative z-10; }
+
+  .nav-collapse-btn {
+    @apply ml-auto hidden h-8 w-8 shrink-0 place-items-center rounded-lg
+           text-nav-muted transition-colors hover:bg-white/10 hover:text-white
+           lg:grid;
+  }
+  .nav-collapse-btn .icon { @apply rotate-180 transition-transform duration-200; }
+
+  /* ----------------------------------------------------------- collapsed ---
+     Desktop only. The drawer on small screens is a different mechanism and
+     must not inherit any of this. */
+  @screen lg {
+    .sidebar-collapsed { width: 76px; }
+    .sidebar-collapsed .nav-brand-text,
+    .sidebar-collapsed .company-switcher span:not(:first-child),
+    .sidebar-collapsed .nav-search,
+    .sidebar-collapsed .nav-label,
+    .sidebar-collapsed .nav-group span,
+    .sidebar-collapsed .nav-subgroup,
+    .sidebar-collapsed .nav-group-caret,
+    .sidebar-collapsed .nav-user-text,
+    .sidebar-collapsed .nav-signout-label { @apply hidden; }
+    .sidebar-collapsed .nav-collapse-btn .icon { @apply rotate-0; }
+    .sidebar-collapsed .company-switcher { @apply justify-center px-0; }
+    /* Collapsed is the rail on its own. The panel was already one module at a
+       time; dropping it entirely leaves eight glyphs and their tooltips, which
+       is a better narrow mode than a column of cropped labels. */
+    .sidebar-collapsed .nav-panel { @apply hidden; }
+    .sidebar-collapsed .nav-rail { @apply w-full border-r-0; }
+
+    /* Label as a tooltip, from the same attribute the search filter reads. */
+    .sidebar-collapsed .nav-link::after {
+      content: attr(data-label);
+      @apply pointer-events-none absolute left-full z-50 ml-2 hidden
+             whitespace-nowrap rounded-lg bg-navy-2 px-2.5 py-1.5 text-xs
+             font-medium text-white shadow-lg ring-1 ring-white/10;
+    }
+    .sidebar-collapsed .nav-link:hover::after,
+    .sidebar-collapsed .nav-link:focus-visible::after { @apply block; }
+  }
+
+  /* Sidebar rows are 40px and sit against a dark ground, so the page-wide
+     focus ring is both too tight and too dim here. */
+  .nav-link:focus-visible,
+  .nav-link-pending:focus-visible {
+    @apply outline-none ring-2 ring-brand/70 ring-offset-2 ring-offset-sidebar;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .nav-link .icon { @apply transition-none; }
+    .nav-link:hover .icon { @apply translate-x-0; }
+  }
+
+
+  /* ============================================================ icons ==== */
+  /* One size, one stroke weight, aligned to the text it sits beside. */
+  .icon { @apply h-[1.15em] w-[1.15em] shrink-0; }
+  .icon-lg { @apply h-5 w-5; }
+
+  /* ======================================================== back link ==== */
+  .back-link {
+    @apply inline-flex min-h-[36px] items-center gap-1.5 rounded-lg px-2 py-1
+           text-sm font-semibold text-muted-fg transition-colors
+           hover:bg-muted-bg hover:text-ink;
+  }
+  .back-link .icon { @apply transition-transform; }
+  .back-link:hover .icon { @apply -translate-x-0.5; }
+
+  /* ==================================================== field feedback === */
+  .field-wrap { @apply flex flex-col; }
+  .field-live { @apply mt-1 flex items-start gap-1.5 text-[13px] leading-5; }
+  .field-live:empty { @apply hidden; }
+  .field-live-error { @apply font-medium text-danger-strong; }
+  .field-live-ok { @apply text-brand-deep; }
+
+  /* ========================================================= combobox ==== */
+  .combo { @apply relative; }
+  /* The native select stays in the DOM and keeps submitting the value; it is
+     only removed from view and from the tab order. */
+  .combo-native {
+    @apply absolute h-px w-px overflow-hidden opacity-0;
+    clip: rect(0 0 0 0);
+  }
+  .combo-list {
+    @apply absolute z-40 mt-1.5 max-h-72 w-full overflow-y-auto overscroll-contain
+           rounded-xl2 border border-line bg-white p-1
+           shadow-[0_1px_2px_rgba(7,26,47,.04),0_16px_40px_rgba(7,26,47,.16)];
+    scrollbar-width: thin;
+  }
+  .combo-option {
+    @apply relative cursor-pointer rounded-lg px-3 py-2 text-sm text-ink;
+  }
+  .combo-option:hover { @apply bg-muted-bg; }
+  /* The keyboard position is a stronger mark than hover, so the two are
+     distinguishable when the pointer happens to rest on another row. */
+  .combo-option.is-active { @apply bg-ink text-white; }
+  .combo-option.is-active .combo-option-detail { @apply text-slate-300; }
+  .combo-option.is-active mark { @apply bg-white/25 text-white; }
+  .combo-option[aria-selected="true"] .combo-option-label { @apply text-brand-deep; }
+  .combo-option[aria-selected="true"]::after {
+    content: "✓";
+    @apply absolute right-3 top-2 text-xs font-bold text-brand-deep;
+  }
+  .combo-option.is-active[aria-selected="true"]::after { @apply text-white; }
+  /* What was typed, marked inside each result. */
+  .combo-option mark { @apply rounded bg-brand-tint px-0.5 font-semibold text-brand-deep; }
+  .combo-empty { @apply px-3 py-4 text-sm text-muted-fg; }
+  .combo-foot {
+    @apply mt-1 flex items-center justify-between gap-3 border-t border-line
+           px-3 pb-1 pt-2 text-[11px] text-muted-fg;
+  }
+  .combo-key {
+    @apply rounded border border-line bg-muted-bg px-1 font-mono text-[10px] text-ink;
+  }
+  .combo-input { @apply pr-9; }
+  /* A search field should look like one. */
+  .combo::after {
+    content: "";
+    @apply pointer-events-none absolute right-3 top-3 h-4 w-4 bg-muted-fg;
+    -webkit-mask: var(--combo-icon) center / contain no-repeat;
+    mask: var(--combo-icon) center / contain no-repeat;
+  }
+  .combo { --combo-icon: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='M21 21l-4.2-4.2'/%3E%3C/svg%3E"); }
+
+  /* ================================================== buttons: busy ===== */
+  .btn.is-busy { @apply cursor-progress opacity-90; }
+  .spinner {
+    @apply inline-block h-3.5 w-3.5 shrink-0 rounded-full border-2 border-current
+           border-r-transparent align-[-2px];
+    animation: spin .7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ==================================================== alert dismiss === */
+  .alert { @apply relative; }
+  .alert-close {
+    @apply ml-auto grid h-7 w-7 shrink-0 place-items-center rounded-lg
+           text-current opacity-60 transition-opacity hover:opacity-100;
+  }
+
+  /* =================================================== nav progress ===== */
+  .nav-progress {
+    @apply pointer-events-none fixed inset-x-0 top-0 z-50 h-[3px] bg-transparent;
+  }
+  .nav-progress.is-running::after {
+    @apply absolute inset-y-0 left-0 bg-brand-deep;
+    content: "";
+    animation: nav-progress 2.2s cubic-bezier(.2,.8,.3,1) forwards;
+  }
+  @keyframes nav-progress {
+    0%   { width: 0; }
+    60%  { width: 72%; }
+    100% { width: 92%; }
+  }
+
+  /* ======================================================== skeleton ==== */
+  .skeleton {
+    @apply rounded-lg bg-muted-bg;
+    background-image: linear-gradient(90deg, transparent, rgba(255,255,255,.65), transparent);
+    background-size: 200% 100%;
+    animation: shimmer 1.4s ease-in-out infinite;
+  }
+  @keyframes shimmer { to { background-position: -200% 0; } }
+
+  /* ================================================ responsive tables === */
+  /* Below sm a wide table stops being a table and becomes one card per record,
+     each cell labelled by the column header carried in data-label. Scrolling a
+     twelve-column grid sideways on a phone is not reading. */
+  @media (max-width: 639px) {
+    .table-stack thead { @apply sr-only; }
+    .table-stack tbody tr {
+      @apply mb-3 block rounded-xl2 border border-line bg-white p-3;
+    }
+    .table-stack tbody td {
+      @apply flex items-baseline justify-between gap-4 border-0 px-0 py-1.5 text-left;
+    }
+    .table-stack tbody td::before {
+      content: attr(data-label);
+      @apply shrink-0 text-[11px] font-bold uppercase tracking-wide text-muted-fg;
+    }
+    .table-stack tbody td:empty { @apply hidden; }
+    .table-stack tfoot td, .table-stack tfoot th { @apply block text-right; }
+  }
+
+
+  /* ============================================== order lines on mobile == */
+  /*
+   * A twelve-column editable grid cannot be filled in on a phone by scrolling
+   * sideways: the column header leaves the screen before the input does, so
+   * you are typing into an unlabelled box. Below the md breakpoint each row
+   * becomes a card, each control gets its column name as a visible label above
+   * it, and the three computed figures group into one strip at the bottom.
+   *
+   * The markup does not change — the same <table> serves both — so sorting,
+   * the formset indexes and the server contract are untouched.
+   */
+  @media (max-width: 767px) {
+    .lines-stack, .lines-stack tbody, .lines-stack tfoot { @apply block; }
+    .lines-stack thead { @apply sr-only; }
+
+    .lines-stack tbody tr {
+      @apply mb-3 block rounded-xl2 border border-line bg-white p-4 shadow-[0_1px_2px_rgba(7,26,47,.04)];
+    }
+    .lines-stack tbody tr[hidden] { @apply hidden; }
+
+    .lines-stack .line-cell {
+      @apply block w-full border-0 px-0 py-1.5 text-left;
+    }
+    .lines-stack .line-cell::before {
+      content: attr(data-label);
+      @apply mb-1 block text-[11px] font-bold uppercase tracking-[0.08em] text-muted-fg;
+    }
+    .lines-stack .line-cell[data-label=""]::before { @apply hidden; }
+
+    /* The line number heads the card rather than sitting in a column. */
+    .lines-stack .line-cell-number {
+      @apply mb-2 border-b border-line pb-2;
+    }
+    .lines-stack .line-cell-number::before { @apply inline-block mb-0 mr-2; }
+    .lines-stack .line-cell-number .line-number {
+      @apply text-sm font-bold text-ink;
+    }
+
+    /* Gross, tax and total read as a summary, not as three more form rows. */
+    .lines-stack .line-cell-computed {
+      @apply flex items-baseline justify-between gap-4 py-1 text-right;
+    }
+    .lines-stack .line-cell-computed::before { @apply mb-0 self-center; }
+
+    .lines-stack .line-cell-action {
+      @apply mt-2 border-t border-line pt-3 text-left;
+    }
+    .lines-stack .line-cell-action .btn { @apply w-full; }
+
+    .lines-stack tfoot tr { @apply block rounded-xl2 border border-line bg-muted-bg p-4; }
+    .lines-stack tfoot th, .lines-stack tfoot td {
+      @apply flex items-baseline justify-between gap-4 border-0 px-0 py-1 text-right;
+    }
+    .lines-stack tfoot td:empty { @apply hidden; }
+    .lines-stack tfoot td[data-label]::before {
+      content: attr(data-label);
+      @apply text-[11px] font-bold uppercase tracking-[0.08em] text-muted-fg;
+    }
+
+    /* The wrapper no longer needs to scroll, so it must not trap focus either. */
+    .lines-stack-wrap { @apply overflow-visible; }
+  }
+
+
+  /* ========================================================= form shell === */
+  /*
+   * One layout for every form in the product: a stack of sections, each a card
+   * with a heading and a two-column grid that collapses to one below sm. The
+   * grid is declared once here rather than repeated as utility classes on each
+   * template, so column behaviour cannot drift between screens.
+   */
+  .form-shell { @apply mx-auto flex w-full flex-col gap-4; }
+  /* Not overflow-hidden: a suggestion list is positioned inside the section and
+     was being cut off at the card's edge — the list showed three of five
+     matches with the rest clipped away. The header's border is rounded by the
+     card instead. */
+  .form-section { @apply card; }
+  .form-section-head {
+    @apply flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1
+           border-b border-line px-5 py-4 sm:px-6;
+  }
+  .form-section-title { @apply text-base font-bold text-ink; }
+  .form-section-hint { @apply w-full text-sm text-muted-fg; }
+  .form-section-body { @apply grid gap-x-5 gap-y-4 p-5 sm:grid-cols-2 sm:p-6; }
+  .form-section-body-1 { @apply sm:grid-cols-1; }
+  .form-section-body-3 { @apply sm:grid-cols-2 lg:grid-cols-3; }
+  /* Long text should not be forced into half a row. */
+  .field-wide { @apply sm:col-span-2; }
+  .form-actions {
+    @apply sticky bottom-0 z-10 -mx-1 flex flex-wrap items-center gap-3
+           border-t border-line bg-canvas/95 px-1 py-4 backdrop-blur;
+  }
+  .form-actions-hint { @apply basis-full text-sm text-muted-fg sm:basis-auto; }
+
+  /* ==================================================== labels ========== */
+  /*
+   * Labels sit above their field, not inside it.
+   *
+   * A floating label and a placeholder compete for the same pixels. This form
+   * needs the placeholder — it carries the expected format, "+961 71 234 567",
+   * "CUST-0001" — so the label has to move out of the way permanently rather
+   * than on focus. A textarea made it plainest: the label printed straight over
+   * "Street, city, country" and neither could be read.
+   *
+   * Static labels are also the more accessible choice. They never collide with
+   * the value, they survive zoom and translation, and they stay visible while
+   * the field is being filled, which is when a long label matters most.
+   */
+  /* ======================================================= field states === */
+  .field-wrap.is-error   .field { @apply border-danger-strong bg-red-50/40; }
+  .field-wrap.is-warning .field { @apply border-amber-600; }
+  .field-wrap.is-ok      .field { @apply border-brand-deep; }
+  .field-wrap.is-error   > .label { @apply text-danger-strong; }
+  .field-wrap.is-warning > .label { @apply text-amber-800; }
+  .field:disabled, .field[readonly] {
+    @apply cursor-not-allowed border-line bg-muted-bg text-muted-fg;
+  }
+  /* A read-only field still submits its value, which is why it is used instead
+     of disabled wherever the server requires the field. */
+
+  .field-live-warning { @apply font-medium text-amber-900; }
+  .field-live-info { @apply text-muted-fg; }
+
+  /* A value the system filled in announces itself briefly, then settles. */
+  .field-wrap.is-prefilled .field {
+    animation: prefill-flash 1.4s ease-out;
+  }
+  @keyframes prefill-flash {
+    0%   { background-color: #edf9f1; border-color: #1f7447; }
+    100% { background-color: #fff; }
+  }
+
+  /* ============================================== currency adornment ===== */
+  /* The currency sits inside the input, so it is anchored to a wrapper around
+     the control alone. Anchored to .field-wrap it fell to the bottom of the
+     whole group — under the help text and the validation message. */
+  .field-control { @apply relative block; }
+  .field-adornment {
+    @apply pointer-events-none absolute inset-y-0 left-3 flex items-center
+           text-sm font-semibold text-muted-fg;
+  }
+  .field-with-adornment { @apply pl-12 text-right tabular-nums; }
+
+  /* ============================================ suggestion list detail === */
+  .combo-option { @apply flex flex-col gap-0.5; }
+  .combo-option-label { @apply text-sm font-medium text-ink; }
+  .combo-option-detail { @apply text-xs text-muted-fg; }
+  .combo-heading {
+    @apply px-3 pb-1 pt-2 text-[10px] font-bold uppercase tracking-[0.12em] text-muted-fg;
+  }
+  .combo-list { animation: combo-in .12s ease-out; }
+  .combo-list.is-loading { @apply opacity-60; }
+  @keyframes combo-in {
+    from { opacity: 0; transform: translateY(-3px); }
+    to   { opacity: 1; transform: none; }
+  }
+
+  /* ==================================================== step navigation == */
+  /*
+   * Only the sales order is long enough to earn steps. Everything else is short
+   * enough that splitting it would add clicks without removing any confusion.
+   * The steps are sections of one form, shown and hidden — never separate
+   * requests — so nothing is submitted until the whole document is complete and
+   * the browser back button still leaves the page rather than losing the work.
+   */
+  .steps { @apply flex flex-wrap gap-2 border-b border-line pb-4; }
+  .step {
+    @apply flex flex-1 items-center gap-2.5 rounded-xl2 border border-line
+           bg-white px-3 py-2.5 text-left transition-colors;
+  }
+  .step:hover { @apply bg-muted-bg; }
+  .step-index {
+    @apply grid h-6 w-6 shrink-0 place-items-center rounded-full border
+           border-input-line text-[11px] font-bold text-muted-fg;
+  }
+  .step-label { @apply text-sm font-semibold text-ink; }
+  .step-note { @apply block text-[11px] font-normal text-muted-fg; }
+  .step[aria-current="step"] { @apply border-ink bg-ink text-white; }
+  .step[aria-current="step"] .step-label { @apply text-white; }
+  .step[aria-current="step"] .step-note { @apply text-slate-300; }
+  .step[aria-current="step"] .step-index { @apply border-white/40 text-white; }
+  .step.is-complete .step-index { @apply border-brand-deep bg-brand-tint text-brand-deep; }
+  .step.is-invalid .step-index { @apply border-danger-strong text-danger-strong; }
+
+  .step-panel { animation: step-in .18s ease-out; }
+  @keyframes step-in {
+    from { opacity: 0; transform: translateX(6px); }
+    to   { opacity: 1; transform: none; }
+  }
+
+  /* ================================================== saved confirmation = */
+  .save-tick { animation: tick-in .32s cubic-bezier(.2,.9,.3,1.2); }
+  @keyframes tick-in {
+    0%   { transform: scale(.6); opacity: 0; }
+    100% { transform: scale(1);  opacity: 1; }
+  }
+
+
+  /* ================================================ order lines ======== */
+  /*
+   * Seven columns, not twelve, because the fields are not equally important.
+   * Related pairs share a cell with the secondary control beneath the primary
+   * one — description under product, unit under quantity, discount under price
+   * — which gives the product search real width instead of the seventy pixels
+   * that produced "search produ".
+   *
+   * The sub-labels are for the stacked layout, where there is no column header
+   * to read from; at md and up the header says it and they are hidden.
+   */
+  .line-sub { @apply block; }
+  .line-sub + .line-sub { @apply mt-1.5; }
+  .line-sub-label { @apply mb-1 block text-[11px] font-semibold text-muted-fg; }
+  .line-sub-secondary .field { @apply h-8 text-[13px] text-muted-fg; }
+  .line-sub-secondary .field:focus { @apply text-ink; }
+
+  .line-total-main { @apply block text-sm font-bold text-ink; }
+  .line-total-parts { @apply mt-0.5 block text-[11px] text-muted-fg; }
+
+  @media (min-width: 768px) {
+    /* Narrower than the twelve-column version needed, so it fits more screens
+       before the region has to scroll. */
+    .lines-stack { min-width: 58rem; }
+    /* The column header names the first control in a cell, so its label is
+       hidden — but nothing names the second one. "0" sitting under a unit price
+       could be anything; it is the discount. The secondary label stays
+       visible, small and muted. */
+    .lines-stack .line-sub .line-sub-label { @apply sr-only; }
+    .lines-stack .line-sub-secondary .line-sub-label {
+      @apply not-sr-only mb-0.5 block text-[10px] font-semibold uppercase
+             tracking-[0.06em] text-muted-fg;
+    }
+    .lines-stack td .field { @apply w-full min-w-0 px-2 text-[13px]; }
+
+    .lines-stack .line-cell-number { width: 3.5rem; }
+    .lines-stack .line-cell-item   { width: 34%; }
+    .lines-stack .line-cell-qty    { width: 12%; }
+    .lines-stack .line-cell-price  { width: 15%; }
+    .lines-stack .line-cell-tax    { width: 15%; }
+    .lines-stack .line-cell-total  { width: 13%; }
+    .lines-stack .line-cell-action { width: 6.5rem; }
+
+    /* Inside a cell there is no room for a decorative magnifier, and it was
+       printing over the placeholder. */
+    .lines-stack .combo::after { @apply hidden; }
+    .lines-stack .combo-input { @apply pr-2; }
+    /* The list is positioned against a narrow cell, so it needs a floor of its
+       own or every option wraps onto two lines and the list is unreadable. */
+    .lines-stack .combo-list { min-width: 18rem; }
+  }
+
+  /* ==================================================== list toolbar ==== */
+  /*
+   * A grid, not wrapped flex. The search box carries help text under it, which
+   * made it taller than its neighbours, and `flex-1` then pushed the filters
+   * onto their own row — search on one line, status and dates on the next.
+   * A grid keeps every control on the same baseline whatever sits beneath it.
+   */
+  .toolbar {
+    @apply grid gap-x-4 gap-y-3 border-b border-line p-4 sm:p-5;
+    grid-template-columns: 1fr;
+  }
+  @media (min-width: 640px) {
+    .toolbar {
+      grid-template-columns: minmax(14rem, 1.6fr) repeat(auto-fit, minmax(9rem, 1fr)) max-content;
+      align-items: start;
+    }
+  }
+  .toolbar-field { @apply flex min-w-0 flex-col; }
+  /* The buttons align with the inputs, not with the labels above them. */
+  .toolbar-actions { @apply flex flex-wrap items-center gap-2 sm:pt-[1.6rem]; }
+  .toolbar .help { @apply mt-1; }
+
+
+  /* ================================================= grouped sections === */
+  /*
+   * Several related groups inside one card, instead of a card each.
+   *
+   * Step 3 of the sales order held addresses, the document discount and notes
+   * in three separate cards — six fields spread over three panels, each with
+   * its own border and heading, while steps 1 and 2 are a single card apiece.
+   * A rule between groups separates them just as well as a gap between cards
+   * and costs a fraction of the height.
+   */
+  .form-group { @apply px-5 py-5 sm:px-6; }
+  .form-group + .form-group { @apply border-t border-line; }
+  .form-group-title { @apply text-sm font-bold text-ink; }
+  .form-group-hint { @apply mt-0.5 text-sm text-muted-fg; }
+  .form-group-body { @apply mt-4 grid gap-x-5 gap-y-4 sm:grid-cols-2; }
+  .form-group-body-3 { @apply mt-4 grid gap-x-5 gap-y-4 sm:grid-cols-2 lg:grid-cols-3; }
+
+  /* A control that cannot apply yet says so rather than sitting there enabled
+     and inert. */
+  .field:disabled + .field-note, .field-note { @apply mt-1 text-[13px] text-muted-fg; }
+
+
+  /* ==================================================== auth pages ====== */
+  /*
+   * Sign in, create an account, and the four reset steps. They share a shell
+   * of their own rather than the application's: there is no navigation to show
+   * before authentication and no company context to read.
+   */
+  /* Not white. The panel is white, and a white card on a white page has only
+     its border to be seen by; on this faint grey the card is a card. */
+  /* Not white. The panel is white, and a white card on a white page has only
+     its border to be seen by; on this faint grey the card is a card. */
+  /* Proportional figures, against the ledger's tabular default: there are two
+     numbers on these pages — "256-bit" and "+2.5K" — and tabular widths set
+     them in a column that has nothing to line up with, which reads as a gap
+     rather than as typesetting. */
+  .auth-body {
+    @apply bg-[#f6f8f7] font-sans text-ink antialiased;
+    font-feature-settings: "calt" 1;
+  }
+
+  /* Above the decoration, which is fixed behind everything at z-0. Both layers
+     are given a stacking position explicitly rather than relying on a negative
+     z-index and background propagation, which is correct until the day someone
+     puts a background on <html>. min-h-dvh rather than min-h-screen: on mobile
+     Safari the toolbar makes 100vh taller than the visible area, which would
+     push the panel under the chrome. */
+  .auth-shell {
+    @apply relative z-10 mx-auto flex min-h-dvh w-full max-w-[82rem] flex-col
+           justify-center gap-y-14 px-5 py-12 sm:py-16;
+  }
+
+  /* Three columns at xl, and the outer two are 1fr each — equal, so the form
+     column sits on the centre line of the viewport whatever the sides hold.
+     Sized columns (15.5rem and 20rem) put the form 36px left of centre, which
+     is exactly far enough to look like a mistake and not far enough to look
+     deliberate. */
+  .auth-stage {
+    @apply grid items-center gap-y-14 xl:grid-cols-[1fr_35rem_1fr] xl:gap-x-10;
+  }
+  .auth-column { @apply mx-auto w-full max-w-[35rem] xl:order-2; }
+
+  .auth-lockup {
+    @apply mb-9 flex items-center justify-center gap-3.5 rounded-xl2 no-underline;
+  }
+  .auth-wordmark strong {
+    @apply block text-[19px] font-black leading-tight tracking-[-.016em] text-ink;
+  }
+  .auth-wordmark small {
+    @apply block text-[10.5px] font-semibold uppercase tracking-[.16em] text-muted-fg;
+  }
+
+  /* The reassurance in the corner of the page rather than in the form's way.
+     Below lg it goes: at that width it would either crowd the lockup or push
+     the whole task down a line, and it is reassurance, not instruction. */
+  .auth-corner { @apply absolute right-6 top-9 hidden items-center gap-2.5 lg:flex; }
+  .auth-corner .icon { @apply h-[22px] w-[22px] text-brand-accent; }
+  .auth-corner strong { @apply block text-[13px] font-bold leading-5 text-brand-deep; }
+  .auth-corner small { @apply block text-xs leading-4 text-muted-fg; }
+
+  /* A greeting, on the pages that greet. */
+  .auth-eyebrow { @apply text-center text-[15px] font-bold tracking-[-.009em] text-ink; }
+
+  /* One glyph saying which of the six pages this is, on the pages that label
+     rather than greet. The halo is a wider ring of the same tint, so the mark
+     sits in the page rather than on it. */
+  /* A mint disc, not brand-tint: #edf9f1 was picked to read on white, and the
+     page is no longer white — against #f6f8f7 it vanished and left the glyph
+     floating. This is the same hue carried far enough to still be a disc. */
+  .auth-badge {
+    @apply mx-auto grid h-12 w-12 place-items-center rounded-full bg-[#e0f5e9]
+           text-brand-accent ring-8 ring-[#ecfaf2];
+  }
+  .auth-badge .icon { @apply h-[22px] w-[22px]; }
+
+  /* The accent word is <em> with the italics taken off: it is emphasis, and it
+     should still be emphasis with the stylesheet gone. */
+  .auth-heading {
+    @apply display mt-3 text-center text-[2.125rem] leading-[1.05] tracking-[-.028em]
+           sm:text-[3rem];
+  }
+  /* A glyph needs more air under it than a line of type does. */
+  .auth-badge + .auth-heading { @apply mt-6; }
+  .auth-heading em { @apply not-italic text-brand-accent; }
+  .auth-intro {
+    @apply mx-auto mt-3.5 max-w-[32rem] text-center text-[15px] leading-[1.6]
+           tracking-[-.009em] text-muted-fg;
+  }
+
+  /* The panel is where the task is, so it is the one bounded surface on the
+     page: it says where the work starts and stops. It carries a shadow again
+     now that the page behind it is not white. */
+  .auth-panel {
+    @apply relative mt-8 overflow-hidden rounded-[20px] border border-line bg-white
+           p-6 shadow-[0_2px_4px_rgba(7,26,47,.03),0_26px_60px_-26px_rgba(7,26,47,.16)]
+           sm:p-10;
+  }
+  /* The beam: two sides of an entry settling level, which is the one thing
+     that is true of this product and almost nothing else. It survives from the
+     old illustration because it is the part that still reads at this size. */
+  .auth-panel::before {
+    content: "";
+    @apply absolute inset-x-0 top-0 h-0.5;
+    background: linear-gradient(
+      90deg,
+      rgba(57,216,137,0) 0%,
+      rgba(57,216,137,.55) 22%,
+      #39d889 50%,
+      rgba(57,216,137,.55) 78%,
+      rgba(57,216,137,0) 100%
+    );
+  }
+
+  .auth-form { @apply space-y-[22px]; }
+
+  /* The row that carries the label and its escape hatch, so "forgot your
+     password?" sits where the problem is felt rather than at the foot of the
+     page. Underlined on hover only: at rest it is one of two things on the
+     line and does not need to shout over the label. */
+  .auth-label-row { @apply mb-2 flex items-baseline justify-between gap-3; }
+  .auth-label-row .label { @apply mb-0; }
+  .auth-label-row a {
+    @apply text-[13.5px] font-semibold text-brand-deep no-underline
+           underline-offset-2 hover:underline;
+  }
+
+  /* An aside about the process rather than the form, so it sits outside the
+     panel — and in the flow, where a screen reader and a phone both reach it. */
+  .auth-note {
+    @apply mt-4 flex items-start gap-2.5 rounded-xl2 border border-line
+           bg-white/80 px-4 py-3 text-[13px] leading-5 text-muted-fg;
+  }
+  .auth-note .icon { @apply mt-px h-4 w-4 shrink-0 text-brand-deep; }
+
+  .auth-footer { @apply mt-7 space-y-2 text-center text-sm text-muted-fg; }
+  /* brand-deep rather than the heading's brand-accent: this is 14px, so it owes
+     4.5:1 (7.0:1) where the 44px heading owes 3:1. */
+  .auth-footer a { @apply font-semibold text-brand-deep underline underline-offset-2; }
+
+  /* The submit: full width, because there is only ever one thing to do here.
+     The arrow leans on hover — the whole of the motion this page has. */
+  .auth-submit { @apply h-[52px] w-full rounded-[12px] text-[15px] tracking-[-.009em]; }
+  .auth-submit .icon { @apply h-[18px] w-[18px] transition-transform; }
+  .auth-submit:hover .icon { @apply translate-x-0.5; }
+  /* The busy state swaps the label for a spinner, and the arrow goes with it. */
+  .auth-submit.is-busy .icon { @apply text-white; }
+
+  /* An icon inside the box, and room made for it. A password field also holds
+     the reveal button, so it gets room on the right as well.
+
+     Both are positioned against .auth-control, which wraps the input alone.
+     Anchoring them to the field-wrap instead put them at the bottom of
+     everything below the input too — help text, the strength meter, the rules
+     list — which is where they drifted to as those were added. */
+  /* Both are positioning contexts. .auth-control is the one the button wants —
+     it wraps the input alone. .auth-field is kept positioned as a backstop:
+     it still exists on every field group, and an absolutely positioned control
+     that lands on it must not escape to .auth-panel, which is also relative and
+     would stretch the button down the whole side of the card. */
+  .auth-field { @apply relative; }
+  .auth-control { @apply relative; }
+  .auth-field .field { @apply h-[46px] rounded-[12px] pl-11 text-[15px] tracking-[-.009em]; }
+  .auth-field-icon {
+    @apply pointer-events-none absolute inset-y-0 left-4 flex w-4
+           items-center text-muted-fg;
+  }
+  .auth-field-icon .icon { @apply h-4 w-4; }
+  /* Optically symmetrical with the icon opposite it: the left icon's centre
+     sits 24px in (16px inset + half of a 16px glyph), and a 44px-wide button
+     held 2px off the edge centres at 24px too.
+
+     The hit area stays the full height of the field. */
+  .auth-reveal {
+    @apply absolute inset-y-0 right-0.5 grid w-11 place-items-center rounded-[10px]
+           bg-transparent text-muted-fg transition-colors hover:text-ink;
+  }
+  /* A reveal button that is not inside .auth-control was put there by an older
+     cached copy of auth.js, which appended straight to .auth-field — the group
+     that also holds the label. Centred over that, it rides up out of the input.
+     Hiding it degrades to a plain password field, which is correct and looks
+     deliberate, instead of an icon floating in the wrong place. The current
+     script places it inside .auth-control and it shows normally. */
+  .auth-field > .auth-reveal { @apply hidden; }
+  .auth-control:has(.auth-reveal) .field { @apply pr-12; }
+
+  /* Password strength, shown while a new password is being chosen. */
+  .auth-meter { @apply mt-2.5; }
+  .auth-meter-track { @apply flex gap-1.5; }
+  .auth-meter-track span {
+    @apply h-1.5 flex-1 rounded-full bg-muted-bg transition-colors;
+  }
+  .auth-meter[data-score="1"] .auth-meter-track span:nth-child(-n+1) { @apply bg-danger-strong; }
+  .auth-meter[data-score="2"] .auth-meter-track span:nth-child(-n+2) { @apply bg-amber-600; }
+  .auth-meter[data-score="3"] .auth-meter-track span:nth-child(-n+3) { @apply bg-amber-500; }
+  .auth-meter[data-score="4"] .auth-meter-track span { @apply bg-brand-accent; }
+  .auth-meter-label { @apply mt-2 block text-[13px] text-muted-fg; }
+
+  /* The rules the server actually applies, ticked as they are met. A pale green
+     dot until the box has something in it, so an untouched form is neither a
+     wall of red nor a row of ticks it has not earned. */
+  .auth-rules { @apply mt-3.5 space-y-2; }
+  .auth-rules li { @apply flex items-center gap-2.5 text-[13px] leading-5 text-muted-fg; }
+  .auth-rules .icon {
+    @apply h-4 w-4 shrink-0 rounded-full bg-brand/25 p-0.5 text-transparent
+           transition-colors;
+  }
+  .auth-rules li.is-met { @apply text-ink; }
+  .auth-rules li.is-met .icon { @apply bg-brand-deep text-white; }
+
+  /* Live confirmation that two password boxes agree. */
+  .auth-match { @apply mt-2 text-[13px] leading-5; }
+  .auth-match.is-ok { @apply font-medium text-brand-deep; }
+  .auth-match.is-bad { @apply font-medium text-danger-strong; }
+
+  /* "Keep me signed in", beside the submit rather than lost above it. */
+  .auth-remember { @apply flex items-start gap-3 pt-1; }
+  /* @tailwindcss/forms replaces the native control (appearance:none) and paints
+     a checked box with background-color:currentColor, defaulting the colour to
+     blue-600. So the brand colour has to arrive as `color`; `accent-color` is
+     ignored the moment the control stops being native. The focus ring is the
+     plugin's too, and was blue for the same reason. */
+  .auth-remember input {
+    @apply mt-px h-[18px] w-[18px] shrink-0 rounded-[5px] border-input-line
+           text-brand-accent focus:ring-brand-deep;
+  }
+  .auth-remember label { @apply text-sm font-semibold text-ink; }
+  .auth-remember .help { @apply mt-1; }
+
+  /* ------------------------------------------------ what the product is -- */
+  /* The left column at xl. Sized and pushed to the outside of its 1fr track so
+     it sits against the page's margin the way the illustration sits against
+     the other one — the track itself stays 1fr, because that is what holds the
+     form on the centre line. */
+  .auth-aside {
+    @apply mx-auto w-full max-w-[35rem]
+           xl:order-1 xl:max-w-[16.5rem] xl:justify-self-start;
+  }
+  /* A page with nothing to say here still holds the track at xl, and drops out
+     below it rather than leaving the stage's row gap under the form. */
+  .auth-aside.is-empty { @apply hidden xl:block; }
+  .auth-points { @apply grid gap-7 sm:grid-cols-3 xl:grid-cols-1 xl:gap-9; }
+  .auth-points li { @apply flex items-start gap-3.5; }
+  .auth-point-icon {
+    @apply grid h-11 w-11 shrink-0 place-items-center rounded-[14px] border border-line
+           bg-white text-brand-accent shadow-[0_6px_18px_rgba(7,26,47,.05)];
+  }
+  .auth-point-icon .icon { @apply h-5 w-5; }
+  .auth-point-title { @apply text-[13.5px] font-bold text-ink; }
+  .auth-point-body { @apply mt-1 text-[13px] leading-[1.55] tracking-[-.003em] text-muted-fg; }
+
+  /* Decoration, and hidden outright below xl: there is no room beside a form
+     that is by then the whole page, and nothing is lost with it gone. */
+  .auth-art { @apply hidden xl:order-3 xl:block xl:max-w-[25rem] xl:justify-self-end; }
+  .auth-art svg { @apply h-auto w-full; }
+
+  /* ---------------------------------------------------- under the fold -- */
+  /* The line the reset and sign-in pages close on. The shield sits inline
+     rather than as a flex item: when the sentence wraps on a phone, a flex icon
+     detaches to the far left of a centred block. Inline, it stays with the
+     words it belongs to. */
+  .auth-privacy { @apply text-center text-[13px] leading-[1.85] tracking-[-.003em] text-muted-fg; }
+  .auth-privacy .icon { @apply mr-1.5 inline-block h-4 w-4 align-[-3px] text-muted-fg; }
+
+  /* The same promise with room to be read, on the page where someone is
+     handing over their details for the first time. */
+  .auth-trust {
+    @apply mx-auto flex w-full max-w-[58rem] flex-col items-start gap-6 rounded-[16px]
+           border border-line bg-muted-bg/70 px-6 py-5
+           sm:flex-row sm:items-center sm:justify-between;
+  }
+  .auth-trust-say { @apply flex items-start gap-4; }
+  .auth-trust-icon {
+    @apply grid h-11 w-11 shrink-0 place-items-center rounded-[13px] bg-brand-accent
+           text-white shadow-[0_8px_20px_rgba(22,163,74,.28)];
+  }
+  .auth-trust-icon .icon { @apply h-5 w-5; }
+  .auth-trust-title { @apply text-[13.5px] font-bold text-ink; }
+  .auth-trust-body { @apply mt-1 text-[13px] leading-[1.55] tracking-[-.003em] text-muted-fg; }
+  .auth-trust-proof { @apply w-full text-center sm:w-auto sm:text-right; }
+  .auth-avatars { @apply flex items-center justify-center sm:justify-end; }
+  .auth-avatars > span {
+    @apply -ml-2 grid h-9 w-9 place-items-center rounded-full border-2 border-white
+           bg-canvas text-[11px] font-bold text-muted-fg first:ml-0;
+  }
+  /* A pill rather than a circle: "+2.5K" is five characters and will not fit
+     in a 36px round badge at a size anyone can read. */
+  .auth-avatars > .auth-avatars-count {
+    @apply w-auto min-w-[2.25rem] rounded-full bg-brand-deep px-2 text-[10px]
+           tracking-tight text-white;
+  }
+  .auth-trust-proof p { @apply mt-2 text-xs font-medium text-muted-fg; }
+
+  /* Ink is invisible against the navy sidebar and the navy panels. */
+  .on-dark { --focus-ring: #ffffff; --focus-ring-offset: #071a2f; }
+
+  /* A horizontally scrollable region is only operable by keyboard if it can
+     hold focus (WCAG 2.1.1). */
+  .scroll-region { @apply overflow-x-auto; }
+  .scroll-region:focus-visible { outline: 3px solid var(--focus-ring); outline-offset: -3px; }
+}
+
+/* `font-optical-sizing: auto` is what makes the opsz axis in the variable font
+   do anything at all. Without it every size is drawn at one optical size, and
+   a 48px heading gets the ink traps and open spacing meant for 13px body text
+   — which is exactly the muddy look that reads as "default font". */
+html { scroll-behavior: smooth; font-optical-sizing: auto; }
+
+/* Figures line up in a column, which is the whole point of tabular figures in
+   a ledger, and 104 places in the templates already ask for them explicitly.
+
+   `ss01` has gone. It was chosen when the stack was Aptos, and a stylistic-set
+   number means a different substitution in every typeface — shipping one whose
+   effect nobody has looked at is how a product ends up with glyphs it never
+   chose. `calt` is Inter's contextual alternates and is the one it asks for.
+
+   The tracking is Inter's own dynamic metric at this size, not a taste: the
+   typeface publishes tracking(s) = -0.0223 + 0.185·e^(-0.1745·s), which at the
+   14px base gives -0.006em. Every size below re-evaluates that curve rather
+   than inheriting one number, because a single tracking value across a type
+   scale is loose at the top and cramped at the bottom. */
+body { font-feature-settings: "tnum" 1, "calt" 1; letter-spacing: -0.006em; }
+.logo-mark { display: flex; width: 32px; height: 32px; align-items: flex-end; gap: 3px; border-radius: 9px; background: #39d889; padding: 7px; }
+.logo-mark i { display: block; width: 4px; border-radius: 3px; background: #071a2f; }
+.logo-mark i:nth-child(1) { height: 9px; }
+.logo-mark i:nth-child(2) { height: 15px; }
+.logo-mark i:nth-child(3) { height: 12px; }
+/* The mark is the whole identity on the auth pages, so it is drawn a size up
+   there — without touching the 32px version the application sidebar uses. */
+.auth-lockup .logo-mark { width: 44px; height: 44px; border-radius: 13px; gap: 4px; padding: 9px; }
+.auth-lockup .logo-mark i { width: 5px; }
+.auth-lockup .logo-mark i:nth-child(1) { height: 12px; }
+.auth-lockup .logo-mark i:nth-child(2) { height: 21px; }
+.auth-lockup .logo-mark i:nth-child(3) { height: 16px; }
+.auth-ring-mark .logo-mark { width: 34px; height: 34px; border-radius: 10px; padding: 7px; }
+.company-switcher { display: flex; align-items: center; gap: 9px; margin-top: 10px; border: 1px solid rgba(255,255,255,.08); border-radius: 12px; background: rgba(255,255,255,.04); padding: 8px; }
+.welcome-strip { position: relative; display: flex; min-height: 166px; align-items: center; justify-content: space-between; gap: 28px; overflow: hidden; border-radius: 20px; background: #071a2f; padding: 28px 32px; color: #fff; box-shadow: 0 20px 50px rgba(7,26,47,.12); }
+.welcome-strip::after { position: absolute; top: -100px; right: 14%; width: 310px; height: 310px; border: 1px solid rgba(57,216,137,.13); border-radius: 50%; box-shadow: 0 0 0 44px rgba(57,216,137,.025), 0 0 0 88px rgba(57,216,137,.018); content: ""; pointer-events: none; }
+.metric-card { border: 1px solid rgba(203,216,213,.75); border-radius: 17px; background: #fff; padding: 19px; box-shadow: 0 1px 2px rgba(7,26,47,.025); transition: transform .2s ease, box-shadow .2s ease; }
+.metric-card:hover { transform: translateY(-2px); box-shadow: 0 14px 36px rgba(7,26,47,.07); }
+/* #718096 measured 4.02:1 on white. */
+.metric-label { color: #5a6875; font-size: .8125rem; font-weight: 700; }
+.metric-value { margin-top: 6px; color: #081a2e; font-size: 1.58rem; font-weight: 850; letter-spacing: -.04em; }
+.metric-note { margin-top: 20px; border-top: 1px solid #f1f5f9; padding-top: 12px; color: #54636f; font-size: .75rem; }
+.cashflow-panel { overflow: hidden; border-radius: 20px; background: #071a2f; padding: 24px; box-shadow: 0 20px 48px rgba(7,26,47,.12); }
+.surface { border: 1px solid rgba(203,216,213,.72); border-radius: 18px; background: rgba(255,255,255,.96); box-shadow: 0 1px 2px rgba(7,26,47,.025), 0 10px 30px rgba(7,26,47,.035); }
+.module-hero { display: flex; min-height: 132px; align-items: center; justify-content: space-between; gap: 24px; border: 1px solid #dde8e4; border-radius: 20px; background: linear-gradient(125deg,#fff 0%,#f3faf7 100%); padding: 25px 28px; box-shadow: 0 8px 30px rgba(7,26,47,.025); }
+
+/* The auth pages' backdrop: fields of colour, a dot field, drawn arcs, and on
+   the sign-in page a ring with the mark resting on it. Every part of it is
+   inert — pointer-events: none, aria-hidden on the wrapper — so it can be
+   removed without the pages losing anything they need. */
+.auth-decor { position: fixed; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; }
+.auth-blob { position: absolute; border-radius: 50%; filter: blur(70px); }
+.auth-blob-a { top: -150px; right: -90px; width: 470px; height: 470px; background: rgba(57,216,137,.16); }
+.auth-blob-b { bottom: -190px; left: -130px; width: 540px; height: 540px; background: rgba(57,216,137,.13); }
+.auth-blob-c { top: 44%; right: 5%; width: 300px; height: 300px; background: rgba(57,216,137,.09); }
+/* The sign-in page's one field of colour is barely a colour: a soft white lift
+   in the top left, where the request page puts green. */
+.auth-blob-soft { top: 150px; left: 210px; width: 260px; height: 260px; background: rgba(255,255,255,.9); filter: blur(46px); }
+/* Masked from its own centre outwards, so the grid fades rather than ending on
+   a hard square edge. */
+.auth-dotfield {
+  position: absolute; width: 280px; height: 280px;
+  background-image: radial-gradient(rgba(31,116,71,.3) 1.4px, transparent 1.5px);
+  background-size: 17px 17px;
+  -webkit-mask-image: radial-gradient(closest-side, #000, transparent);
+  mask-image: radial-gradient(closest-side, #000, transparent);
+}
+.auth-dotfield-top { top: 30px; left: 20px; }
+.auth-dotfield-mid { top: 38%; left: 10px; width: 230px; height: 230px; }
+/* The ring the mark rests on, bottom left of the sign-in page. */
+.auth-ring {
+  position: absolute; bottom: -170px; left: -70px; width: 420px; height: 420px;
+  border: 1px solid rgba(7,26,47,.06); border-radius: 50%;
+}
+.auth-ring-mark {
+  position: absolute; bottom: 232px; left: 118px;
+  display: grid; place-items: center; width: 64px; height: 64px;
+  border-radius: 20px; background: #fff;
+  box-shadow: 0 14px 34px rgba(7,26,47,.10), 0 2px 6px rgba(7,26,47,.04);
+}
+.auth-lines { position: absolute; inset: 0; width: 100%; height: 100%; }
+
+
+/* Backdrop behind the off-canvas sidebar on small screens. */
+.nav-scrim { position: fixed; inset: 0; z-index: 30; background: rgba(7,26,47,.5); }
+
+@media (max-width: 700px) {
+  .welcome-strip { flex-direction: column; align-items: flex-start; padding: 24px; }
+  .module-hero { align-items: flex-start; padding: 22px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; }
+  .metric-card:hover { transform: none; }
+  .btn:active { transform: none; }
+  .spinner, .skeleton, .nav-progress.is-running::after,
+  .combo-list, .step-panel, .save-tick,
+  .field-wrap.is-prefilled .field { animation: none !important; }
+  .nav-progress.is-running::after { width: 92%; }
+  .back-link:hover .icon { transform: none; }
+}

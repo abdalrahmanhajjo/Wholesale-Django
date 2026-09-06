@@ -46,7 +46,9 @@ class SalesOrder(FinancialDocumentBase):
     )
     expected_date = models.DateField(null=True, blank=True)
     customer_reference = models.CharField(
-        max_length=64, blank=True, help_text="Customer PO number (SAL-014)."
+        max_length=64,
+        blank=True,
+        help_text="The customer’s own purchase order number, printed on their invoice.",
     )
     billing_address_text = models.TextField(blank=True)
     shipping_address_text = models.TextField(blank=True)
@@ -77,6 +79,11 @@ class SalesOrder(FinancialDocumentBase):
             models.Index(fields=["status", "-document_date"], name="ix_so_status_date"),
             models.Index(fields=["customer_reference"], name="ix_so_customer_ref"),
         ]
+
+    def get_absolute_url(self):
+        from django.urls import reverse
+
+        return reverse("sales:so_detail", args=[self.pk])
 
 
 class SalesOrderLine(DocumentLineBase):
@@ -216,6 +223,11 @@ class SalesInvoice(FinancialDocumentBase):
             models.Index(fields=["currency", "status"], name="ix_si_currency_status"),
         ]
 
+    def get_absolute_url(self):
+        from django.urls import reverse
+
+        return reverse("sales:invoice_detail", args=[self.pk])
+
 
 class SalesInvoiceLine(DocumentLineBase):
     invoice = models.ForeignKey(SalesInvoice, on_delete=models.CASCADE, related_name="lines")
@@ -337,6 +349,24 @@ class SalesReturn(TimeStampedModel):
         related_name="+",
     )
 
+    submitted_at = models.DateTimeField(null=True, blank=True)
+    submitted_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="+",
+    )
+    approved_at = models.DateTimeField(null=True, blank=True)
+    approved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="+",
+    )
+    approval_reason = models.CharField(max_length=255, blank=True)
+
     class Meta:
         db_table = "sales_return"
         ordering = ["-document_date", "-id"]
@@ -357,6 +387,11 @@ class SalesReturn(TimeStampedModel):
 
     def __str__(self):
         return self.number
+
+    def get_absolute_url(self):
+        from django.urls import reverse
+
+        return reverse("sales:return_detail", args=[self.pk])
 
 
 class SalesReturnLine(models.Model):
@@ -431,6 +466,13 @@ class SalesCreditNote(FinancialDocumentBase):
     reason = models.TextField(help_text="Mandatory (RET-008).")
     customer_name_snapshot = models.CharField(max_length=200, blank=True)
     billing_address_text = models.TextField(blank=True)
+    submitted_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="+",
+    )
 
     # Unapplied credit still available to allocate or refund (RET-009, BR-016).
     refunded_txn = models.DecimalField(**MONEY, default=ZERO)
@@ -469,6 +511,11 @@ class SalesCreditNote(FinancialDocumentBase):
                 fields=["customer"], condition=Q(open_txn__gt=0), name="ix_cn_open_credit"
             ),
         ]
+
+    def get_absolute_url(self):
+        from django.urls import reverse
+
+        return reverse("sales:credit_note_detail", args=[self.pk])
 
 
 class SalesCreditNoteLine(DocumentLineBase):

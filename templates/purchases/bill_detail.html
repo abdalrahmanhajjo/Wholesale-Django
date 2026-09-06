@@ -114,6 +114,9 @@ regardless of which buttons a `{% if perms.* %}` check happens to hide
         <p class="mt-2 text-sm text-muted-fg">
           Posted by {{ bill.posted_by|default:"—" }} on {{ bill.posted_at|date:"j M Y, H:i" }}.
         </p>
+        {% if perms.purchases.add_purchasereturn %}
+          <a href="{% url 'purchases:pr_create' %}?bill={{ bill.pk }}" class="btn-ghost mt-3 w-full">Return goods</a>
+        {% endif %}
       {% endif %}
     </div>
 

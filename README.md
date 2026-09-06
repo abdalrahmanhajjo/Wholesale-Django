@@ -4,7 +4,7 @@ A full-stack Django application for a wholesale business: purchasing, inventory,
 sales, payments, and an accrual-basis double-entry general ledger.
 
 Built from `Wholesale_Accounting_BRD_Django.docx` (BRD v1.0, 28 August 2026).
-Django 5.1 · PostgreSQL 16 · Django Templates (no separate frontend).
+Django 5.2 LTS · PostgreSQL 16+ · Django Templates (no separate frontend).
 
 ---
 
@@ -16,7 +16,7 @@ will tell you why.
 ### 1. Prerequisites
 
 - **Python 3.11+**
-- **PostgreSQL 13+** (16 recommended) running locally
+- **PostgreSQL 14+** (16 recommended) running locally
 
 Everyone runs their own local database. Migrations are shared through git; data
 is not. Nobody can break anybody else's data.
@@ -182,7 +182,34 @@ python manage.py runserver           # start the dev server
 python manage.py shell               # Django shell
 python verify_schema.py              # verify the accounting rules (fresh DB)
 ruff format . && ruff check .        # format and lint before committing
+npm run build:css                    # rebuild static/css/app.css after UI changes
 ```
+
+When developing against a remote PostgreSQL database, use
+`python manage.py runserver --nothreading`. Django's default development server
+creates a thread per request, so it cannot reliably reuse a persistent database
+connection; the single-threaded option avoids repeating the remote TLS and
+connection setup during ordinary page-to-page navigation. This advice is for
+local development only—never use `runserver` in production.
+
+### Frontend assets
+
+The application remains full-stack Django: templates are rendered on the
+server and there is no JavaScript application to run. Tailwind is a build-time
+tool only. A compiled, minified stylesheet is committed, so a normal Python
+setup works without Node. Contributors changing templates or design tokens run:
+
+```bash
+npm ci
+npm run watch:css   # development, or npm run build:css once
+```
+
+Production runs `python manage.py collectstatic`; the web server or platform
+must serve `STATIC_ROOT` at `/static/`.
+
+The measured performance, security findings, implemented corrections, and
+production runbook are recorded in
+[`docs/performance-security-quality-audit.md`](docs/performance-security-quality-audit.md).
 
 ## Reporting layer
 
@@ -196,6 +223,204 @@ Available to query directly — Member 4 builds screens on top of these.
 **Functions:** `fn_trial_balance(from, to)`, `fn_ar_ageing(as_of)`,
 `fn_ap_ageing(as_of)`, `fn_stock_card(product, warehouse, from, to)`
 
+## Card payments with Stripe (PAY-013)
+
+**Off by default.** With no `STRIPE_SECRET_KEY` the integration is invisible: no
+button on the invoice screen, and the webhook refuses everything. Nothing else
+in the application changes, and a Stripe receipt can still be entered by hand
+using the seeded `STRIPE` payment method.
+
+### How it works
+
+Staff-initiated, not customer-facing. A user opens a posted invoice, clicks
+**Create payment link**, and sends the link on to the customer by whatever
+channel they already use. When the customer pays, Stripe calls back and the
+receipt posts itself against the invoice.
+
+The webhook at `/payments/stripe/webhook/` is the **only** route in this project
+reachable without logging in. Its authentication is the Stripe signature; with
+no `STRIPE_WEBHOOK_SECRET` set, every request to it is rejected rather than
+trusted.
+
+### Switching it on
+
+```bash
+# 1. Keys, in .env — test keys for development, never a live key in git
+STRIPE_SECRET_KEY=sk_test_...
+STRIPE_RETURN_ORIGIN=http://127.0.0.1:8000
+
+# 2. Forward webhooks to the dev server and take the secret it prints
+stripe listen --forward-to localhost:8000/payments/stripe/webhook/
+# -> STRIPE_WEBHOOK_SECRET=whsec_...
+```
+
+### What it does to the books
+
+A processor keeps a cut, so what settles the customer and what reaches the bank
+are two different numbers. Payments carry a `fee_txn` for the difference:
+
+```
+Customer pays 1,000.00, Stripe keeps 29.30
+
+  Dr  1140  Stripe Clearing              970.70
+  Dr  6510  Merchant and Processor Fees   29.30
+      Cr  2210  Customer Advances                1,000.00
+```
+
+The customer is settled for the gross — that is what clears their balance — and
+only the money that genuinely moved reaches the clearing account. When Stripe
+pays out, clear 1140 against the bank with an ordinary journal.
+
+The fee field is not Stripe-specific: use it for a wire charge on a vendor
+payment too, where the sign flips and the fee is added on top of what the vendor
+receives rather than taken out of it.
+
+### When the ledger will not accept the receipt
+
+A webhook can arrive on a day no fiscal period is open, or before anyone has
+entered an exchange rate. **The payment is recorded anyway** and the reason is
+shown on the invoice screen with a button to finish the posting once the cause
+is fixed. This is deliberate: failing the webhook instead would make Stripe
+retry for hours, give up, and leave money received with no record of it here.
+
+---
+
+## Deploying
+
+```bash
+docker build -t wams .
+docker run --env-file .env -p 8000:8000 wams
+```
+
+The image runs gunicorn with the settings in `gunicorn.conf.py` and serves its
+own static files through WhiteNoise, so nothing else is required in front of
+it. Put it behind a reverse proxy or CDN if you want one; both will simply
+answer before WhiteNoise does.
+
+**Migrations are not run by the container.** Several replicas starting at once
+would race each other, and a schema change should be something a person decides
+rather than a side effect of a restart. Run them as a release step:
+
+```bash
+python manage.py migrate
+```
+
+### Probes
+
+| Path | Answers | Use it for |
+|---|---|---|
+| `/healthz/` | Is the process alive? Touches nothing, ~1ms | liveness / restart |
+| `/readyz/` | Can it reach the database? | readiness / rotation |
+
+Point liveness at `/healthz/` only. A database blip failing a *liveness* check
+restarts every replica, which fixes nothing and removes the capacity that was
+still working.
+
+### Sizing the workers
+
+The connection budget, not the CPU count, is the constraint here. The Supabase
+pooler allows 60 connections in total, and with `CONN_MAX_AGE` above zero each
+worker thread can hold one:
+
+    workers x threads  <=  your share of 60
+
+The defaults (2 x 4) use 8. `gunicorn.conf.py` uses threaded workers rather
+than sync ones on purpose: with a remote database most requests are waiting on
+I/O, and a sync worker would hold an entire process while it did.
+
+### The thing that matters most
+
+A query round trip to the database is **~300ms** from outside its region, and
+opening a fresh connection costs **~2.3s**. Both were measured, not estimated.
+No amount of query tuning competes with running the application in the same
+region as the database - `ap-northeast-2` for the current project. Everything
+else in this section is worth doing; this is worth doing first.
+
+---
+### Financial statements (RPT-001..RPT-005)
+
+Four screens under **Financials**, gated on `view_financial_reports`:
+
+| Screen | Answers | Spans |
+|---|---|---|
+| General ledger | every posted line and its source document | filtered |
+| Trial balance | opening, movement, closing per account | a range |
+| Profit and loss | what was earned and what it cost | a range |
+| Balance sheet | what is owned and owed | a date |
+
+All three statements come from `fn_trial_balance` and nothing else. That is
+deliberate: they are three presentations of the same balances, and computing
+them from three queries is how a balance sheet ends up disagreeing with its own
+trial balance. Anything added here should go through
+`apps/reports/services.py:account_balances` rather than writing a fourth
+definition of "balance".
+
+Two behaviours that look wrong until you know why:
+
+- **Reversed entries are included.** The ledger is append-only, so reversing
+  entry A writes a second entry B with the opposite lines and leaves A's lines
+  in place. Filtering to `status = 'POSTED'` would drop A but keep B and leave
+  every report short by the reversal.
+- **The balance sheet carries the year's result.** Until a closing entry moves
+  income and expense into reserves, the profit sits in the P&L accounts and the
+  statement would be out by exactly that amount. It shows as its own equity
+  line and becomes zero on its own once the year is closed.
+
+### The other reports (RPT-006, RPT-007, RPT-008, RPT-013)
+
+| Screen | Answers | Drill-down |
+|---|---|---|
+| Receivables ageing | who owes us, and how late | invoice, customer |
+| Payables ageing | who we owe, and how late | bill, vendor |
+| Tax report | tax charged on sales, incurred on purchases | — |
+| Money register | one cash or bank account, movement by movement | journal entry |
+
+Inventory valuation already lives under Inventory → Inventory valuation
+(`v_inventory_valuation`), so it is not duplicated here.
+
+**Ageing is single-currency, deliberately.** `fn_ar_ageing` and `fn_ap_ageing`
+return each document in its own currency with no base equivalent, and a total
+that adds dollars to euros would be worse than no total on a report whose whole
+job is to be totalled and chased. So currency is a filter, and anything open in
+another currency is counted and named underneath — choosing a currency never
+hides money.
+
+**The tax report does not net the two sides.** A return is filed as output tax
+and input tax; the amount payable is a consequence of those two rather than a
+figure in its own right. Non-recoverable input tax is carried separately,
+because it is a cost rather than something to reclaim.
+
+### Closing a period (CFG-009, ACC-008, BR-020)
+
+**Financials → Period close**, or any row on the fiscal periods list. The screen
+runs a checklist and offers the button.
+
+The checklist separates two kinds of finding, and the distinction is the point:
+
+| | Meaning | Effect |
+|---|---|---|
+| **Blocks closing** | the arithmetic is wrong | close is refused |
+| **Needs a decision** | somebody has to judge it | close is allowed, and the acknowledgement is kept |
+
+Blockers are an open earlier period and a trial balance that does not balance.
+Neither is a matter of opinion, and no reason text makes closing over them
+right. Warnings are unposted documents dated in the period and a control
+account that disagrees with its subledger — both serious, both frequently
+older than the period being closed, and making them blockers means one
+historical mistake freezes the calendar until somebody unpicks it.
+
+A reason is required either way. It is the only lasting record of who signed
+the period off, and it is kept on the period alongside who and when.
+
+**Reopening** needs its own permission, its own reason, and goes in reverse
+order — reopening March while April is closed would let a new entry change an
+opening balance that has already been signed off. A `LOCKED` period never
+reopens; that is the difference between locked and closed.
+
+Enforcement is not only in this code. `wams_journal_period_check()` rejects any
+journal entry aimed at a closed period at the database level, so a period that
+is closed is closed to everything, not merely to the screens.
+
 ## Pending accountant sign-off
 
 These are placeholders (BRD §14.4) and will change. Don't hard-code them.
@@ -204,10 +429,27 @@ These are placeholders (BRD §14.4) and will change. Don't hard-code them.
 - Standard tax rate **11%** (OD-01)
 - Chart of accounts codes and names
 - Exempt and zero-rated codes flagged non-recoverable
+- Stripe clearing **1140** and processor fees **6510** (PAY-013); `MERCHANT_FEE`
+  can be re-pointed from Settings → Account Mappings without a migration
 
 ---
 
 ## Troubleshooting
+
+**"'charset' meta element should be specified in the '<head>'"** — from
+webhint, via the Edge Tools editor extension, and it is wrong. It reads the
+template rather than the page: a `{% comment %}` block above `<html>` is body
+text to an HTML parser, so it opens an implied `<body>` and reports everything
+after it as misplaced. 72 of the 76 files under `templates/` are fragments with
+no `<html>` at all, so document-level hints cannot be evaluated there in
+principle.
+
+Those two hints are switched off in `.hintrc`. The rule itself is real, so it
+is checked where it can be answered — `DocumentHeadTests` in
+`apps/accounts/tests/test_auth_pages.py` renders all six auth pages and asserts
+the charset and viewport are present and ahead of `<body>`. To lint the real
+thing, point webhint at a running URL rather than at the template directory.
+
 
 **`connection refused` on migrate** — PostgreSQL isn't running, or `PGPORT` in
 `.env` is wrong. macOS: `brew services start postgresql`. Linux:

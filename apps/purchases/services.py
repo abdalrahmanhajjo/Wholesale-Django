@@ -1,13 +1,14 @@
 """
 Purchase cycle business logic: document numbering, line/header totals, the
-PUR-002 approval workflow, and the PUR-008/PUR-010 AP + tax posting.
+PUR-002 approval workflow, the PUR-008/PUR-010 AP + tax posting, and the
+RET-005..RET-008 return / vendor-credit reversal.
 
 Kept out of views.py and forms.py on purpose (CONTRIBUTING.md §4): a view
 should read as "check permission, validate the form, call a service, render".
 
-BRD coverage: PUR-001, PUR-002, PUR-005..PUR-010, BR-003, BR-005, BR-010,
-BR-011, BR-012, CFG-007, CFG-008, CFG-010, GL-001, GL-002, GL-010, GL-011,
-NFR-008.
+BRD coverage: PUR-001, PUR-002, PUR-005..PUR-010, RET-005..RET-008, BR-003,
+BR-005, BR-010, BR-011, BR-012, BR-015, CFG-007, CFG-008, CFG-010, GL-001,
+GL-002, GL-010, GL-011, NFR-008.
 """
 
 from decimal import ROUND_HALF_UP, Decimal
@@ -26,7 +27,10 @@ from apps.core.models import (
     DocumentType,
     FiscalPeriod,
 )
+from apps.inventory import services as inventory_services
+from apps.inventory.models import MovementType
 from apps.ledger.models import AccountMapping, JournalEntry, JournalLine, JournalType
+from apps.sales.models import ReturnDisposition
 
 ZERO = Decimal("0")
 HUNDRED = Decimal("100")
@@ -78,6 +82,14 @@ def allocate_po_number(document_date):
 
 def allocate_pb_number(document_date):
     return _allocate_number(DocumentType.PURCHASE_BILL, document_date)
+
+
+def allocate_pr_number(document_date):
+    return _allocate_number(DocumentType.PURCHASE_RETURN, document_date)
+
+
+def allocate_dbn_number(document_date):
+    return _allocate_number(DocumentType.DEBIT_NOTE, document_date)
 
 
 def _allocate_journal_number(on_date):
@@ -216,6 +228,61 @@ def recalculate_bill(bill):
     return _recalculate_document(bill, bill.lines.all())
 
 
+def recalculate_debit_note(note):
+    """
+    Recompute every line's tax/discount arithmetic (BR-010, BR-012) and roll
+    the results into the header total.
+
+    This is deliberately not a call to `_recalculate_document()`: that
+    function also derives `open_txn` from `credited_txn`, a field
+    `VendorDebitNote` doesn't settle against — it settles against
+    `refunded_txn` instead (RET-007). It also allocates a header-level
+    discount, which a debit note has no field for and no need of: each line
+    already states exactly the amount being credited back. Reuses
+    `_recalculate_line()` for the per-line tax math, which only touches
+    per-line fields and so applies unchanged.
+    """
+    lines = list(note.lines.all())
+    rate = note.exchange_rate or Decimal("1")
+    subtotal_txn = line_discount_txn = taxable_base_txn = tax_txn = ZERO
+
+    for line in lines:
+        line.allocated_document_discount_txn = ZERO
+        _recalculate_line(line)
+        line.net_base = _money(line.net_txn * rate)
+        line.taxable_base_base = _money(line.taxable_base_txn * rate)
+        line.tax_base = _money(line.tax_txn * rate)
+        line.total_base = _money(line.total_txn * rate)
+        line.save()
+
+        subtotal_txn += line.gross_txn
+        line_discount_txn += line.line_discount_txn
+        taxable_base_txn += line.taxable_base_txn
+        tax_txn += line.tax_txn
+
+    note.subtotal_txn = subtotal_txn
+    note.line_discount_txn = line_discount_txn
+    note.document_discount_txn = ZERO
+    note.taxable_base_txn = taxable_base_txn
+    note.tax_txn = tax_txn
+    note.total_txn = taxable_base_txn + tax_txn
+
+    note.subtotal_base = _money(note.subtotal_txn * rate)
+    note.line_discount_base = _money(note.line_discount_txn * rate)
+    note.document_discount_base = ZERO
+    note.taxable_base_base = _money(note.taxable_base_txn * rate)
+    note.tax_base = _money(note.tax_txn * rate)
+    note.total_base = _money(note.total_txn * rate)
+
+    # RET-007: kept in sync on every save, same reason PurchaseBill derives
+    # open_txn outside of posting — a still-DRAFT note satisfies
+    # dbn_open_is_derived the moment its lines are saved.
+    note.open_txn = note.total_txn - note.allocated_txn - note.refunded_txn
+    note.open_base = note.total_base
+    note.save()
+    return note
+
+
 # ---------------------------------------------------------------------------
 # Approval workflow (PUR-002)
 # ---------------------------------------------------------------------------
@@ -329,6 +396,8 @@ def post_purchase_bill(bill, user, request):
     lines = list(bill.lines.select_related("purchase_order_line", "receipt_line"))
     if not lines:
         raise ValidationError("Add at least one line before posting.")
+    if bill.total_txn == ZERO:
+        raise ValidationError("This bill has no value to post — check the line prices.")
 
     with transaction.atomic():
         fiscal_period = _fiscal_period_for(bill.posting_date)
@@ -379,23 +448,30 @@ def post_purchase_bill(bill, user, request):
         for line in lines:
             # The tax-exclusive base is what lands on inventory/expense; tax is
             # posted separately below so an inclusive rate is never counted twice.
-            if line.is_stock_line:
-                account = grni_account if line.receipt_line_id else inventory_account
-                _write_line(
-                    account,
-                    line.taxable_base_txn,
-                    line.taxable_base_base,
-                    description=line.description or (line.product and str(line.product)) or "",
-                    product=line.product,
-                    warehouse=line.warehouse,
-                )
-            else:
-                _write_line(
-                    line.expense_account or purchase_expense_account,
-                    line.taxable_base_txn,
-                    line.taxable_base_base,
-                    description=line.description,
-                )
+            # A zero-priced line (a free/bonus item) has nothing to book here —
+            # journal_line_debit_xor_credit rejects a line with both sides at
+            # zero, and there is nothing wrong with skipping it: it contributes
+            # nothing to the bill's total either, so BR-006 balance is unaffected.
+            if line.taxable_base_txn:
+                if line.is_stock_line:
+                    account = grni_account if line.receipt_line_id else inventory_account
+                    _write_line(
+                        account,
+                        line.taxable_base_txn,
+                        line.taxable_base_base,
+                        description=line.description
+                        or (line.product and str(line.product))
+                        or "",
+                        product=line.product,
+                        warehouse=line.warehouse,
+                    )
+                else:
+                    _write_line(
+                        line.expense_account or purchase_expense_account,
+                        line.taxable_base_txn,
+                        line.taxable_base_base,
+                        description=line.description,
+                    )
             if line.tax_txn:
                 tax_account = (
                     input_tax_account if line.tax_is_recoverable else non_recoverable_account
@@ -443,3 +519,269 @@ def post_purchase_bill(bill, user, request):
         bill.save()
         audit.record_action(request, AuditAction.POST, bill)
     return bill
+
+
+# ---------------------------------------------------------------------------
+# Purchase return (RET-005, RET-008, BR-015, BR-017)
+#
+# Physical/authorisation side of a vendor return, mirroring SalesReturn:
+# money follows on a vendor debit note. Posting only ever moves stock and
+# consumes return eligibility — PurchaseReturn has no "posted must have a
+# journal" constraint (unlike GoodsReceipt, PurchaseBill, StockAdjustment and
+# VendorDebitNote, which all do), and that absence is deliberate, not an
+# oversight: the AP/inventory-value/tax reversal is booked once, on the
+# vendor debit note, not twice.
+# ---------------------------------------------------------------------------
+def _purchase_return_line_cost_preview(line):
+    """
+    Estimate a return line's cost before posting: the receipt's own
+    weighted-average cost if the line traces back to one, else the bill
+    line's tax-exclusive unit price, else the product's standing purchase
+    price. A stock-affecting line's real cost is fixed at posting time from
+    the shared costing engine instead (INV-005) — this is only ever shown as
+    a preview.
+    """
+    if line.receipt_line_id and line.receipt_line.unit_cost:
+        return line.receipt_line.unit_cost
+    if line.bill_line_id and line.bill_line.quantity:
+        return _money(line.bill_line.taxable_base_txn / line.bill_line.quantity)
+    return _money(line.product.purchase_price)
+
+
+def recalculate_purchase_return(purchase_return):
+    total_cost = ZERO
+    for line in purchase_return.lines.select_related("product", "bill_line", "receipt_line"):
+        line.unit_cost = _purchase_return_line_cost_preview(line)
+        line.total_cost = _money(line.quantity * line.unit_cost)
+        line.save(update_fields=["unit_cost", "total_cost"])
+        total_cost += line.total_cost
+    purchase_return.total_cost_base = total_cost
+    purchase_return.save(update_fields=["total_cost_base"])
+    return purchase_return
+
+
+def post_purchase_return(purchase_return, user, request):
+    """
+    Ships each line's quantity back out (RET-005): a RESTOCK or WRITE_OFF
+    disposition posts a PURCHASE_RETURN_OUT movement through the shared
+    costing engine — costed at the warehouse's *current* average, same as
+    any other outbound movement, since that is what the units leaving are
+    actually worth today, whatever they were bought at (INV-005). A
+    NO_STOCK_EFFECT line (a paperwork-only correction — nothing is physically
+    shipped) moves no stock at all.
+
+    Every line, regardless of disposition, consumes return eligibility: BR-015
+    checks it against whichever original line it traces back to (a bill line
+    or a receipt line) before touching anything, so the vendor can't be
+    credited twice for the same units. `OVERRIDE_RETURN_QUANTITY` isn't wired
+    to bypass this — like BR-017's negative-stock check, the database enforces
+    the same limit unconditionally via `pb_line_returned_within_billed` /
+    `gr_line_returned_within_accepted`, so a permission-gated override here
+    would be misleading.
+    """
+    if purchase_return.status != DocumentStatus.DRAFT:
+        raise ValidationError("Only a draft return can be posted.")
+    lines = list(purchase_return.lines.select_related("product", "bill_line", "receipt_line"))
+    if not lines:
+        raise ValidationError("Add at least one line before posting.")
+
+    for line in lines:
+        if line.bill_line_id:
+            remaining = line.bill_line.quantity - line.bill_line.quantity_returned
+            if line.quantity > remaining:
+                raise ValidationError(
+                    f"Line {line.line_no}: only {remaining} of "
+                    f"{line.bill_line.quantity} billed is still eligible to return."
+                )
+        elif line.receipt_line_id:
+            remaining = (
+                line.receipt_line.quantity_accepted - line.receipt_line.quantity_returned
+            )
+            if line.quantity > remaining:
+                raise ValidationError(
+                    f"Line {line.line_no}: only {remaining} of "
+                    f"{line.receipt_line.quantity_accepted} accepted is still "
+                    "eligible to return."
+                )
+
+    with transaction.atomic():
+        total_cost = ZERO
+        for line in lines:
+            if line.disposition != ReturnDisposition.NO_STOCK_EFFECT:
+                movement = inventory_services.post_stock_movement(
+                    product=line.product,
+                    warehouse=purchase_return.warehouse,
+                    movement_date=purchase_return.document_date,
+                    movement_type=MovementType.PURCHASE_RETURN_OUT,
+                    quantity=line.quantity,
+                    source=purchase_return,
+                    source_doc_type=DocumentType.PURCHASE_RETURN,
+                    source_doc_number=purchase_return.number,
+                    idempotency_key=f"PR:{purchase_return.pk}:{line.pk}",
+                    user=user,
+                )
+                line.unit_cost = movement.unit_cost
+                line.total_cost = movement.total_cost
+                line.save(update_fields=["unit_cost", "total_cost"])
+
+            total_cost += line.total_cost
+            if line.bill_line_id:
+                line.bill_line.quantity_returned = (
+                    line.bill_line.quantity_returned + line.quantity
+                )
+                line.bill_line.save(update_fields=["quantity_returned"])
+            elif line.receipt_line_id:
+                line.receipt_line.quantity_returned = (
+                    line.receipt_line.quantity_returned + line.quantity
+                )
+                line.receipt_line.save(update_fields=["quantity_returned"])
+
+        purchase_return.total_cost_base = total_cost
+        purchase_return.status = DocumentStatus.POSTED
+        purchase_return.posted_at = timezone.now()
+        purchase_return.posted_by = user
+        purchase_return.save()
+        audit.record_action(request, AuditAction.POST, purchase_return)
+
+    return purchase_return
+
+
+# ---------------------------------------------------------------------------
+# Vendor debit note (RET-006, RET-007, RET-008, GL-010, GL-011)
+# ---------------------------------------------------------------------------
+def post_vendor_debit_note(note, user, request):
+    """
+    Books the RET-006 reversal — the exact mirror of `post_purchase_bill`,
+    credited instead of debited: a stock line credits Inventory directly
+    (by the time a bill posted, its value had already left GRNI one way or
+    another, so there is no accrual left to re-touch here); a non-stock line
+    credits its own expense account if it named one, else the dedicated
+    Purchase Returns contra account rather than Purchase Expense, so returns
+    show as their own line in the accounts instead of silently netting
+    against gross purchases; recoverable tax credits Input Tax (or Non-
+    recoverable Tax); everything debits Accounts Payable (BR-006 balanced).
+
+    Never touches physical stock or `StockBalance` itself — a purchase return
+    already did that, and a debit note with no return behind it (a pure
+    pricing correction) has nothing physical to reverse. If this line
+    references a bill line directly rather than a return line, it is the
+    thing consuming that bill line's return eligibility, so
+    `quantity_returned` is incremented here instead — never both, so the
+    same units are never credited twice.
+    """
+    if note.status != DocumentStatus.DRAFT:
+        raise ValidationError("Only a draft debit note can be posted.")
+    lines = list(note.lines.select_related("bill_line", "return_line", "tax_code"))
+    if not lines:
+        raise ValidationError("Add at least one line before posting.")
+    if note.total_txn == ZERO:
+        raise ValidationError("This debit note has no value to post — check the line prices.")
+
+    with transaction.atomic():
+        fiscal_period = _fiscal_period_for(note.posting_date)
+        ap_account = _mapped_account("ACCOUNTS_PAYABLE")
+        inventory_account = _mapped_account("INVENTORY")
+        purchase_returns_account = _mapped_account("PURCHASE_RETURNS")
+        input_tax_account = _mapped_account("INPUT_TAX")
+        non_recoverable_account = _mapped_account("TAX_NON_RECOVERABLE")
+
+        journal_entry = JournalEntry.objects.create(
+            number=_allocate_journal_number(note.posting_date),
+            entry_date=note.posting_date,
+            fiscal_period=fiscal_period,
+            journal_type=JournalType.PURCHASE,
+            narration=f"Vendor debit note {note.number} — {note.vendor}",
+            currency=note.currency,
+            exchange_rate=note.exchange_rate,
+            total_debit_base=note.total_base,
+            total_credit_base=note.total_base,
+            source_content_type=ContentType.objects.get_for_model(note),
+            source_object_id=note.pk,
+            source_doc_type=DocumentType.DEBIT_NOTE,
+            source_doc_number=note.number,
+            idempotency_key=f"DBN:{note.pk}",
+            posted_at=timezone.now(),
+            posted_by=user,
+        )
+
+        line_no = 0
+
+        def _write_line(account, credit_txn, credit_base, **dims):
+            nonlocal line_no
+            line_no += 1
+            JournalLine.objects.create(
+                entry=journal_entry,
+                line_no=line_no,
+                account=account,
+                debit_txn=ZERO,
+                debit_base=ZERO,
+                credit_txn=credit_txn,
+                credit_base=credit_base,
+                currency=note.currency,
+                exchange_rate=note.exchange_rate,
+                **dims,
+            )
+
+        for line in lines:
+            # See post_purchase_bill: a zero-value line has nothing to book
+            # here and would otherwise violate journal_line_debit_xor_credit.
+            if line.taxable_base_txn:
+                if line.is_stock_line:
+                    _write_line(
+                        inventory_account,
+                        line.taxable_base_txn,
+                        line.taxable_base_base,
+                        description=line.description
+                        or (line.product and str(line.product))
+                        or "",
+                        product=line.product,
+                    )
+                else:
+                    _write_line(
+                        line.expense_account or purchase_returns_account,
+                        line.taxable_base_txn,
+                        line.taxable_base_base,
+                        description=line.description,
+                    )
+            if line.tax_txn:
+                tax_account = (
+                    input_tax_account if line.tax_is_recoverable else non_recoverable_account
+                )
+                _write_line(
+                    tax_account,
+                    line.tax_txn,
+                    line.tax_base,
+                    description=f"Tax on {note.number} line {line.line_no}",
+                    tax_code=line.tax_code,
+                )
+            if line.bill_line_id and not line.return_line_id:
+                line.bill_line.quantity_returned = (
+                    line.bill_line.quantity_returned + line.quantity
+                )
+                line.bill_line.save(update_fields=["quantity_returned"])
+
+        line_no += 1
+        JournalLine.objects.create(
+            entry=journal_entry,
+            line_no=line_no,
+            account=ap_account,
+            debit_txn=note.total_txn,
+            debit_base=note.total_base,
+            credit_txn=ZERO,
+            credit_base=ZERO,
+            currency=note.currency,
+            exchange_rate=note.exchange_rate,
+            vendor=note.vendor,
+            description=f"{note.number} — {note.vendor}",
+        )
+
+        note.journal_entry = journal_entry
+        note.status = DocumentStatus.POSTED
+        note.posted_at = timezone.now()
+        note.posted_by = user
+        note.open_txn = note.total_txn
+        note.open_base = note.total_base
+        note.updated_by = user
+        note.save()
+        audit.record_action(request, AuditAction.POST, note)
+    return note

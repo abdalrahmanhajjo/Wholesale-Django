@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block header_title %}New sales invoice{% endblock %}
+
+{% block breadcrumb %}
+  <a href="{% if delivery %}{% url 'sales:delivery_detail' delivery.pk %}{% else %}{% url 'sales:invoice_list' %}{% endif %}"
+     class="mb-4 inline-flex items-center gap-1.5 text-sm font-medium text-muted-fg transition-colors hover:text-brand">
+    <span aria-hidden="true">&larr;</span> Back to {% if delivery %}{{ delivery.number }}{% else %}invoices{% endif %}
+  </a>
+{% endblock %}
+
+{% block content %}
+
+{% if not delivery %}
+  <div class="card card-pad max-w-xl">
+    <p class="eyebrow">Step 1 · choose the source</p>
+    <h2 class="card-title mt-2">Invoice which posted delivery?</h2>
+    <form method="get" action="{% url 'sales:invoice_create' %}" class="mt-5">
+      <select name="delivery" class="field">
+        {% for d in delivery_choices %}
+          <option value="{{ d.pk }}">{{ d.number }} · {{ d.customer }} · {{ d.document_date }}</option>
+        {% endfor %}
+      </select>
+      <button type="submit" class="btn-primary mt-4">Continue</button>
+    </form>
+  </div>
+{% else %}
+  {# rows = [(delivery_line, remaining)] chosen by the view #}
+  <form method="post" action="{% url 'sales:invoice_create' %}">
+    {% csrf_token %}
+    <input type="hidden" name="delivery" value="{{ delivery.pk }}">
+    <div class="card card-pad">
+      <p class="eyebrow">{{ delivery.number }}</p>
+      <h2 class="card-title mt-1">{{ delivery.customer }} · {{ delivery.document_date }}</h2>
+      <div class="mt-4 overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-line bg-muted-bg text-[11px] font-bold uppercase text-muted-fg">
+              <th class="px-4 py-2 text-left">Product</th>
+              <th class="px-4 py-2 text-right">Delivered</th>
+              <th class="px-4 py-2 text-right">Invoiced so far</th>
+              <th class="px-4 py-2 text-right">Qty this invoice</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for dl, remaining in rows %}
+              <tr class="border-b border-line">
+                <td class="px-4 py-2">{{ dl.product }}</td>
+                <td class="px-4 py-2 text-right tabular-nums">{{ dl.quantity }}</td>
+                <td class="px-4 py-2 text-right tabular-nums">{{ dl.quantity_invoiced }}</td>
+                <td class="px-4 py-2 text-right">
+                  <input type="number" name="qty_{{ dl.pk }}" value="{{ remaining }}" min="0"
+                         step="0.0001" class="field w-32 text-right tabular-nums">
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="mt-5 flex gap-2">
+      <button type="submit" class="btn-primary">Create invoice (draft)</button>
+      <a href="{% url 'sales:invoice_list' %}" class="btn-ghost">Cancel</a>
+    </div>
+  </form>
+{% endif %}
+{% endblock %}

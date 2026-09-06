@@ -118,7 +118,8 @@ wrong total on the server.
 {% endblock %}
 
 {% block extra_scripts %}
-<script id="po-products-data" type="application/json">{{ products_data|safe }}</script>
+{# json_script escapes <, > and & so a value can never close this tag early. #}
+{{ products_data|json_script:"po-products-data" }}
 <script>
 (function () {
   const products = JSON.parse(document.getElementById("po-products-data").textContent);

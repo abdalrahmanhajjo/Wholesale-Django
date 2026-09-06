@@ -1,0 +1,71 @@
+{% comment %}
+The sidebar's navigation, rendered from apps/core/navigation.py.
+
+Two tiers, because there are 35 rows across 8 sections and a single scrolling
+column of that is a list nobody reads — by the time Finance is open it is 11
+rows deep and Settings is below the fold.
+
+  rail    one glyph per module, always visible, 8 of them
+  panel   the rows of one module at a time
+
+So the most a reader ever faces is 11 rows instead of 35, and which module they
+are in is legible without reading a word.
+
+Every panel is rendered server-side and all but one carries `hidden`. Switching
+is then a class change rather than a fetch, the search can look through rows
+that are not on screen, and the whole thing still works with no JavaScript at
+all: each rail glyph is a real link to the first row of its module, so clicking
+one navigates instead of switching. The peek is an enhancement, not the
+mechanism.
+
+This template knows about sections, rows and active state, and nothing about
+any particular module — adding a screen is an entry in that file, not markup
+here.
+{% endcomment %}
+<nav class="nav-shell" aria-label="Primary navigation" data-nav>
+
+  {# ------------------------------------------------------------- rail #}
+  <div class="nav-rail" role="tablist" aria-label="Modules" data-nav-rail>
+    {% for section in nav_sections %}
+      {% comment %}
+      Two states, not one. `current` is the module holding the page you are on
+      and never moves until you navigate; `selected` is the module you are
+      looking at, which changes the moment you click another glyph. They are
+      the same until you peek, and a sidebar that forgets where you are the
+      instant you look elsewhere has lost the thing it is for.
+      {% endcomment %}
+      <a href="{% url section.first_url_name %}"
+         class="nav-rail-btn {% if section.has_active %}nav-rail-btn-current nav-rail-btn-selected{% endif %}"
+         role="tab"
+         id="rail-{{ section.key }}"
+         aria-controls="panel-{{ section.key }}"
+         aria-selected="{% if section.has_active %}true{% else %}false{% endif %}"
+         data-rail="{{ section.key }}"
+         data-label="{{ section.label }}">
+        <svg class="icon" aria-hidden="true"><use href="#i-{{ section.icon }}"></use></svg>
+        <span class="nav-rail-label">{{ section.label }}</span>
+      </a>
+    {% endfor %}
+  </div>
+
+  {# ------------------------------------------------------------ panel #}
+  <div class="nav-panel">
+    <p class="nav-empty" data-nav-empty hidden>No menu item matches that.</p>
+
+    {% for section in nav_sections %}
+      <section class="nav-panel-body"
+               id="panel-{{ section.key }}"
+               role="tabpanel"
+               aria-labelledby="rail-{{ section.key }}"
+               data-panel="{{ section.key }}"
+               {% if not section.has_active %}hidden{% endif %}>
+        <h2 class="nav-panel-title">{{ section.label }}</h2>
+        {% include "core/_nav_rows.html" with items=section.items %}
+        {% for group in section.subgroups %}
+          <p class="nav-subgroup">{{ group.label }}</p>
+          {% include "core/_nav_rows.html" with items=group.items %}
+        {% endfor %}
+      </section>
+    {% endfor %}
+  </div>
+</nav>

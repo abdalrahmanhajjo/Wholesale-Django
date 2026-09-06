@@ -1,0 +1,142 @@
+{% extends "base.html" %}
+{% comment %}
+Vendor debit note detail and the post action (RET-006, RET-007).
+
+Posting is gated server-side by VendorDebitNotePostView (core.post_debit_note)
+regardless of which buttons a `{% if perms.* %}` check happens to hide
+(CONTRIBUTING.md §4b, ACC-004).
+{% endcomment %}
+
+{% block header_title %}{{ note.number }}{% endblock %}
+
+{% block actions %}
+  {% if can_edit and perms.purchases.change_vendordebitnote %}
+    <a href="{% url 'purchases:dbn_edit' note.pk %}" class="btn-ghost">Edit</a>
+  {% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="grid gap-4 lg:grid-cols-3">
+
+  <div class="space-y-4 lg:col-span-2">
+    <div class="card card-pad">
+      <div class="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p class="eyebrow">Vendor debit note</p>
+          <h2 class="display mt-1 text-2xl">{{ note.number }}</h2>
+          <p class="text-sm text-muted-fg">{{ note.vendor }}{% if note.vendor_credit_reference %} — vendor credit {{ note.vendor_credit_reference }}{% endif %}</p>
+        </div>
+        {% include "core/_status_badge.html" with value=note.status display=note.get_status_display %}
+      </div>
+
+      <dl class="mt-6 grid gap-x-6 gap-y-4 sm:grid-cols-2">
+        <div><dt class="eyebrow">Date</dt><dd class="mt-1 text-sm">{{ note.document_date }}</dd></div>
+        <div><dt class="eyebrow">Original bill</dt>
+          <dd class="mt-1 text-sm">
+            {% if note.original_bill %}<a href="{{ note.original_bill.get_absolute_url }}" class="font-semibold text-brand-deep hover:underline">{{ note.original_bill.number }}</a>{% else %}—{% endif %}
+          </dd>
+        </div>
+        <div><dt class="eyebrow">Purchase return</dt>
+          <dd class="mt-1 text-sm">
+            {% if note.purchase_return %}<a href="{{ note.purchase_return.get_absolute_url }}" class="font-semibold text-brand-deep hover:underline">{{ note.purchase_return.number }}</a>{% else %}—{% endif %}
+          </dd>
+        </div>
+      </dl>
+    </div>
+
+    <div class="card">
+      <p class="card-title border-b border-line p-4 sm:p-5">Lines</p>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-line bg-muted-bg text-[11px] font-bold uppercase tracking-[0.1em] text-muted-fg">
+              <th class="px-4 py-2 text-left">Product / account</th>
+              <th class="px-4 py-2 text-right">Qty</th>
+              <th class="px-4 py-2 text-right">Unit price</th>
+              <th class="px-4 py-2 text-right">Disc %</th>
+              <th class="px-4 py-2 text-right">Tax</th>
+              <th class="px-4 py-2 text-right">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for line in lines %}
+              <tr class="border-b border-line last:border-0">
+                <td class="px-4 py-2">
+                  <p class="font-medium">{{ line.product|default:line.expense_account }}</p>
+                  {% if line.description %}<p class="text-xs text-muted-fg">{{ line.description }}</p>{% endif %}
+                </td>
+                <td class="px-4 py-2 text-right tabular-nums">{{ line.quantity }}</td>
+                <td class="px-4 py-2 text-right tabular-nums">{{ line.unit_price|floatformat:2 }}</td>
+                <td class="px-4 py-2 text-right tabular-nums">{{ line.discount_percent|floatformat:2 }}</td>
+                <td class="px-4 py-2 text-right tabular-nums">{{ line.tax_txn|floatformat:2 }}</td>
+                <td class="px-4 py-2 text-right tabular-nums font-medium">{{ line.total_txn|floatformat:2 }}</td>
+              </tr>
+            {% empty %}
+              <tr><td colspan="6" class="px-4 py-8 text-center text-sm text-muted-fg">No lines yet.</td></tr>
+            {% endfor %}
+          </tbody>
+          <tfoot>
+            <tr class="border-t-2 border-line font-semibold">
+              <td colspan="4"></td>
+              <td class="px-4 py-2 text-right text-xs uppercase tracking-wide text-muted-fg">Total</td>
+              <td class="px-4 py-2 text-right tabular-nums">{{ note.total_txn|floatformat:2 }}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+
+    <div class="card card-pad">
+      <p class="eyebrow">Reason</p>
+      <p class="mt-1 whitespace-pre-line text-sm text-muted-fg">{{ note.reason }}</p>
+    </div>
+  </div>
+
+  <div class="space-y-4">
+    <div class="card card-pad">
+      <p class="eyebrow">Posting (RET-006)</p>
+      <h2 class="card-title mt-2">{{ note.get_status_display }}</h2>
+
+      {% if note.status == "DRAFT" %}
+        {% if perms.core.post_debit_note %}
+          <form method="post" action="{% url 'purchases:dbn_post' note.pk %}" class="mt-3">
+            {% csrf_token %}
+            <button type="submit" class="btn-primary w-full">Post debit note</button>
+          </form>
+          <p class="help mt-2">Posting reduces Accounts Payable and reverses the inventory/expense value and any recoverable tax — the credit the vendor now owes us.</p>
+        {% endif %}
+      {% elif note.status == "POSTED" %}
+        <p class="mt-2 text-sm text-muted-fg">
+          Posted by {{ note.posted_by|default:"—" }} on {{ note.posted_at|date:"j M Y, H:i" }}.
+        </p>
+      {% endif %}
+    </div>
+
+    <div class="card card-pad">
+      <p class="eyebrow">Totals</p>
+      <dl class="mt-3 space-y-1.5 text-sm">
+        <div class="flex justify-between"><dt class="text-muted-fg">Subtotal</dt><dd class="tabular-nums">{{ note.subtotal_txn|floatformat:2 }}</dd></div>
+        <div class="flex justify-between"><dt class="text-muted-fg">Tax</dt><dd class="tabular-nums">{{ note.tax_txn|floatformat:2 }}</dd></div>
+        <div class="flex justify-between border-t border-line pt-1.5 font-bold"><dt>Total</dt><dd class="tabular-nums">{{ note.total_txn|floatformat:2 }} {{ note.currency_id }}</dd></div>
+        <div class="flex justify-between"><dt class="text-muted-fg">Open</dt><dd class="tabular-nums">{{ note.open_txn|floatformat:2 }}</dd></div>
+      </dl>
+    </div>
+
+    <div class="card card-pad">
+      <p class="eyebrow">Audit history</p>
+      <h2 class="card-title mt-2">What changed, and who changed it</h2>
+      <ul class="mt-4 space-y-4">
+        {% for event in audit_events %}
+          <li class="border-l-2 border-line pl-3">
+            <p class="text-xs font-bold uppercase tracking-wide text-brand-deep">{{ event.get_action_display }}</p>
+            <p class="text-sm">{{ event.user|default:"system" }}</p>
+            <p class="text-xs text-muted-fg">{{ event.occurred_at|date:"j M Y, H:i" }}</p>
+          </li>
+        {% empty %}
+          <li class="text-sm text-muted-fg">No changes recorded yet.</li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+</div>
+{% endblock %}

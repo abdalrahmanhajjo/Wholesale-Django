@@ -1,90 +1,135 @@
+{% extends "registration/_auth_base.html" %}
 {% comment %}
-Sign-in page (ACC-001). Deliberately does not extend base.html: there is no
-navigation to show before authentication, and the split layout is its own thing.
+Sign in (ACC-001).
+
+The failure message never says whether the username exists. Telling someone
+"no such user" turns the sign-in form into a way to discover who has an account
+(UX-008).
 {% endcomment %}
-<!doctype html>
-<html lang="en" class="h-full">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Sign in · Atlas Wholesale</title>
-  {% include "_theme.html" %}
-</head>
-<body class="h-full bg-canvas font-sans text-ink antialiased">
-<div class="flex min-h-full">
 
-  <!-- Brand panel: hidden on small screens, where it would just push the form down. -->
-  <div class="hidden w-1/2 flex-col justify-between bg-navy p-12 lg:flex">
-    <div class="flex items-center gap-2.5">
-      <span class="grid h-9 w-9 place-items-center rounded-lg bg-brand text-base font-black text-navy">A</span>
-      <span class="text-[13px] font-black uppercase tracking-[0.12em] text-white">Atlas Wholesale</span>
-    </div>
-    <div>
-      <h1 class="display-xl max-w-lg text-4xl text-white">
-        Every figure traces back to the document that produced it.
-      </h1>
-      <p class="mt-4 max-w-md text-sm leading-relaxed text-slate-400">
-        Purchasing, inventory, sales and payments on one accrual-basis
-        double-entry ledger. Posted entries balance or they do not post.
+{% block title %}Sign in{% endblock %}
+
+{% comment %}
+The page greets rather than labels, so there is no badge glyph over the
+heading — the eyebrow is doing that job.
+{% endcomment %}
+{% block badge %}{% endblock %}
+{% block eyebrow %}
+  <p class="auth-eyebrow">Welcome back <span aria-hidden="true">👋</span></p>
+{% endblock %}
+{% block heading %}Sign in to your <em>account</em>{% endblock %}
+{% block intro %}
+  <p class="auth-intro">Access your dashboard and manage your business with confidence.</p>
+{% endblock %}
+
+{% block corner %}
+  <p class="auth-corner">
+    <svg class="icon" aria-hidden="true"><use href="#i-shield"></use></svg>
+    <span>
+      <strong>Bank-level security</strong>
+      <small>256-bit encryption</small>
+    </span>
+  </p>
+{% endblock %}
+
+{% block body %}
+  {% comment %}
+  Rendered from the form rather than written here, so there is one wording for
+  a failed sign-in and the template cannot drift from it. A pending account
+  gets its own message; every other failure gets the same one whether or not
+  the account exists (UX-008).
+  {% endcomment %}
+  {% if form.non_field_errors %}
+    <div class="alert-error mb-6" role="alert" id="auth-error" tabindex="-1">
+      <svg class="icon shrink-0" aria-hidden="true"><use href="#i-alert"></use></svg>
+      <p class="alert-body text-danger-strong">
+        {% for error in form.non_field_errors %}{{ error }}{% endfor %}
       </p>
     </div>
-    <p class="text-xs text-slate-500">Accrual basis · double entry · audited</p>
-  </div>
+  {% endif %}
 
-  <!-- Form -->
-  <div class="flex w-full items-center justify-center px-6 py-12 lg:w-1/2">
-    <div class="w-full max-w-sm">
-      <div class="mb-8 flex items-center gap-2.5 lg:hidden">
-        <span class="grid h-9 w-9 place-items-center rounded-lg bg-brand text-base font-black text-navy">A</span>
-        <span class="text-[13px] font-black uppercase tracking-[0.12em]">Atlas Wholesale</span>
+  {% if next and user.is_authenticated %}
+    <div class="alert-warning mb-6" role="alert">
+      <svg class="icon shrink-0" aria-hidden="true"><use href="#i-alert"></use></svg>
+      <p class="alert-body text-amber-900">
+        Your account doesn't have access to that page. Sign in with one that does.
+      </p>
+    </div>
+  {% endif %}
+
+  <form method="post" class="auth-form">
+    {% csrf_token %}
+
+    <div class="field-wrap auth-field">
+      <label for="{{ form.username.id_for_label }}" class="label">Email or username</label>
+      <div class="auth-control">
+        <span class="auth-field-icon"><svg class="icon" aria-hidden="true"><use href="#i-user"></use></svg></span>
+        <input type="text" name="username" id="{{ form.username.id_for_label }}"
+               value="{{ form.username.value|default:'' }}"
+               placeholder="you@company.com"
+               autocomplete="username" autocapitalize="none" spellcheck="false"
+               autofocus required class="field">
       </div>
-
-      <h2 class="display text-2xl">Sign in</h2>
-      <p class="mt-1 text-sm text-muted-fg">Use your work account.</p>
-
-      {% if form.errors %}
-        <div class="mt-6 rounded-xl2 border-l-4 border-l-danger bg-red-50 px-4 py-3">
-          {# UX-008: say what failed, without revealing whether the username exists. #}
-          <p class="text-sm font-medium text-danger">
-            That username and password don't match an active account.
-          </p>
-        </div>
-      {% endif %}
-
-      {% if next and user.is_authenticated %}
-        <div class="mt-6 rounded-xl2 border-l-4 border-l-amber-500 bg-amber-50 px-4 py-3">
-          <p class="text-sm text-amber-800">
-            Your account doesn't have access to that page. Sign in with an account that does.
-          </p>
-        </div>
-      {% endif %}
-
-      <form method="post" class="mt-6 space-y-4">
-        {% csrf_token %}
-        <div>
-          <label for="{{ form.username.id_for_label }}" class="label">Username</label>
-          <input type="text" name="username" id="{{ form.username.id_for_label }}"
-                 autocomplete="username" autofocus required
-                 class="field h-11">
-        </div>
-        <div>
-          <label for="{{ form.password.id_for_label }}" class="label">Password</label>
-          <input type="password" name="password" id="{{ form.password.id_for_label }}"
-                 autocomplete="current-password" required
-                 class="field h-11">
-        </div>
-        <input type="hidden" name="next" value="{{ next }}">
-        <button type="submit"
-                class="btn-primary h-11 w-full">
-          Sign in
-        </button>
-      </form>
-
-      <p class="mt-8 text-xs text-muted-fg">
-        Trouble signing in? Contact your system administrator.
-      </p>
     </div>
-  </div>
-</div>
-</body>
-</html>
+
+    {% comment %}
+    The reset link sits beside the password label rather than in the footer.
+    That is the moment the need is felt, and it saves reading past the button
+    to find it.
+    {% endcomment %}
+    <div class="field-wrap auth-field">
+      <div class="auth-label-row">
+        <label for="{{ form.password.id_for_label }}" class="label">Password</label>
+        <a href="{% url 'password_reset' %}">Forgot password?</a>
+      </div>
+      <div class="auth-control">
+        <span class="auth-field-icon"><svg class="icon" aria-hidden="true"><use href="#i-lock"></use></svg></span>
+        <input type="password" name="password" id="{{ form.password.id_for_label }}"
+               placeholder="Enter your password"
+               autocomplete="current-password" required class="field">
+      </div>
+    </div>
+
+    {% comment %}
+    Off means the session ends with the browser. Checked by default because the
+    common case is a personal work machine; the help text names the case where
+    it should not be.
+    {% endcomment %}
+    <div class="auth-remember">
+      <input type="checkbox" name="remember_me" id="{{ form.remember_me.id_for_label }}"
+             {% if form.remember_me.value %}checked{% endif %}>
+      <span>
+        <label for="{{ form.remember_me.id_for_label }}">Keep me signed in</label>
+        <p class="help">Not recommended on shared devices</p>
+      </span>
+    </div>
+
+    <input type="hidden" name="next" value="{{ next }}">
+    <button type="submit" class="btn-primary auth-submit" data-busy-label="Signing in…">
+      Sign in securely
+      <svg class="icon text-brand" aria-hidden="true"><use href="#i-arrow-right"></use></svg>
+    </button>
+  </form>
+{% endblock %}
+
+{% block footer %}
+  <p>No account yet? <a href="{% url 'signup' %}">Request access</a></p>
+{% endblock %}
+
+{% comment %}
+No column of product claims here: someone signing in has already been sold to.
+The space carries the dashboard they are signing in to see instead.
+{% endcomment %}
+{% block art %}{% include "registration/_auth_art_login.html" %}{% endblock %}
+
+{% block decor %}
+  <span class="auth-blob auth-blob-soft"></span>
+  <span class="auth-dotfield auth-dotfield-mid"></span>
+  <span class="auth-ring"></span>
+  <span class="auth-ring-mark"><span class="logo-mark"><i></i><i></i><i></i></span></span>
+  <svg class="auth-lines" viewBox="0 0 1440 1160" preserveAspectRatio="xMidYMid slice"
+       fill="none" stroke="#39d889">
+    <path d="M405 -60C405 170 300 285 90 315" stroke-opacity=".18" stroke-dasharray="3 7"/>
+    <path d="M1300 40C1420 240 1400 470 1250 640" stroke-opacity=".14" stroke-dasharray="3 7"/>
+  </svg>
+{% endblock %}

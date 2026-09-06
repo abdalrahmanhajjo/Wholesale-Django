@@ -5,11 +5,14 @@ BRD coverage: CFG-002, PAY-001..PAY-012, RET-004, RET-007, RET-009,
 BR-008, BR-009, BR-014, BR-016, FTD-004, FTD-005, RPT-012, RPT-013, RPT-022.
 """
 
+import uuid
 from decimal import Decimal
 
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.db.models import F, Q
+from django.urls import reverse
 
 from apps.core.expressions import exactly_one
 from apps.core.models import MONEY, RATE, DocumentStatus, TimeStampedModel
@@ -121,8 +124,29 @@ class Payment(TimeStampedModel):
     amount_base = models.DecimalField(**MONEY, default=ZERO)
     allocated_txn = models.DecimalField(**MONEY, default=ZERO)
     unallocated_txn = models.DecimalField(
-        **MONEY, default=ZERO, help_text="Advance / unapplied credit (PAY-004, BR-009)."
+        **MONEY,
+        default=ZERO,
+        help_text=(
+            "Money received but not yet matched to an invoice. It sits as a "
+            "credit on the account until it is allocated."
+        ),
     )
+
+    # PAY-013: what the processor kept. A card or gateway receipt settles the
+    # customer in full while less cash arrives, so the gross has to stay on
+    # `amount_txn` (it is what clears AR) and the shortfall becomes an expense.
+    # On a vendor payment the sign flips: the fee is charged on top of what the
+    # vendor receives, so more cash leaves than the payment settles.
+    fee_txn = models.DecimalField(
+        **MONEY,
+        default=ZERO,
+        help_text=(
+            "Processor or bank fee, in the payment currency. Deducted from a "
+            "customer receipt before the money lands; added to a vendor payment "
+            "on top of what the vendor receives. Leave at zero when there is no fee."
+        ),
+    )
+    fee_base = models.DecimalField(**MONEY, default=ZERO)
 
     method = models.ForeignKey(
         PaymentMethod, on_delete=models.PROTECT, related_name="payments"
@@ -200,6 +224,17 @@ class Payment(TimeStampedModel):
             models.CheckConstraint(
                 condition=Q(exchange_rate__gt=0), name="payment_rate_positive"
             ),
+            models.CheckConstraint(
+                condition=Q(fee_txn__gte=0) & Q(fee_base__gte=0),
+                name="payment_fee_nonneg",
+            ),
+            # A receipt whose fee swallowed the whole amount moved no money, so
+            # there is no cash line to post. A vendor payment has no such limit:
+            # the fee is charged on top rather than taken out.
+            models.CheckConstraint(
+                condition=Q(direction="PAYMENT") | Q(fee_txn__lt=F("amount_txn")),
+                name="payment_receipt_fee_below_amount",
+            ),
             # BR-008: allocations can never exceed the payment.
             models.CheckConstraint(
                 condition=Q(allocated_txn__gte=0) & Q(allocated_txn__lte=F("amount_txn")),
@@ -243,6 +278,67 @@ class Payment(TimeStampedModel):
     def __str__(self):
         return self.number
 
+    @property
+    def party(self):
+        """The customer or vendor on the side selected by ``direction``."""
+        return self.customer if self.direction == PaymentDirection.RECEIPT else self.vendor
+
+    @property
+    def net_cash_txn(self):
+        """What the money account actually moved, once the fee is accounted for.
+
+        Not the same as ``amount_txn`` whenever a processor is involved: a
+        receipt arrives short by the fee, a vendor payment leaves heavy by it.
+        The party is settled for ``amount_txn`` in both cases.
+        """
+        if self.direction == PaymentDirection.RECEIPT:
+            return self.amount_txn - self.fee_txn
+        return self.amount_txn + self.fee_txn
+
+    def get_absolute_url(self):
+        return reverse("payments:payment_detail", args=[self.pk])
+
+    def clean(self):
+        """Cross-table rules that cannot be expressed as database CHECKs."""
+        super().clean()
+        errors = {}
+        if self.direction == PaymentDirection.RECEIPT:
+            if not self.customer_id:
+                errors["customer"] = "A customer is required for a receipt."
+            if self.vendor_id:
+                errors["vendor"] = "A receipt cannot be assigned to a vendor."
+        elif self.direction == PaymentDirection.PAYMENT:
+            if not self.vendor_id:
+                errors["vendor"] = "A vendor is required for a vendor payment."
+            if self.customer_id:
+                errors["customer"] = "A vendor payment cannot be assigned to a customer."
+
+        if self.fee_txn is not None and self.amount_txn is not None:
+            if self.fee_txn < ZERO:
+                errors["fee_txn"] = "A fee cannot be negative."
+            elif (
+                self.direction == PaymentDirection.RECEIPT and self.fee_txn >= self.amount_txn
+            ):
+                errors["fee_txn"] = (
+                    "The fee has to be smaller than the receipt - a fee equal to "
+                    "the whole amount would mean no money arrived at all."
+                )
+
+        if self.method_id and self.method.requires_reference and not self.reference.strip():
+            errors["reference"] = (
+                f"A reference is required for payment method {self.method.name}."
+            )
+        if self.method_id and not self.method.is_active:
+            errors["method"] = "Select an active payment method."
+        if self.money_account_id and not self.money_account.is_active:
+            errors["money_account"] = "Select an active money account."
+        if self.customer_id and not self.customer.is_active:
+            errors["customer"] = "Select an active customer."
+        if self.vendor_id and not self.vendor.is_active:
+            errors["vendor"] = "Select an active vendor."
+        if errors:
+            raise ValidationError(errors)
+
 
 # ---------------------------------------------------------------------------
 # Allocation (PAY-003, PAY-005, PAY-007, RET-004, RET-007)
@@ -265,6 +361,14 @@ class Allocation(TimeStampedModel):
     """
 
     allocation_date = models.DateField(db_index=True)
+    batch_key = models.UUIDField(
+        default=uuid.uuid4,
+        editable=False,
+        db_index=True,
+        help_text=(
+            "Idempotency key shared by every line submitted in one allocation request."
+        ),
+    )
 
     # Discriminators adopted from the colleague's schema. They are redundant with
     # the nullable FKs below, but they let one CHECK express the whole rule
@@ -343,7 +447,12 @@ class Allocation(TimeStampedModel):
     amount_base = models.DecimalField(**MONEY, default=ZERO)
     settlement_rate = models.DecimalField(**RATE, default=Decimal("1"))
     fx_gain_loss_base = models.DecimalField(
-        **MONEY, default=ZERO, help_text="Positive = gain, negative = loss (BR-014)."
+        **MONEY,
+        default=ZERO,
+        help_text=(
+            "Exchange difference realised when this payment settled, against "
+            "the rate on the original document. Positive is a gain."
+        ),
     )
     fx_journal_entry = models.ForeignKey(
         "ledger.JournalEntry",
@@ -371,6 +480,9 @@ class Allocation(TimeStampedModel):
             models.CheckConstraint(
                 condition=Q(source_amount_txn__gt=0) & Q(target_amount_txn__gt=0),
                 name="allocation_amounts_positive",
+            ),
+            models.CheckConstraint(
+                condition=Q(amount_base__gt=0), name="allocation_base_positive"
             ),
             models.CheckConstraint(
                 condition=Q(settlement_rate__gt=0), name="allocation_rate_positive"
@@ -429,30 +541,31 @@ class Allocation(TimeStampedModel):
                 ),
                 name="allocation_side_consistency",
             ),
-            # PAY-007: the same source may not be applied twice to the same target.
+            # The request key makes retries idempotent while still allowing the
+            # same advance to settle the same target in separate later batches.
             models.UniqueConstraint(
-                fields=["payment", "sales_invoice"],
+                fields=["batch_key", "payment", "sales_invoice"],
                 condition=Q(
                     payment__isnull=False, sales_invoice__isnull=False, is_reversed=False
                 ),
-                name="allocation_unique_payment_invoice",
+                name="alloc_batch_payment_invoice_unique",
             ),
             models.UniqueConstraint(
-                fields=["payment", "purchase_bill"],
+                fields=["batch_key", "payment", "purchase_bill"],
                 condition=Q(
                     payment__isnull=False, purchase_bill__isnull=False, is_reversed=False
                 ),
-                name="allocation_unique_payment_bill",
+                name="alloc_batch_payment_bill_unique",
             ),
             models.UniqueConstraint(
-                fields=["sales_credit_note", "sales_invoice"],
+                fields=["batch_key", "sales_credit_note", "sales_invoice"],
                 condition=Q(sales_credit_note__isnull=False, is_reversed=False),
-                name="allocation_unique_credit_invoice",
+                name="alloc_batch_credit_invoice_unique",
             ),
             models.UniqueConstraint(
-                fields=["vendor_debit_note", "purchase_bill"],
+                fields=["batch_key", "vendor_debit_note", "purchase_bill"],
                 condition=Q(vendor_debit_note__isnull=False, is_reversed=False),
-                name="allocation_unique_debit_bill",
+                name="alloc_batch_debit_bill_unique",
             ),
         ]
         indexes = [
@@ -465,6 +578,16 @@ class Allocation(TimeStampedModel):
 
     def __str__(self):
         return f"Allocation {self.pk}: {self.target_amount_txn}"
+
+    @property
+    def source(self):
+        """Return the concrete payment or credit document behind this allocation."""
+        return self.payment or self.sales_credit_note or self.vendor_debit_note
+
+    @property
+    def target(self):
+        """Return the concrete invoice or bill settled by this allocation."""
+        return self.sales_invoice or self.purchase_bill
 
 
 # ---------------------------------------------------------------------------
@@ -616,3 +739,115 @@ class Refund(TimeStampedModel):
 
     def __str__(self):
         return self.number
+
+
+# ---------------------------------------------------------------------------
+# Stripe checkout (PAY-013)
+# ---------------------------------------------------------------------------
+class StripeCheckoutStatus(models.TextChoices):
+    PENDING = "PENDING", "Waiting for the customer to pay"
+    PAID = "PAID", "Paid"
+    EXPIRED = "EXPIRED", "Expired unpaid"
+
+
+class StripeCheckout(TimeStampedModel):
+    """One payment link for one sales invoice, and what became of it.
+
+    This is the join between something Stripe knows about and something the
+    ledger knows about, and it exists mainly so that the two can never drift
+    apart silently. Three things it has to survive:
+
+    * **Stripe retries.** A webhook is delivered at least once, not exactly
+      once. ``session_id`` is unique and the settlement path locks this row, so
+      a redelivery finds the work already done and changes nothing.
+    * **A closed period.** Money can arrive on a day the ledger will not accept
+      an entry for. The payment is a fact either way, so ``status`` records it
+      immediately and ``settlement_error`` explains why no journal followed.
+      Someone finishes it by hand once the period is open.
+    * **Its own irrelevance.** A link that is never paid just expires. That is
+      not a failure and it is not an error; it is the ordinary case for most
+      quotes that go nowhere.
+
+    There is deliberately no table of raw Stripe events. Every event this
+    integration acts on names a session, and acting on a session is idempotent
+    under the row lock, so a second table would record history nobody reads.
+    """
+
+    invoice = models.ForeignKey(
+        "sales.SalesInvoice", on_delete=models.PROTECT, related_name="stripe_checkouts"
+    )
+    # Stripe's ids are documented as opaque and growing; 255 is its own advice.
+    session_id = models.CharField(max_length=255, unique=True)
+    payment_intent_id = models.CharField(max_length=255, blank=True)
+    charge_id = models.CharField(max_length=255, blank=True)
+    url = models.URLField(
+        max_length=1000,
+        blank=True,
+        help_text="The hosted Stripe page. Stripe expires this before the session itself.",
+    )
+
+    currency = models.ForeignKey("core.Currency", on_delete=models.PROTECT, related_name="+")
+    amount_txn = models.DecimalField(
+        **MONEY, help_text="What the link was created for - the invoice's open amount."
+    )
+    fee_txn = models.DecimalField(
+        **MONEY, default=ZERO, help_text="What Stripe kept, once settlement reports it."
+    )
+
+    status = models.CharField(
+        max_length=8,
+        choices=StripeCheckoutStatus.choices,
+        default=StripeCheckoutStatus.PENDING,
+        db_index=True,
+    )
+    payment = models.ForeignKey(
+        Payment,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="stripe_checkouts",
+    )
+    settlement_error = models.TextField(
+        blank=True,
+        help_text=(
+            "Set when the customer paid but the receipt could not be posted - a "
+            "closed period, a missing account mapping, no exchange rate for the "
+            "day. The money arrived regardless; the ledger entry is outstanding."
+        ),
+    )
+    paid_at = models.DateTimeField(null=True, blank=True)
+    expires_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "stripe_checkout"
+        ordering = ["-created_at", "-id"]
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(amount_txn__gt=0), name="stripe_checkout_amount_positive"
+            ),
+            models.CheckConstraint(
+                condition=Q(fee_txn__gte=0), name="stripe_checkout_fee_nonneg"
+            ),
+            # A receipt can only hang off a session the customer actually paid.
+            models.CheckConstraint(
+                condition=Q(payment__isnull=True) | Q(status="PAID"),
+                name="stripe_checkout_payment_needs_paid",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["invoice", "-created_at"], name="ix_stripe_invoice"),
+            # The "paid but not in the ledger" worklist.
+            models.Index(
+                fields=["-created_at"],
+                condition=Q(status="PAID") & Q(payment__isnull=True),
+                name="ix_stripe_unsettled",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.session_id} ({self.get_status_display()})"
+
+    @property
+    def needs_attention(self) -> bool:
+        """Paid, but nothing reached the ledger. Someone has to finish this."""
+        return self.status == StripeCheckoutStatus.PAID and self.payment_id is None

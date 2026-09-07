@@ -1,6 +1,66 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+/* Explicit sources, not Tailwind v4's automatic heuristic scan: static/js is
+   scanned because scripts add classes at runtime — .combo-native,
+   .field-live-error, .step-index — that never appear in a template, and
+   automatic detection has already been wrong about that once (see the old
+   tailwind.config.js history: a missing glob there compiled away the rule
+   that hides the native <select>, so a searchable field rendered as two
+   boxes). Every .py file under apps/ is scanned too, for classes built in
+   Python (form widgets). */
+@import "tailwindcss" source(none);
+@source "../../templates/**/*.html";
+@source "../../apps/**/*.py";
+@source "../js/**/*.js";
+@plugin "@tailwindcss/forms";
+
+@theme {
+  --color-ink: #07172b;
+  --color-navy: #07192d;
+  --color-navy-2: #0b2943;
+  --color-sidebar: #07192d;
+  --color-brand: #4bd27d;
+  --color-brand-bright: #66dc92;
+  --color-brand-deep: #1f7447;
+  /* The green the auth pages set a word of the heading in, and tint their
+     icons with. #4bd27d is 1.94:1 on white — fine as a fill, unreadable as a
+     letterform. This is the brightest green that still clears the 3:1
+     large-text minimum (3.30:1), so the accent reads as the mark's green
+     without the heading going soft. */
+  --color-brand-accent: #16a34a;
+  --color-brand-tint: #edf9f1;
+  --color-paper: #fbfcf9;
+  --color-canvas: #f4f7f6;
+  --color-cream: #f7f7f2;
+  --color-line: #e1e9e7;
+  /* Input boundaries are the only thing separating a field from the page, so
+     they carry the 3:1 non-text contrast requirement (WCAG 1.4.11). The old
+     #d7e3dc measured 1.32:1. */
+  --color-input-line: #788d84;
+  --color-muted-bg: #f1f5f4;
+  /* Passes 4.5:1 on white *and* on muted-bg, where secondary text also lands
+     (table headers, filter chips). The old #667682 was 4.27:1 there. */
+  --color-muted-fg: #54636f;
+  /* Sidebar secondary text sits on #071a2f; slate-500 measured 3.68:1. */
+  --color-nav-fg: #cbd5e1;
+  --color-nav-muted: #8fa0b0;
+  --color-danger: #dc2626;
+  /* #dc2626 on red-50 is 4.41:1, so message bodies use the darker step. */
+  --color-danger-strong: #b91c1c;
+  /* A third state, for findings that need a decision rather than a fix - a
+     close checklist where everything is either fine or fatal teaches people
+     to click through the fatal ones. Split for the same reason as danger:
+     #d97706 measures 3.19:1 on white, enough for a border or an icon but not
+     for text, while #b45309 is 5.02:1 on white and 4.57:1 on muted-bg, so it
+     carries the words. */
+  --color-warning: #d97706;
+  --color-warning-strong: #b45309;
+
+  /* Inter is self-hosted (see the @font-face block below). "Inter Fallback"
+     is the same list of system faces with Inter's metrics overridden onto
+     them, so the swap when the real font arrives moves nothing on the page. */
+  --font-sans: Inter, "Inter Fallback", system-ui, sans-serif;
+
+  --radius-xl2: 0.8rem;
+}
 
 /* ---------------------------------------------------------------------------
    Type.
@@ -102,10 +162,33 @@
   }
 }
 
+/* Tailwind v4's @apply only resolves real utilities, not plain component
+   classes, so any component class that other component classes build on top
+   of via @apply (btn, card, display, badge, alert) has to be registered as a
+   utility itself rather than declared with a bare selector. */
+@utility btn {
+  @apply inline-flex h-10 items-center justify-center gap-2 rounded-xl2 px-4 text-sm font-semibold transition-all duration-200 disabled:pointer-events-none disabled:opacity-50 active:scale-[.98];
+}
+@utility card {
+  @apply rounded-[18px] border border-line bg-white shadow-[0_1px_2px_rgba(7,26,47,.025),0_10px_30px_rgba(7,26,47,.035)];
+}
+/* -0.04em was set against a typeface that is not on this machine and was
+   never on most of them. Inter's curve flattens out around -0.022em at
+   display sizes; -0.028em is that plus a deliberate tightening, which is
+   what gives a headline its set-by-hand look without the letters touching. */
+@utility display {
+  @apply font-black tracking-[-0.028em];
+}
+@utility badge {
+  @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide;
+}
+/* Status is carried by the label word and the icon, not by colour alone
+   (WCAG 1.4.1). */
+@utility alert {
+  @apply flex items-start gap-3 rounded-xl2 border border-l-4 px-4 py-3;
+}
+
 @layer components {
-  .btn {
-    @apply inline-flex h-10 items-center justify-center gap-2 rounded-xl2 px-4 text-sm font-semibold transition-all duration-200 disabled:pointer-events-none disabled:opacity-50 active:scale-[.98];
-  }
   .btn-primary { @apply btn bg-ink text-white hover:bg-navy-2; }
   .btn-accent { @apply btn bg-brand text-ink hover:bg-brand-bright; }
   .btn-ghost { @apply btn border border-input-line bg-white text-ink hover:bg-muted-bg; }
@@ -113,9 +196,6 @@
   /* 32px keeps the 24px minimum of WCAG 2.5.8 with room to spare. */
   .btn-sm { @apply h-8 rounded-lg px-3 text-xs; }
 
-  .card {
-    @apply rounded-[18px] border border-line bg-white shadow-[0_1px_2px_rgba(7,26,47,.025),0_10px_30px_rgba(7,26,47,.035)];
-  }
   .card-pad { @apply p-5 sm:p-6; }
   .card-title { @apply text-base font-bold text-ink; }
   /* Uppercase runs the curve the other way: caps have no ascenders or
@@ -126,11 +206,6 @@
      applied to real heading elements, so the page is navigable by heading. */
   .section-heading { @apply text-[11px] font-bold uppercase tracking-[0.14em] text-muted-fg; }
 
-  /* -0.04em was set against a typeface that is not on this machine and was
-     never on most of them. Inter's curve flattens out around -0.022em at
-     display sizes; -0.028em is that plus a deliberate tightening, which is
-     what gives a headline its set-by-hand look without the letters touching. */
-  .display { @apply font-black tracking-[-0.028em]; }
   .display-xl { @apply font-black leading-[1.03] tracking-[-0.034em]; }
 
   .field {
@@ -145,18 +220,12 @@
   .help { @apply mt-1 text-[13px] leading-5 text-muted-fg; }
   .error-text { @apply mt-1 flex items-start gap-1.5 text-[13px] font-medium leading-5 text-danger-strong; }
 
-  .badge {
-    @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide;
-  }
   .badge-draft { @apply badge bg-muted-bg text-muted-fg; }
   .badge-posted { @apply badge bg-brand-tint text-brand-deep; }
   .badge-partial { @apply badge bg-amber-50 text-amber-800; }
   .badge-overdue { @apply badge bg-red-50 text-danger-strong; }
 
   /* -------------------------------------------------------------- messages */
-  /* Status is carried by the label word and the icon, not by colour alone
-     (WCAG 1.4.1). */
-  .alert { @apply flex items-start gap-3 rounded-xl2 border border-l-4 px-4 py-3; }
   .alert-success { @apply alert border-line border-l-brand-deep bg-white; }
   .alert-error { @apply alert border-red-200 border-l-danger-strong bg-red-50; }
   .alert-warning { @apply alert border-amber-200 border-l-amber-600 bg-amber-50; }
@@ -230,7 +299,7 @@
   }
   .nav-section > summary::-webkit-details-marker { display: none; }
   .nav-section > summary:focus-visible {
-    @apply outline-none ring-2 ring-brand/70 ring-offset-2 ring-offset-sidebar;
+    @apply outline-hidden ring-2 ring-brand/70 ring-offset-2 ring-offset-sidebar;
   }
   .nav-group-caret { @apply text-nav-muted/70 transition-transform duration-200; }
   .nav-section[open] > summary .nav-group-caret { @apply rotate-90; }
@@ -260,11 +329,11 @@
   .nav-search .icon { @apply text-nav-muted; }
   .nav-search-input {
     @apply min-h-[38px] w-full border-0 bg-transparent p-0 text-sm text-white
-           placeholder:text-nav-muted focus:outline-none focus:ring-0;
+           placeholder:text-nav-muted focus:outline-hidden focus:ring-0;
   }
   .nav-search-input::-webkit-search-cancel-button { @apply hidden; }
   .nav-kbd {
-    @apply rounded border border-white/15 px-1.5 py-0.5 font-mono text-[10px]
+    @apply rounded-sm border border-white/15 px-1.5 py-0.5 font-mono text-[10px]
            text-nav-muted;
   }
 
@@ -316,7 +385,7 @@
     @apply absolute -left-[9px] top-1/2 h-7 w-[2px] -translate-y-1/2 rounded-r bg-brand;
   }
   .nav-rail-btn:focus-visible {
-    @apply outline-none ring-2 ring-brand/70 ring-offset-2 ring-offset-sidebar;
+    @apply outline-hidden ring-2 ring-brand/70 ring-offset-2 ring-offset-sidebar;
   }
 
   .nav-panel { @apply min-w-0 flex-1 overflow-y-auto px-2.5 pb-6 pt-3; }
@@ -365,7 +434,7 @@
   /* ----------------------------------------------------------- collapsed ---
      Desktop only. The drawer on small screens is a different mechanism and
      must not inherit any of this. */
-  @screen lg {
+  @media (width >= theme(--breakpoint-lg)) {
     .sidebar-collapsed { width: 76px; }
     .sidebar-collapsed .nav-brand-text,
     .sidebar-collapsed .company-switcher span:not(:first-child),
@@ -399,7 +468,7 @@
      focus ring is both too tight and too dim here. */
   .nav-link:focus-visible,
   .nav-link-pending:focus-visible {
-    @apply outline-none ring-2 ring-brand/70 ring-offset-2 ring-offset-sidebar;
+    @apply outline-hidden ring-2 ring-brand/70 ring-offset-2 ring-offset-sidebar;
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -459,14 +528,14 @@
   }
   .combo-option.is-active[aria-selected="true"]::after { @apply text-white; }
   /* What was typed, marked inside each result. */
-  .combo-option mark { @apply rounded bg-brand-tint px-0.5 font-semibold text-brand-deep; }
+  .combo-option mark { @apply rounded-sm bg-brand-tint px-0.5 font-semibold text-brand-deep; }
   .combo-empty { @apply px-3 py-4 text-sm text-muted-fg; }
   .combo-foot {
     @apply mt-1 flex items-center justify-between gap-3 border-t border-line
            px-3 pb-1 pt-2 text-[11px] text-muted-fg;
   }
   .combo-key {
-    @apply rounded border border-line bg-muted-bg px-1 font-mono text-[10px] text-ink;
+    @apply rounded-sm border border-line bg-muted-bg px-1 font-mono text-[10px] text-ink;
   }
   .combo-input { @apply pr-9; }
   /* A search field should look like one. */
@@ -1219,6 +1288,130 @@ body { font-feature-settings: "tnum" 1, "calt" 1; letter-spacing: -0.006em; }
 /* Backdrop behind the off-canvas sidebar on small screens. */
 .nav-scrim { position: fixed; inset: 0; z-index: 30; background: rgba(7,26,47,.5); }
 
+/* ---------------------------------------------------------------------------
+   Marketing landing page (core/landing.html).
+
+   The signed-out front door reuses every surface, panel and decoration the
+   product already defines — .card, .surface, .cashflow-panel, .auth-blob,
+   .auth-dotfield, .company-switcher — rather than inventing a second visual
+   language. What follows are only the pieces unique to a scrolling marketing
+   page: a slim announcement rail, a hand-drawn accent under the headline, a
+   sample workspace mockup, an auto-scrolling segment strip, a dark module
+   grid, and a details/summary FAQ.
+--------------------------------------------------------------------------- */
+
+.lp-announce {
+  display: flex; align-items: center; justify-content: center; gap: 9px;
+  background: #071a2f; padding: 10px 20px; color: #cbd5e1;
+  font-size: 12.5px; font-weight: 600; text-align: center;
+}
+.lp-announce a { display: inline-flex; align-items: center; gap: 4px; color: #7ee6ab; font-weight: 700; text-decoration: none; }
+.lp-announce a:hover { color: #a8f0c4; }
+.lp-announce a .icon { height: 13px; width: 13px; }
+.lp-announce-pill {
+  border-radius: 999px; background: #39d889; padding: 3px 9px;
+  font-size: 10px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: #07172b;
+}
+
+/* A path length of 300 comfortably covers both doodles at the sizes they are
+   drawn; the dash simply finishes early and the extra allowance sits hidden
+   past the endpoint, so the exact geometry does not have to be measured. */
+.lp-doodle { stroke-dasharray: 300; stroke-dashoffset: 300; animation: lp-draw 1.1s .5s ease-out forwards; }
+.lp-doodle-arrow { animation-delay: .9s; }
+@keyframes lp-draw { to { stroke-dashoffset: 0; } }
+
+.lp-hero-decor { position: absolute; inset: 0; overflow: hidden; z-index: 0; pointer-events: none; }
+
+@keyframes lp-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+.lp-float { animation: lp-float 4.6s ease-in-out infinite; }
+
+/* display is deliberately left to the utility classes at each call site
+   (`hidden sm:flex`) — a display set here would sit after the Tailwind
+   utilities layer in the compiled stylesheet and win the cascade over
+   `hidden` at the same specificity, defeating the responsive toggle. */
+.lp-mock-chip {
+  position: absolute; align-items: center; gap: 7px;
+  border-radius: 12px; border: 1px solid #e1e9e7; background: #fff;
+  padding: 9px 13px; box-shadow: 0 14px 32px rgba(7,26,47,.12);
+  font-size: 12.5px; font-weight: 700; color: #07172b; white-space: nowrap;
+}
+.lp-mock-chip .icon { height: 15px; width: 15px; color: #16a34a; }
+
+.lp-chart { display: flex; align-items: flex-end; gap: 8px; height: 108px; }
+.lp-chart-group { display: flex; flex: 1; align-items: flex-end; justify-content: center; gap: 3px; height: 100%; }
+.lp-chart-bar { width: 7px; border-radius: 4px 4px 0 0; }
+.lp-chart-bar--a { background: #39d889; }
+.lp-chart-bar--b { background: #dde8e4; }
+
+.lp-marquee { position: relative; overflow: hidden; -webkit-mask-image: linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent); mask-image: linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent); }
+.lp-marquee-track { display: flex; width: max-content; animation: lp-marquee 32s linear infinite; }
+.lp-marquee:hover .lp-marquee-track { animation-play-state: paused; }
+@keyframes lp-marquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+.lp-pill-chip {
+  display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; margin-right: 12px;
+  border-radius: 999px; border: 1px solid #e1e9e7; background: #fff; padding: 10px 18px;
+  font-size: 13px; font-weight: 700; color: #07172b;
+}
+.lp-pill-chip .icon { height: 15px; width: 15px; color: #16a34a; }
+
+.lp-module {
+  display: flex; flex-direction: column; gap: 12px; border-radius: 14px;
+  border: 1px solid rgba(255,255,255,.08); background: rgba(255,255,255,.03);
+  padding: 18px; transition: transform .2s ease, background-color .2s ease, border-color .2s ease;
+}
+.lp-module:hover { transform: translateY(-3px); background: rgba(255,255,255,.06); border-color: rgba(57,216,137,.35); }
+.lp-module-icon { display: grid; height: 34px; width: 34px; place-items: center; border-radius: 10px; background: rgba(57,216,137,.14); color: #7ee6ab; }
+
+.lp-stat { border-radius: 16px; border: 1px solid #e1e9e7; background: #fff; padding: 20px; transition: transform .2s ease, box-shadow .2s ease; }
+.lp-stat:hover { transform: translateY(-2px); box-shadow: 0 14px 34px rgba(7,26,47,.06); }
+.lp-stat-num { font-size: 1.7rem; font-weight: 900; letter-spacing: -.03em; color: #07172b; }
+.lp-stat-label { margin-top: 6px; font-size: 13px; font-weight: 600; line-height: 1.4; color: #54636f; }
+
+.lp-thumb-dash { display: flex; align-items: flex-end; gap: 4px; height: 52px; }
+.lp-thumb-dash span { flex: 1; border-radius: 3px 3px 0 0; background: linear-gradient(180deg, rgba(57,216,137,.95), rgba(57,216,137,.45)); }
+.lp-thumb-ledger { display: flex; flex-direction: column; gap: 8px; }
+.lp-thumb-ledger span { display: block; height: 8px; border-radius: 4px; background: rgba(255,255,255,.1); }
+.lp-thumb-ledger span.is-accent { background: rgba(57,216,137,.4); }
+
+.lp-steps { position: relative; }
+.lp-step-num {
+  display: grid; place-items: center; height: 42px; width: 42px; flex-shrink: 0;
+  border-radius: 13px; background: #07172b; color: #7ee6ab; font-weight: 900; font-size: 14px;
+}
+@media (min-width: 768px) {
+  .lp-steps-row { position: relative; }
+  .lp-steps-row::before { content: ""; position: absolute; top: 21px; left: 9%; right: 9%; height: 1px; background: #e1e9e7; z-index: 0; }
+  .lp-steps-row > * { position: relative; z-index: 1; }
+}
+
+.lp-faq { border-bottom: 1px solid #e1e9e7; }
+.lp-faq summary {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  cursor: pointer; list-style: none; padding: 19px 2px; font-weight: 700; color: #07172b;
+}
+.lp-faq summary::-webkit-details-marker { display: none; }
+.lp-faq-chev { flex-shrink: 0; color: #54636f; transform: rotate(90deg); transition: transform .25s ease, color .25s ease; }
+.lp-faq[open] .lp-faq-chev { transform: rotate(-90deg); color: #16a34a; }
+.lp-faq-body { max-width: 62ch; padding: 0 2px 19px; font-size: 14px; line-height: 1.65; color: #54636f; }
+
+/* Fades and lifts a section in as it enters the viewport (see the
+   IntersectionObserver in landing.html). The tripwire is a `.js` class a
+   synchronous inline script adds to <html> before paint: content stays fully
+   visible by default and only opts into the hidden-until-scrolled state once
+   script is confirmed to be running, so a no-JS visitor never gets a page
+   stuck at opacity 0. */
+.lp-reveal { opacity: 1; transform: none; transition: opacity .6s ease, transform .6s ease; }
+.js .lp-reveal { opacity: 0; transform: translateY(18px); }
+.js .lp-reveal.is-visible { opacity: 1; transform: translateY(0); }
+.lp-stagger > *:nth-child(1) { transition-delay: .02s; }
+.lp-stagger > *:nth-child(2) { transition-delay: .08s; }
+.lp-stagger > *:nth-child(3) { transition-delay: .14s; }
+.lp-stagger > *:nth-child(4) { transition-delay: .2s; }
+.lp-stagger > *:nth-child(5) { transition-delay: .26s; }
+.lp-stagger > *:nth-child(6) { transition-delay: .32s; }
+.lp-stagger > *:nth-child(7) { transition-delay: .38s; }
+.lp-stagger > *:nth-child(8) { transition-delay: .44s; }
+
 @media (max-width: 700px) {
   .welcome-strip { flex-direction: column; align-items: flex-start; padding: 24px; }
   .module-hero { align-items: flex-start; padding: 22px; }
@@ -1233,4 +1426,9 @@ body { font-feature-settings: "tnum" 1, "calt" 1; letter-spacing: -0.006em; }
   .field-wrap.is-prefilled .field { animation: none !important; }
   .nav-progress.is-running::after { width: 92%; }
   .back-link:hover .icon { transform: none; }
+  .lp-doodle { animation: none !important; stroke-dashoffset: 0; }
+  .lp-float, .lp-marquee-track { animation: none !important; }
+  .lp-marquee [aria-hidden="true"] { display: none !important; }
+  .lp-module:hover, .lp-stat:hover { transform: none; }
+  .js .lp-reveal { opacity: 1 !important; transform: none !important; }
 }

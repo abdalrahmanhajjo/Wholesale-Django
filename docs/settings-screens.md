@@ -57,7 +57,7 @@ class ThingListView(FilteredListView):
     columns = [
         Column("code", "Code", sortable=True, link=True, css="font-mono text-xs"),
         Column("name", "Name", sortable=True),
-        Column("get_status_display", "Status"),          # any no-arg method works
+        Column("get_status_display", "Status"),  # any no-arg method works
         Column("amount", "Amount", align="right", money=True),
         Column("is_active", "Active", badge=True, align="center"),
     ]
@@ -126,9 +126,9 @@ does nothing at all, silently.
 ### 4. URLs — `apps/core/urls.py`
 
 ```python
-path("things/", views.ThingListView.as_view(), name="thing_list"),
-path("things/new/", views.ThingCreateView.as_view(), name="thing_create"),
-path("things/<int:pk>/edit/", views.ThingUpdateView.as_view(), name="thing_edit"),
+(path("things/", views.ThingListView.as_view(), name="thing_list"),)
+(path("things/new/", views.ThingCreateView.as_view(), name="thing_create"),)
+(path("things/<int:pk>/edit/", views.ThingUpdateView.as_view(), name="thing_edit"),)
 ```
 
 Use `<str:pk>` if the model has a natural (non-integer) primary key.

@@ -31,8 +31,7 @@ COMBOBOX_THRESHOLD = 8
 
 FIELD_CLASS = "field"
 CHECKBOX_CLASS = (
-    "h-4 w-4 shrink-0 rounded border-input-line text-brand-deep "
-    "focus:ring-2 focus:ring-ink/30"
+    "h-4 w-4 shrink-0 rounded border-input-line text-brand-deep focus:ring-2 focus:ring-ink/30"
 )
 TEXTAREA_CLASS = (
     "block w-full rounded-xl2 border border-input-line bg-white px-3 py-2 "

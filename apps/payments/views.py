@@ -583,8 +583,7 @@ class StripeSettleRetryView(ActionPermissionMixin, View):
         if checkout.payment_id:
             messages.success(
                 request,
-                f"{checkout.payment.number} posted and applied to "
-                f"{checkout.invoice.number}.",
+                f"{checkout.payment.number} posted and applied to {checkout.invoice.number}.",
             )
         else:
             messages.error(

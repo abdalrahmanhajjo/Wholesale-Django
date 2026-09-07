@@ -138,6 +138,7 @@ Import the constant — never type the string.
 from apps.core.mixins import ActionPermissionMixin
 from apps.core.permissions import POST_SALES_INVOICE
 
+
 class SalesInvoicePostView(ActionPermissionMixin, View):
     required_permission = POST_SALES_INVOICE
 ```
@@ -168,6 +169,7 @@ state and CSV export, all behaving the same as every other module (UX-002).
 ```python
 from apps.core.list_views import BooleanFilter, ChoiceFilter, Column, FilteredListView
 from apps.core.permissions import EXPORT_DATA
+
 
 class PurchaseBillListView(FilteredListView):
     model = PurchaseBill
@@ -211,10 +213,10 @@ Every material change needs user, timestamp, action and before/after values.
 Use `AuditedFormMixin` on your create and update views and it happens for you:
 
 ```python
-from apps.parties.views import AuditedFormMixin   # or copy it into your app
+from apps.parties.views import AuditedFormMixin  # or copy it into your app
 
-class BillUpdateView(AuditedFormMixin, ActionPermissionMixin, UpdateView):
-    ...
+
+class BillUpdateView(AuditedFormMixin, ActionPermissionMixin, UpdateView): ...
 ```
 
 For posting, approving, reversing and closing, call the service directly:

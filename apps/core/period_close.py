@@ -265,6 +265,11 @@ def _unposted_documents(period: FiscalPeriod) -> Check:
                     f"{date_field}__lte": period.end_date,
                 },
             )
+            # Each model's default Meta.ordering sorts by columns this query
+            # doesn't select, which a unioned+sliced query cannot order by
+            # (the source table's columns aren't in the combined result set).
+            # Order is irrelevant here anyway - this only counts rows.
+            .order_by()
             .annotate(source=Value(label, output_field=CharField()))
             .values("source")
         )

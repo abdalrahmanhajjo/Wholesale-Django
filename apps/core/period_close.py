@@ -265,6 +265,11 @@ def _unposted_documents(period: FiscalPeriod) -> Check:
                     f"{date_field}__lte": period.end_date,
                 },
             )
+            # Each model's default Meta.ordering sorts by columns this query
+            # doesn't select, which a unioned+sliced query cannot order by
+            # (the source table's columns aren't in the combined result set).
+            # Order is irrelevant here anyway - this only counts rows.
+            .order_by()
             .annotate(source=Value(label, output_field=CharField()))
             .values("source")
         )
@@ -273,7 +278,10 @@ def _unposted_documents(period: FiscalPeriod) -> Check:
     if parts:
         # Bounded: this returns a row per unposted document, and a period with a
         # genuine backlog should not pull all of it across the wire to say so.
-        combined = parts[0].union(*parts[1:], all=True)
+        # Clearing each part's ordering isn't enough on its own - the combined
+        # queryset carries its own default-ordering flag (from the first
+        # part's model) that a slice would otherwise apply here too.
+        combined = parts[0].union(*parts[1:], all=True).order_by()
         rows = list(combined[: UNPOSTED_SAMPLE_CAP + 1])
     capped = len(rows) > UNPOSTED_SAMPLE_CAP
     counts = Counter(row["source"] for row in rows[:UNPOSTED_SAMPLE_CAP])

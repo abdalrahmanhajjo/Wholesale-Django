@@ -256,9 +256,10 @@ Add a new component class to `base.html` rather than inventing a one-off — and
 tell the team, since `base.html` is Member 1's file.
 
 **Tailwind build:** templates load the committed `static/css/app.css`; the
-browser never runs the Tailwind compiler. If you change templates,
-`static/src/app.css`, or `tailwind.config.js`, run `npm run build:css` and
-commit the generated stylesheet. Use `npm run watch:css` while iterating.
+browser never runs the Tailwind compiler. If you change templates or
+`static/src/app.css` (which also carries the theme and `@source` config,
+Tailwind v4 style), run `npm run build:css` and commit the generated
+stylesheet. Use `npm run watch:css` while iterating.
 
 ---
 

@@ -97,7 +97,7 @@ def make_order(customer=None, warehouse=None, currency=None, user=None, **kw):
     from django.utils import timezone
 
     _order_seq[0] += 1
-    number = "SO-TEST-%03d" % _order_seq[0]
+    number = f"SO-TEST-{_order_seq[0]:03d}"
 
     defaults = dict(
         customer=customer,
@@ -290,7 +290,7 @@ def make_user(username=None):
     from apps.accounts.models import User
 
     _user_seq[0] += 1
-    username = username or "user-%03d" % _user_seq[0]
+    username = username or f"user-{_user_seq[0]:03d}"
     return User.objects.create_user(
         username=username,
         email=f"{username}@example.com",

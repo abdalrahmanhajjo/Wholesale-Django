@@ -18,7 +18,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
-from typing import TYPE_CHECKING, Generic, Protocol, TypeVar
+from typing import TYPE_CHECKING, Protocol, TypeVar
 
 from django.contrib.auth.models import AbstractBaseUser
 from django.contrib.contenttypes.models import ContentType
@@ -202,7 +202,7 @@ class JournalBuilder(Protocol[BuilderSourceT]):
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
-class PostingRequest(Generic[SourceT]):
+class PostingRequest[SourceT: models.Model]:
     """Inputs shared by every operational posting call."""
 
     source: SourceT
@@ -258,7 +258,7 @@ class PostingResult:
     created: bool
 
 
-class PostingService(ABC, Generic[SourceT]):
+class PostingService[SourceT: models.Model](ABC):
     """Atomic template for the centralized posting engine.
 
     ``post`` and ``preview`` are protected template methods. Implementations override

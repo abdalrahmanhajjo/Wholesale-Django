@@ -20,9 +20,7 @@ def build_purchase_bill_journal(bill, *, user):
         )
     ]
     if bill.tax_base:
-        lines.append(
-            JournalLineDraft(account=input_tax_account, debit_base=bill.tax_base)
-        )
+        lines.append(JournalLineDraft(account=input_tax_account, debit_base=bill.tax_base))
     lines.append(
         JournalLineDraft(
             account=ap_account,

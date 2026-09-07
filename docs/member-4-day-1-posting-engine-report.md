@@ -216,8 +216,7 @@ It validates that:
 Members 2 and 3 implement a builder with this signature:
 
 ```python
-def build_journal(source, *, user) -> JournalDraft:
-    ...
+def build_journal(source, *, user) -> JournalDraft: ...
 ```
 
 The source type is generic, so the same service can support:

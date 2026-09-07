@@ -460,17 +460,17 @@ class CompiledStylesheetTests(SimpleTestCase):
         self.assertEqual(
             missing,
             [],
-            "purged from app.css — add the source to tailwind.config.js content: "
-            + ", ".join(missing),
+            "purged from app.css — add the source to an @source directive in "
+            "static/src/app.css: " + ", ".join(missing),
         )
 
     def test_the_scripts_are_scanned_for_classes(self):
         import pathlib
 
-        config = (
-            pathlib.Path(__file__).resolve().parents[3] / "tailwind.config.js"
+        css = (
+            pathlib.Path(__file__).resolve().parents[3] / "static" / "src" / "app.css"
         ).read_text()
-        self.assertIn("static/js", config)
+        self.assertIn('@source "../js/**/*.js"', css)
 
 
 class DropdownLayoutTests(SimpleTestCase):

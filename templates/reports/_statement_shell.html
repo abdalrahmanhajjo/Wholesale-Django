@@ -33,7 +33,7 @@ behaving the same way. A child template supplies `date_controls` and
       <span class="eyebrow">Jump to</span>
       {% for period in periods %}
         <a href="{% block period_link %}{% endblock %}"
-           class="rounded border border-line px-2 py-1 text-xs transition-colors hover:border-brand hover:text-brand">{{ period.name }}</a>
+           class="rounded-sm border border-line px-2 py-1 text-xs transition-colors hover:border-brand hover:text-brand">{{ period.name }}</a>
       {% endfor %}
     </div>
   {% endif %}

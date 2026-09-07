@@ -11,7 +11,6 @@ FROM node:20-slim AS css
 WORKDIR /build
 COPY package.json package-lock.json ./
 RUN npm ci
-COPY tailwind.config.js ./
 COPY templates ./templates
 COPY static ./static
 RUN npm run build:css
@@ -48,9 +47,14 @@ COPY --from=css --chown=wams:wams /build/static/css/app.css ./static/css/app.css
 # collectstatic needs settings to import, but not a database. A throwaway key
 # is supplied for this step alone; the real one arrives from the environment at
 # run time, and DJANGO_DEBUG stays unset so the manifest storage is used.
+#
+# --ignore=src skips static/src/app.css, the Tailwind input file. Tailwind v4's
+# `@import "tailwindcss" source(none);` at its top is a real CSS @import, and
+# Django's manifest storage tries to resolve it as a static file reference,
+# which fails since it names an npm package rather than a file on disk.
 RUN DJANGO_SECRET_KEY=build-time-only-not-used-at-runtime \
     DJANGO_ALLOWED_HOSTS=localhost \
-    python manage.py collectstatic --noinput --clear
+    python manage.py collectstatic --noinput --clear --ignore=src
 
 USER wams
 EXPOSE 8000

@@ -1686,8 +1686,7 @@ def post_credit_note(cn, user, request=None):
     """SUBMITTED → POSTED, write the reversal journal via the engine."""
     if cn.status != DocumentStatus.SUBMITTED:
         raise ValueError(
-            f"Cannot post credit note {cn.number}: status is {cn.status}, "
-            "expected SUBMITTED."
+            f"Cannot post credit note {cn.number}: status is {cn.status}, expected SUBMITTED."
         )
     with transaction.atomic():
         result = posting_service.post(

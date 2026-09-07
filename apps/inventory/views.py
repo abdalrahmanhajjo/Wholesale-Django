@@ -712,7 +712,7 @@ class StockAdjustmentFormView(ActionPermissionMixin, View):
                 messages.error(
                     request,
                     f'"{reason}" only allows lines that {direction} stock — check line '
-                    f'{", ".join(map(str, bad_lines))}.',
+                    f"{', '.join(map(str, bad_lines))}.",
                 )
                 return self.render_form(request, form, formset, adjustment)
 

@@ -317,9 +317,7 @@ class SalesOrderUpdateView(BackLinkMixin, ActionPermissionMixin, UpdateView):
                 detail = ", ".join(event.changes.keys()) if event else ""
                 if line_changes:
                     suffix = "s" if line_changes != 1 else ""
-                    detail = (
-                        f"{detail + ', ' if detail else ''}" f"{line_changes} line{suffix}"
-                    )
+                    detail = f"{detail + ', ' if detail else ''}{line_changes} line{suffix}"
                 messages.success(
                     self.request,
                     f"{self.object.number} updated ({detail}).",

@@ -11,10 +11,12 @@ services:
     dockerContext: ./
     healthCheckPath: /healthz/
     # Render's free tier doesn't support preDeployCommand, so migrations run
-    # here instead, ahead of gunicorn. Free instances are always
-    # single-replica, so this doesn't race a second replica the way the
-    # README's manual-deploy warning (about the container's own CMD) is about.
-    dockerCommand: "sh -c 'python manage.py migrate && gunicorn --config gunicorn.conf.py config.wsgi:application'"
+    # via bin/render-start.sh instead, ahead of gunicorn. Free instances are
+    # always single-replica, so this doesn't race a second replica the way
+    # the README's manual-deploy warning (about the container's own CMD) is
+    # about. A dedicated script is used rather than an inline "sh -c '...'"
+    # string because Render does not reliably shell-parse the latter.
+    dockerCommand: bin/render-start.sh
     envVars:
       - key: DJANGO_DEBUG
         value: "0"

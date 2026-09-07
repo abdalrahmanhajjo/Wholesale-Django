@@ -1,0 +1,64 @@
+databases: []
+
+services:
+  - name: wams-web
+    type: web
+    runtime: docker
+    plan: free
+    region: singapore
+    branch: main
+    dockerfilePath: ./Dockerfile
+    dockerContext: ./
+    healthCheckPath: /healthz/
+    # Free instances are always single-replica, so running migrations here
+    # (rather than as a separate release step) does not race a second
+    # replica the way the README's manual-deploy warning is about.
+    preDeployCommand: python manage.py migrate
+    envVars:
+      - key: DJANGO_DEBUG
+        value: "0"
+      - key: DJANGO_BEHIND_HTTPS_PROXY
+        value: "1"
+      - key: DJANGO_SECURE_SSL_REDIRECT
+        value: "1"
+      - key: GUNICORN_FORWARDED_ALLOW_IPS
+        value: "*"
+      # Render's own edge terminates TLS and proxies over HTTP, so trusting
+      # forwarded IPs from any peer is safe here - the container isn't
+      # reachable except through that proxy.
+      - key: DJANGO_ALLOWED_HOSTS
+        sync: false
+      - key: DJANGO_CSRF_TRUSTED_ORIGINS
+        sync: false
+      - key: DJANGO_SECRET_KEY
+        generateValue: true
+      - key: PGHOST
+        sync: false
+      - key: PGPORT
+        sync: false
+      - key: PGDATABASE
+        sync: false
+      - key: PGUSER
+        sync: false
+      - key: PGPASSWORD
+        sync: false
+      - key: PGSSLMODE
+        sync: false
+      - key: DJANGO_EMAIL_HOST
+        sync: false
+      - key: DJANGO_EMAIL_PORT
+        sync: false
+      - key: DJANGO_EMAIL_USER
+        sync: false
+      - key: DJANGO_EMAIL_PASSWORD
+        sync: false
+      - key: DJANGO_EMAIL_USE_TLS
+        sync: false
+      - key: DJANGO_FROM_EMAIL
+        sync: false
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: STRIPE_RETURN_ORIGIN
+        sync: false

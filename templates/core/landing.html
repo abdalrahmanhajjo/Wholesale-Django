@@ -9,6 +9,13 @@ the auth pages in registration/ — this is the front door those pages sit behin
 
 Signed-in users never see this page: the root view hands them to the dashboard
 (and to the login gate for a rejected role) before this template is rendered.
+
+Every "image" on the page is drawn, not photographed — the mockup panel, the
+module grid, the chart, the doodles — because that is the rest of the product's
+visual language too (logo-mark, auth-blob, auth-ring are all CSS/SVG). Sample
+figures in the workspace mockup illustrate the shape of the product, the way
+any product screenshot on a marketing page does; no metric on this page is
+presented as a measured result.
 {% endcomment %}
 <html lang="en" class="h-full">
 <head>
@@ -17,11 +24,25 @@ Signed-in users never see this page: the root view hands them to the dashboard
   <meta name="description" content="Ledgerwise is a financial operating system for wholesale teams — sales, purchasing, warehouse, and finance on one coherent record.">
   <title>Ledgerwise · Wholesale finance, connected from order to close</title>
   {% include "_theme.html" %}
+  {% comment %}
+  Synchronous and tiny on purpose: this is the tripwire .lp-reveal's CSS keys
+  off (see app.css). It has to run before the page is interactive so the
+  hidden-until-scrolled state never gets applied without a script left running
+  to remove it again — a no-JS visitor simply never gets the .js class and
+  every section stays at its default, fully visible state.
+  {% endcomment %}
+  <script>document.documentElement.classList.add("js");</script>
 </head>
 
 <body class="auth-body">
 <a class="sr-only" href="#main-content">Skip to main content</a>
 {% include "core/_icons.html" %}
+
+<div class="lp-announce">
+  <span class="lp-announce-pill">New</span>
+  <span>One connected record for sales, purchasing, warehouse, and finance.</span>
+  <a href="#workflows">See how it connects <svg class="icon" aria-hidden="true"><use href="#i-arrow-right"></use></svg></a>
+</div>
 
 <header class="sticky top-0 z-40 border-b border-line bg-white/90 backdrop-blur">
   <div class="mx-auto flex w-full max-w-6xl items-center justify-between gap-5 px-6 py-4">
@@ -33,9 +54,10 @@ Signed-in users never see this page: the root view hands them to the dashboard
       </span>
     </a>
     <nav class="hidden items-center gap-5 sm:inline-flex" aria-label="Ledgerwise">
-      <a href="#workflows" class="text-sm font-semibold text-muted-fg hover:text-brand-deep">Workflows</a>
       <a href="#roles" class="text-sm font-semibold text-muted-fg hover:text-brand-deep">Roles</a>
+      <a href="#workflows" class="text-sm font-semibold text-muted-fg hover:text-brand-deep">Workflows</a>
       <a href="#access" class="text-sm font-semibold text-muted-fg hover:text-brand-deep">Access</a>
+      <a href="#faq" class="text-sm font-semibold text-muted-fg hover:text-brand-deep">FAQ</a>
     </nav>
     <div class="flex items-center gap-2.5">
       <a href="{% url 'login' %}" class="btn-ghost btn-sm">Sign in</a>
@@ -46,42 +68,163 @@ Signed-in users never see this page: the root view hands them to the dashboard
 
 <main id="main-content">
 
-  <section class="mx-auto w-full max-w-6xl px-6 py-12">
-    <div class="welcome-strip flex-col items-start">
-      <div class="relative z-10 w-full">
-        <p class="mb-6 flex items-center gap-2">
-          <span class="rounded-full bg-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-emerald-300 ring-1 ring-white/10">New</span>
-          <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">Wholesale finance, now connected from order to close</span>
+  {% comment %} ============================== HERO ============================== {% endcomment %}
+  <section class="relative overflow-hidden bg-linear-to-b from-[#f3faf7] to-paper">
+    <div class="lp-hero-decor" aria-hidden="true">
+      <span class="auth-blob auth-blob-a"></span>
+      <span class="auth-blob auth-blob-b" style="opacity:.6"></span>
+      <span class="auth-dotfield auth-dotfield-top"></span>
+      <span class="absolute -right-24 -top-28 hidden h-110 w-110 rounded-full border border-ink/6 lg:block"></span>
+      <span class="absolute right-16 top-20 hidden h-2 w-2 rounded-full bg-brand-accent/60 lg:block"></span>
+      <span class="absolute right-40 top-52 hidden h-1.5 w-1.5 rounded-full bg-brand-accent/40 lg:block"></span>
+    </div>
+
+    <div class="relative z-10 mx-auto grid w-full max-w-6xl gap-14 px-6 py-16 lg:grid-cols-[1.05fr_1fr] lg:items-center lg:py-20">
+      <div>
+        <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-brand-deep">
+          <span class="relative flex h-2 w-2">
+            <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-brand-accent opacity-60"></span>
+            <span class="relative inline-flex h-2 w-2 rounded-full bg-brand-accent"></span>
+          </span>
+          Sales · Purchasing · Warehouse · Finance — one connected record
         </p>
-        <h1 class="display text-4xl text-white">Every team moves faster when <span class="text-emerald-300">the handoffs make sense.</span></h1>
-        <p class="mt-4 max-w-3xl text-base leading-6 text-slate-400">
-          Ledgerwise gives each role a focused workspace while keeping the financial
-          record coherent across the operation.
+
+        <h1 class="display mt-5 text-4xl leading-[1.08] text-ink sm:text-[2.75rem]">
+          If the numbers live in
+          <span class="relative inline-block">
+            five places
+            <svg class="lp-doodle pointer-events-none absolute -bottom-1 left-0 h-3 w-full" viewBox="0 0 160 12" fill="none" preserveAspectRatio="none" aria-hidden="true">
+              <path d="M2 8C30 2 60 2 80 6C100 10 130 10 158 4" stroke="#39d889" stroke-width="3.5" stroke-linecap="round"/>
+            </svg>
+          </span>,
+          <br class="hidden sm:block">
+          <em class="not-italic text-brand-accent">who's actually watching the business?</em>
+        </h1>
+
+        <p class="mt-5 max-w-lg text-base leading-6 text-muted-fg">
+          Ledgerwise connects sales, purchasing, warehouse, and finance into one
+          financial record — so every handoff makes sense and every number can
+          be defended at close.
         </p>
-        <p class="mt-6 flex items-center gap-2 text-sm font-bold text-white">
-          <svg class="icon" aria-hidden="true"><use href="#i-bolt"></use></svg>
-          One operating rhythm&nbsp;·&nbsp;Sales&nbsp;·&nbsp;Purchasing&nbsp;·&nbsp;Warehouse&nbsp;·&nbsp;Finance
-        </p>
-        <div class="mt-7 flex flex-wrap items-center gap-3">
-          <a href="{% url 'login' %}" class="btn-accent">Explore the live workbench <svg class="icon" aria-hidden="true"><use href="#i-arrow-right"></use></svg></a>
-          <a href="{% url 'signup' %}" class="btn-ghost">Book a walkthrough</a>
+
+        <div class="relative mt-8 flex flex-wrap items-center gap-3">
+          <a href="{% url 'signup' %}" class="btn-accent">Request access <svg class="icon" aria-hidden="true"><use href="#i-arrow-right"></use></svg></a>
+          <a href="{% url 'login' %}" class="btn-ghost">Explore the live workbench</a>
+          <svg class="lp-doodle lp-doodle-arrow pointer-events-none absolute -left-2 top-full hidden h-10 w-16 -translate-y-1 sm:block" viewBox="0 0 70 44" fill="none" aria-hidden="true">
+            <path d="M4 4C4 22 14 34 34 36C44 37 54 34 62 26" stroke="#96a6ae" stroke-width="2" stroke-linecap="round" stroke-dasharray="4 5"/>
+            <path d="M53 21L63 27L56 36" stroke="#96a6ae" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+
+        <div class="mt-14 flex items-center gap-3 sm:mt-10">
+          <span class="auth-avatars" aria-hidden="true">
+            <span>AH</span><span>ML</span><span>RK</span><span class="auth-avatars-count">+2.5K</span>
+          </span>
+          <p class="text-sm font-medium text-muted-fg">Finance teams trust Ledgerwise</p>
+        </div>
+      </div>
+
+      <div class="lp-reveal relative">
+        <div class="card card-pad relative">
+          <div class="flex items-center justify-between">
+            <p class="flex items-center gap-2 text-sm font-bold text-ink">
+              <span class="relative flex h-2 w-2">
+                <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-brand-accent opacity-50"></span>
+                <span class="relative inline-flex h-2 w-2 rounded-full bg-brand-accent"></span>
+              </span>
+              Order-to-close
+            </p>
+            <span class="rounded-full bg-muted-bg px-2.5 py-1 text-[11px] font-semibold text-muted-fg">This month</span>
+          </div>
+
+          <div class="mt-5 grid grid-cols-2 gap-3">
+            <div class="rounded-2xl border border-line p-3.5">
+              <p class="text-[11px] font-semibold text-muted-fg">Sales this month</p>
+              <p class="mt-1 text-lg font-extrabold tracking-tight text-ink">$128,400</p>
+              <p class="mt-0.5 text-[11px] font-bold text-brand-deep">▲ 6.4% vs last month</p>
+            </div>
+            <div class="rounded-2xl border border-line p-3.5">
+              <p class="text-[11px] font-semibold text-muted-fg">Open receivables</p>
+              <p class="mt-1 text-lg font-extrabold tracking-tight text-ink">$18,900</p>
+              <p class="mt-0.5 text-[11px] font-bold text-warning-strong">3 invoices past terms</p>
+            </div>
+          </div>
+
+          <p class="mt-5 text-[11px] font-bold uppercase tracking-wider text-muted-fg">Sales vs. purchase orders · last 7 months</p>
+          <div class="lp-chart mt-3">
+            <div class="lp-chart-group"><span class="lp-chart-bar lp-chart-bar--a h-[52%]"></span><span class="lp-chart-bar lp-chart-bar--b h-[38%]"></span></div>
+            <div class="lp-chart-group"><span class="lp-chart-bar lp-chart-bar--a h-[64%]"></span><span class="lp-chart-bar lp-chart-bar--b h-[46%]"></span></div>
+            <div class="lp-chart-group"><span class="lp-chart-bar lp-chart-bar--a h-[58%]"></span><span class="lp-chart-bar lp-chart-bar--b h-[50%]"></span></div>
+            <div class="lp-chart-group"><span class="lp-chart-bar lp-chart-bar--a h-[80%]"></span><span class="lp-chart-bar lp-chart-bar--b h-[42%]"></span></div>
+            <div class="lp-chart-group"><span class="lp-chart-bar lp-chart-bar--a h-[70%]"></span><span class="lp-chart-bar lp-chart-bar--b h-[55%]"></span></div>
+            <div class="lp-chart-group"><span class="lp-chart-bar lp-chart-bar--a h-[86%]"></span><span class="lp-chart-bar lp-chart-bar--b h-[60%]"></span></div>
+            <div class="lp-chart-group"><span class="lp-chart-bar lp-chart-bar--a h-full"></span><span class="lp-chart-bar lp-chart-bar--b h-[64%]"></span></div>
+          </div>
+          <div class="mt-2 flex justify-between text-[10px] font-semibold text-muted-fg">
+            <span>Sep</span><span>Oct</span><span>Nov</span><span>Dec</span><span>Jan</span><span>Feb</span><span>Mar</span>
+          </div>
+          <div class="mt-3 flex items-center gap-4 text-[11px] font-semibold text-muted-fg">
+            <span class="flex items-center gap-1.5"><span class="h-2 w-2 rounded-full bg-brand"></span> Sales orders</span>
+            <span class="flex items-center gap-1.5"><span class="h-2 w-2 rounded-full bg-[#dde8e4]"></span> Purchase orders</span>
+          </div>
+
+          <div class="mt-5 flex items-center gap-3 rounded-2xl bg-muted-bg/70 p-3.5">
+            <span class="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-brand-accent text-white"><svg class="icon h-4 w-4" aria-hidden="true"><use href="#i-nav-ledger"></use></svg></span>
+            <p class="text-[12.5px] font-semibold leading-snug text-ink">Auto-reconciled — March ledger is balanced to the cent.</p>
+            <span class="ml-auto shrink-0 rounded-full bg-brand-tint px-2.5 py-1 text-[11px] font-bold text-brand-deep">$0 variance</span>
+          </div>
+        </div>
+
+        <div class="lp-mock-chip lp-float -right-3 -top-5 hidden sm:flex" style="animation-delay:0s">
+          <svg class="icon" aria-hidden="true"><use href="#i-check"></use></svg> Ledger balanced
+        </div>
+        <div class="lp-mock-chip lp-float -bottom-5 -left-4 hidden sm:flex" style="animation-delay:1.2s">
+          <svg class="icon" aria-hidden="true"><use href="#i-shield"></use></svg> Role-based access
         </div>
       </div>
     </div>
   </section>
 
-  <section id="roles" class="mx-auto w-full max-w-6xl px-6 py-12">
-    <p class="eyebrow">Role-based by design</p>
-    <h2 class="mt-3 max-w-3xl text-2xl font-extrabold tracking-tight text-ink">The right context for the person doing the work.</h2>
-    <p class="mt-3 max-w-3xl text-base leading-6 text-muted-fg">
-      Users act inside familiar workflows. Permissions, states, and posting rules
-      protect what happens next.
-    </p>
+  {% comment %} ============================== SEGMENT MARQUEE ============================== {% endcomment %}
+  <section class="border-y border-line bg-canvas py-6">
+    <p class="eyebrow mx-auto mb-4 w-full max-w-6xl px-6">Built for</p>
+    <div class="lp-marquee">
+      <div class="lp-marquee-track">
+        <div class="flex items-center pl-6">
+          <span class="lp-pill-chip"><svg class="icon" aria-hidden="true"><use href="#i-sec-sales"></use></svg> Distributors</span>
+          <span class="lp-pill-chip"><svg class="icon" aria-hidden="true"><use href="#i-nav-currency"></use></svg> Importers &amp; traders</span>
+          <span class="lp-pill-chip"><svg class="icon" aria-hidden="true"><use href="#i-sec-inventory"></use></svg> Multi-warehouse teams</span>
+          <span class="lp-pill-chip"><svg class="icon" aria-hidden="true"><use href="#i-briefcase"></use></svg> Wholesale brands</span>
+          <span class="lp-pill-chip"><svg class="icon" aria-hidden="true"><use href="#i-nav-customers"></use></svg> B2B resellers</span>
+          <span class="lp-pill-chip"><svg class="icon" aria-hidden="true"><use href="#i-nav-vendors"></use></svg> Import–export houses</span>
+        </div>
+        <div class="flex items-center pl-6" aria-hidden="true">
+          <span class="lp-pill-chip"><svg class="icon" aria-hidden="true"><use href="#i-sec-sales"></use></svg> Distributors</span>
+          <span class="lp-pill-chip"><svg class="icon" aria-hidden="true"><use href="#i-nav-currency"></use></svg> Importers &amp; traders</span>
+          <span class="lp-pill-chip"><svg class="icon" aria-hidden="true"><use href="#i-sec-inventory"></use></svg> Multi-warehouse teams</span>
+          <span class="lp-pill-chip"><svg class="icon" aria-hidden="true"><use href="#i-briefcase"></use></svg> Wholesale brands</span>
+          <span class="lp-pill-chip"><svg class="icon" aria-hidden="true"><use href="#i-nav-customers"></use></svg> B2B resellers</span>
+          <span class="lp-pill-chip"><svg class="icon" aria-hidden="true"><use href="#i-nav-vendors"></use></svg> Import–export houses</span>
+        </div>
+      </div>
+    </div>
+  </section>
 
-    <div class="mt-7 grid gap-4 lg:grid-cols-2">
-      <article class="surface p-6">
+  {% comment %} ============================== ROLES ============================== {% endcomment %}
+  <section id="roles" class="mx-auto w-full max-w-6xl px-6 py-16 sm:py-20">
+    <div class="lp-reveal">
+      <p class="eyebrow">Role-based by design</p>
+      <h2 class="mt-3 max-w-3xl text-2xl font-extrabold tracking-tight text-ink sm:text-3xl">The right context for the person doing the work.</h2>
+      <p class="mt-3 max-w-3xl text-base leading-6 text-muted-fg">
+        Users act inside familiar workflows. Permissions, states, and posting rules
+        protect what happens next.
+      </p>
+    </div>
+
+    <div class="lp-stagger mt-9 grid gap-4 lg:grid-cols-2">
+      <article class="lp-reveal surface p-6 transition-transform duration-200 hover:-translate-y-1">
         <div class="flex items-center gap-3">
-          <span class="grid h-10 w-10 place-items-center rounded-xl bg-emerald-400 text-navy"><svg class="icon" aria-hidden="true"><use href="#i-sec-sales"></use></svg></span>
+          <span class="grid h-11 w-11 place-items-center rounded-xl bg-emerald-400 text-navy"><svg class="icon" aria-hidden="true"><use href="#i-sec-sales"></use></svg></span>
           <p class="font-bold text-ink">Sales</p>
         </div>
         <h3 class="mt-4 text-lg font-bold text-ink">Sell without creating downstream cleanup.</h3>
@@ -94,11 +237,12 @@ Signed-in users never see this page: the root view hands them to the dashboard
           <li class="flex items-start gap-2 text-sm text-slate-600"><svg class="icon text-brand" aria-hidden="true"><use href="#i-check"></use></svg> Linked delivery and invoice states</li>
           <li class="flex items-start gap-2 text-sm text-slate-600"><svg class="icon text-brand" aria-hidden="true"><use href="#i-check"></use></svg> Clear credits and returns</li>
         </ul>
+        <a href="#workflows" class="mt-4 inline-flex items-center gap-1.5 text-sm font-semibold text-brand-deep hover:underline">See the workflow <svg class="icon h-4 w-4" aria-hidden="true"><use href="#i-arrow-right"></use></svg></a>
       </article>
 
-      <article class="surface p-6">
+      <article class="lp-reveal surface p-6 transition-transform duration-200 hover:-translate-y-1">
         <div class="flex items-center gap-3">
-          <span class="grid h-10 w-10 place-items-center rounded-xl bg-emerald-400 text-navy"><svg class="icon" aria-hidden="true"><use href="#i-sec-purchasing"></use></svg></span>
+          <span class="grid h-11 w-11 place-items-center rounded-xl bg-emerald-400 text-navy"><svg class="icon" aria-hidden="true"><use href="#i-sec-purchasing"></use></svg></span>
           <p class="font-bold text-ink">Purchasing</p>
         </div>
         <h3 class="mt-4 text-lg font-bold text-ink">Buy with obligations and stock in view.</h3>
@@ -111,11 +255,12 @@ Signed-in users never see this page: the root view hands them to the dashboard
           <li class="flex items-start gap-2 text-sm text-slate-600"><svg class="icon text-brand" aria-hidden="true"><use href="#i-check"></use></svg> Receipt-to-bill control</li>
           <li class="flex items-start gap-2 text-sm text-slate-600"><svg class="icon text-brand" aria-hidden="true"><use href="#i-check"></use></svg> Purchasing analysis</li>
         </ul>
+        <a href="#workflows" class="mt-4 inline-flex items-center gap-1.5 text-sm font-semibold text-brand-deep hover:underline">See the workflow <svg class="icon h-4 w-4" aria-hidden="true"><use href="#i-arrow-right"></use></svg></a>
       </article>
 
-      <article class="surface p-6">
+      <article class="lp-reveal surface p-6 transition-transform duration-200 hover:-translate-y-1">
         <div class="flex items-center gap-3">
-          <span class="grid h-10 w-10 place-items-center rounded-xl bg-emerald-400 text-navy"><svg class="icon" aria-hidden="true"><use href="#i-sec-inventory"></use></svg></span>
+          <span class="grid h-11 w-11 place-items-center rounded-xl bg-emerald-400 text-navy"><svg class="icon" aria-hidden="true"><use href="#i-sec-inventory"></use></svg></span>
           <p class="font-bold text-ink">Warehouse</p>
         </div>
         <h3 class="mt-4 text-lg font-bold text-ink">Know what moved, where, and why.</h3>
@@ -128,11 +273,12 @@ Signed-in users never see this page: the root view hands them to the dashboard
           <li class="flex items-start gap-2 text-sm text-slate-600"><svg class="icon text-brand" aria-hidden="true"><use href="#i-check"></use></svg> Multi-location movements</li>
           <li class="flex items-start gap-2 text-sm text-slate-600"><svg class="icon text-brand" aria-hidden="true"><use href="#i-check"></use></svg> Cost-aware adjustments</li>
         </ul>
+        <a href="#workflows" class="mt-4 inline-flex items-center gap-1.5 text-sm font-semibold text-brand-deep hover:underline">See the workflow <svg class="icon h-4 w-4" aria-hidden="true"><use href="#i-arrow-right"></use></svg></a>
       </article>
 
-      <article class="surface p-6">
+      <article class="lp-reveal surface p-6 transition-transform duration-200 hover:-translate-y-1">
         <div class="flex items-center gap-3">
-          <span class="grid h-10 w-10 place-items-center rounded-xl bg-emerald-400 text-navy"><svg class="icon" aria-hidden="true"><use href="#i-sec-finance"></use></svg></span>
+          <span class="grid h-11 w-11 place-items-center rounded-xl bg-emerald-400 text-navy"><svg class="icon" aria-hidden="true"><use href="#i-sec-finance"></use></svg></span>
           <p class="font-bold text-ink">Finance</p>
         </div>
         <h3 class="mt-4 text-lg font-bold text-ink">Review a system that already tells the story.</h3>
@@ -145,112 +291,375 @@ Signed-in users never see this page: the root view hands them to the dashboard
           <li class="flex items-start gap-2 text-sm text-slate-600"><svg class="icon text-brand" aria-hidden="true"><use href="#i-check"></use></svg> AR and AP controls</li>
           <li class="flex items-start gap-2 text-sm text-slate-600"><svg class="icon text-brand" aria-hidden="true"><use href="#i-check"></use></svg> Defensible close</li>
         </ul>
+        <a href="#workflows" class="mt-4 inline-flex items-center gap-1.5 text-sm font-semibold text-brand-deep hover:underline">See the workflow <svg class="icon h-4 w-4" aria-hidden="true"><use href="#i-arrow-right"></use></svg></a>
       </article>
     </div>
   </section>
 
-  <section id="workflows" class="mx-auto w-full max-w-6xl px-6 py-12">
-    <p class="eyebrow">Made for wholesale complexity</p>
-    <h2 class="mt-3 max-w-3xl text-2xl font-extrabold tracking-tight text-ink">Enough control for the edge cases. Clear enough for the everyday.</h2>
-    <p class="mt-3 max-w-3xl text-base leading-6 text-muted-fg">
-      Wholesale businesses carry operational complexity that lightweight invoicing
-      tools miss: partial fulfilment, returns, warehouse transfers, customer
-      credit, multi-invoice payments, stock value, and close.
-    </p>
+  {% comment %} ============================== WORKFLOWS (dark module grid) ============================== {% endcomment %}
+  <section id="workflows" class="mx-auto w-full max-w-6xl px-6 py-4 sm:py-8">
+    <div class="lp-reveal cashflow-panel relative overflow-hidden text-white">
+      <span class="pointer-events-none absolute -right-20 -top-24 h-72 w-72 rounded-full bg-brand-accent/10 blur-3xl" aria-hidden="true"></span>
+      <div class="relative p-2 sm:p-4">
+        <p class="eyebrow text-emerald-300!">One record, eight moving parts</p>
+        <h2 class="mt-3 max-w-xl text-2xl font-extrabold tracking-tight sm:text-3xl">The whole operation, connected.</h2>
+        <p class="mt-3 max-w-xl text-base leading-6 text-slate-400">
+          From the first sales order to the closed period, every document,
+          movement, and journal entry lives on the same ledger.
+        </p>
 
-    <div class="mt-7 grid gap-4 sm:grid-cols-3">
-      <article class="card card-pad">
-        <p class="card-title">Distributors</p>
-        <p class="mt-2 text-sm leading-6 text-muted-fg">High-volume sell, deliver, invoice, and collect cycles.</p>
-      </article>
-      <article class="card card-pad">
-        <p class="card-title">Importers &amp; traders</p>
-        <p class="mt-2 text-sm leading-6 text-muted-fg">Currency snapshots, supplier obligations, tax, and stock value.</p>
-      </article>
-      <article class="card card-pad">
-        <p class="card-title">Multi-warehouse teams</p>
-        <p class="mt-2 text-sm leading-6 text-muted-fg">Location-aware movement, availability, transfer, and valuation.</p>
-      </article>
-    </div>
-  </section>
-
-  <section id="access" class="mx-auto w-full max-w-6xl px-6 py-12">
-    <div class="cashflow-panel text-white">
-      <div class="grid gap-5 lg:grid-cols-2">
-        <div>
-          <p class="eyebrow !text-emerald-300">Clarity with guardrails</p>
-          <h2 class="mt-3 text-2xl font-extrabold tracking-tight">Access follows responsibility.</h2>
-          <p class="mt-3 max-w-3xl text-base leading-6 text-slate-400">
-            People see the functions and companies they need. Sensitive financial
-            actions remain controlled and reviewable.
-          </p>
-          <div class="mt-7">
-            <div class="grid grid-cols-2 gap-x-6 gap-y-4 text-sm sm:grid-cols-3">
-              <p><span class="block font-bold text-white">Owner</span><span class="text-slate-200">Everything</span></p>
-              <p><span class="block font-bold text-white">Accountant</span><span class="text-slate-200">Finance &amp; close</span></p>
-              <p><span class="block font-bold text-white">Sales</span><span class="text-slate-200">Orders &amp; receivables</span></p>
-              <p><span class="block font-bold text-white">Purchasing</span><span class="text-slate-200">Orders &amp; payables</span></p>
-              <p><span class="block font-bold text-white">Warehouse</span><span class="text-slate-200">Movement &amp; stock</span></p>
-              <p><span class="block font-bold text-white">Posting &amp; close</span><span class="text-slate-200">Finance only</span></p>
-            </div>
+        <div class="lp-stagger mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div class="lp-reveal lp-module">
+            <span class="lp-module-icon"><svg class="icon" aria-hidden="true"><use href="#i-nav-sales-order"></use></svg></span>
+            <p class="text-sm font-bold text-white">Sales orders</p>
+            <p class="text-xs leading-5 text-slate-400">Pricing and credit checked before commitment.</p>
+          </div>
+          <div class="lp-reveal lp-module">
+            <span class="lp-module-icon"><svg class="icon" aria-hidden="true"><use href="#i-nav-delivery"></use></svg></span>
+            <p class="text-sm font-bold text-white">Deliveries</p>
+            <p class="text-xs leading-5 text-slate-400">Fulfilment linked back to the order it came from.</p>
+          </div>
+          <div class="lp-reveal lp-module">
+            <span class="lp-module-icon"><svg class="icon" aria-hidden="true"><use href="#i-nav-invoice"></use></svg></span>
+            <p class="text-sm font-bold text-white">Invoices &amp; receipts</p>
+            <p class="text-xs leading-5 text-slate-400">Billing and collection without duplicate entry.</p>
+          </div>
+          <div class="lp-reveal lp-module">
+            <span class="lp-module-icon"><svg class="icon" aria-hidden="true"><use href="#i-nav-purchase-order"></use></svg></span>
+            <p class="text-sm font-bold text-white">Purchase orders</p>
+            <p class="text-xs leading-5 text-slate-400">Obligations visible the moment they're placed.</p>
+          </div>
+          <div class="lp-reveal lp-module">
+            <span class="lp-module-icon"><svg class="icon" aria-hidden="true"><use href="#i-nav-bill"></use></svg></span>
+            <p class="text-sm font-bold text-white">Vendor bills</p>
+            <p class="text-xs leading-5 text-slate-400">Receipt-to-bill matching, not blind trust.</p>
+          </div>
+          <div class="lp-reveal lp-module">
+            <span class="lp-module-icon"><svg class="icon" aria-hidden="true"><use href="#i-nav-transfer"></use></svg></span>
+            <p class="text-sm font-bold text-white">Inventory movements</p>
+            <p class="text-xs leading-5 text-slate-400">Every transfer and adjustment leaves a trail.</p>
+          </div>
+          <div class="lp-reveal lp-module">
+            <span class="lp-module-icon"><svg class="icon" aria-hidden="true"><use href="#i-nav-ledger"></use></svg></span>
+            <p class="text-sm font-bold text-white">Ledger &amp; journals</p>
+            <p class="text-xs leading-5 text-slate-400">Journals post themselves from source documents.</p>
+          </div>
+          <div class="lp-reveal lp-module">
+            <span class="lp-module-icon"><svg class="icon" aria-hidden="true"><use href="#i-nav-reports"></use></svg></span>
+            <p class="text-sm font-bold text-white">Reports &amp; close</p>
+            <p class="text-xs leading-5 text-slate-400">A period close with a trail behind every figure.</p>
           </div>
         </div>
+      </div>
+    </div>
+  </section>
+
+  {% comment %} ============================== PROBLEMS / BEFORE-AFTER ============================== {% endcomment %}
+  <section class="mx-auto w-full max-w-6xl px-6 py-16 sm:py-20">
+    <div class="lp-reveal">
+      <p class="eyebrow">Before / after</p>
+      <h2 class="mt-3 max-w-2xl text-2xl font-extrabold tracking-tight text-ink sm:text-3xl">The friction a connected record removes.</h2>
+    </div>
+
+    <div class="mt-9 grid gap-8 lg:grid-cols-[1fr_320px]">
+      <div class="lp-reveal divide-y divide-line">
+        <div class="grid gap-4 py-5 sm:grid-cols-2 sm:gap-8">
+          <p class="flex items-start gap-2.5 text-sm text-muted-fg"><svg class="icon mt-0.5 shrink-0 text-danger" aria-hidden="true"><use href="#i-close"></use></svg> Stock counts that don't match what sales just promised.</p>
+          <p class="flex items-start gap-2.5 text-sm font-semibold text-ink"><svg class="icon mt-0.5 shrink-0 text-brand-accent" aria-hidden="true"><use href="#i-check"></use></svg> Perpetual, movement-linked quantity on every order.</p>
+        </div>
+        <div class="grid gap-4 py-5 sm:grid-cols-2 sm:gap-8">
+          <p class="flex items-start gap-2.5 text-sm text-muted-fg"><svg class="icon mt-0.5 shrink-0 text-danger" aria-hidden="true"><use href="#i-close"></use></svg> A spreadsheet reconciliation nobody fully trusts.</p>
+          <p class="flex items-start gap-2.5 text-sm font-semibold text-ink"><svg class="icon mt-0.5 shrink-0 text-brand-accent" aria-hidden="true"><use href="#i-check"></use></svg> Journals that post automatically from source documents.</p>
+        </div>
+        <div class="grid gap-4 py-5 sm:grid-cols-2 sm:gap-8">
+          <p class="flex items-start gap-2.5 text-sm text-muted-fg"><svg class="icon mt-0.5 shrink-0 text-danger" aria-hidden="true"><use href="#i-close"></use></svg> Finding out a customer is over credit after the sale.</p>
+          <p class="flex items-start gap-2.5 text-sm font-semibold text-ink"><svg class="icon mt-0.5 shrink-0 text-brand-accent" aria-hidden="true"><use href="#i-check"></use></svg> Customer position visible before commitment.</p>
+        </div>
+        <div class="grid gap-4 py-5 sm:grid-cols-2 sm:gap-8">
+          <p class="flex items-start gap-2.5 text-sm text-muted-fg"><svg class="icon mt-0.5 shrink-0 text-danger" aria-hidden="true"><use href="#i-close"></use></svg> A close that means chasing five people for five answers.</p>
+          <p class="flex items-start gap-2.5 text-sm font-semibold text-ink"><svg class="icon mt-0.5 shrink-0 text-brand-accent" aria-hidden="true"><use href="#i-check"></use></svg> Period control with a defensible audit trail.</p>
+        </div>
+      </div>
+
+      <div class="lp-reveal cashflow-panel flex flex-col justify-center p-7 text-white">
+        <p class="eyebrow text-emerald-300!">What changes</p>
+        <p class="display mt-3 text-4xl text-white">One ledger.</p>
+        <p class="mt-3 text-sm leading-6 text-slate-400">
+          Every module posts to the same record — nothing re-entered, nothing
+          drifts between what sales, warehouse, and finance each believe.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  {% comment %} ============================== ACCESS / STEPS ============================== {% endcomment %}
+  <section id="access" class="border-y border-line bg-canvas py-16 sm:py-20">
+    <div class="mx-auto w-full max-w-6xl px-6">
+      <div class="lp-reveal">
+        <p class="eyebrow">People, roles, and one ledger</p>
+        <h2 class="mt-3 max-w-2xl text-2xl font-extrabold tracking-tight text-ink sm:text-3xl">Structure that scales with the team, not against it.</h2>
+        <p class="mt-3 max-w-2xl text-base leading-6 text-muted-fg">
+          People see the functions and companies they need. Sensitive financial
+          actions stay controlled and reviewable.
+        </p>
+      </div>
+
+      <div class="lp-steps-row lp-stagger mt-10 grid gap-6 md:grid-cols-3">
+        <div class="lp-reveal">
+          <div class="flex items-center gap-3">
+            <span class="lp-step-num">01</span>
+            <p class="font-bold text-ink">People, by role</p>
+          </div>
+          <div class="surface mt-4 grid grid-cols-2 gap-x-5 gap-y-3.5 p-5 text-sm">
+            <p><span class="block font-bold text-ink">Owner</span><span class="text-muted-fg">Everything</span></p>
+            <p><span class="block font-bold text-ink">Accountant</span><span class="text-muted-fg">Finance &amp; close</span></p>
+            <p><span class="block font-bold text-ink">Sales</span><span class="text-muted-fg">Orders &amp; AR</span></p>
+            <p><span class="block font-bold text-ink">Purchasing</span><span class="text-muted-fg">Orders &amp; AP</span></p>
+            <p><span class="block font-bold text-ink">Warehouse</span><span class="text-muted-fg">Movement &amp; stock</span></p>
+            <p><span class="block font-bold text-ink">Posting</span><span class="text-muted-fg">Finance only</span></p>
+          </div>
+        </div>
+
+        <div class="lp-reveal">
+          <div class="flex items-center gap-3">
+            <span class="lp-step-num">02</span>
+            <p class="font-bold text-ink">A process everyone can see</p>
+          </div>
+          <div class="surface mt-4 p-5">
+            <div class="flex flex-wrap items-center gap-2">
+              <span class="rounded-full bg-muted-bg px-3 py-1.5 text-xs font-bold text-muted-fg">Draft</span>
+              <svg class="icon h-3.5 w-3.5 text-muted-fg" aria-hidden="true"><use href="#i-chevron-right"></use></svg>
+              <span class="rounded-full bg-muted-bg px-3 py-1.5 text-xs font-bold text-muted-fg">Confirmed</span>
+              <svg class="icon h-3.5 w-3.5 text-muted-fg" aria-hidden="true"><use href="#i-chevron-right"></use></svg>
+              <span class="rounded-full bg-muted-bg px-3 py-1.5 text-xs font-bold text-muted-fg">Fulfilled</span>
+              <svg class="icon h-3.5 w-3.5 text-muted-fg" aria-hidden="true"><use href="#i-chevron-right"></use></svg>
+              <span class="rounded-full bg-muted-bg px-3 py-1.5 text-xs font-bold text-muted-fg">Invoiced</span>
+              <svg class="icon h-3.5 w-3.5 text-muted-fg" aria-hidden="true"><use href="#i-chevron-right"></use></svg>
+              <span class="rounded-full bg-brand-tint px-3 py-1.5 text-xs font-bold text-brand-deep">Closed</span>
+            </div>
+            <p class="mt-4 text-sm leading-6 text-muted-fg">
+              Every document carries a state. Posting rules decide what can
+              happen next, and who is allowed to make it happen.
+            </p>
+          </div>
+        </div>
+
+        <div class="lp-reveal">
+          <div class="flex items-center gap-3">
+            <span class="lp-step-num">03</span>
+            <p class="font-bold text-ink">One ledger, wherever you operate</p>
+          </div>
+          <div class="surface mt-4 p-5">
+            <div class="flex items-center gap-3 rounded-xl border border-line bg-white p-3">
+              <span class="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-brand-tint text-brand-deep"><svg class="icon h-4 w-4" aria-hidden="true"><use href="#i-nav-company"></use></svg></span>
+              <span class="min-w-0 flex-1 text-left">
+                <span class="block truncate text-[13px] font-bold text-ink">Northgate Distribution Co.</span>
+                <span class="block text-[11px] text-muted-fg">USD · 2 warehouses</span>
+              </span>
+              <svg class="icon h-4 w-4 text-muted-fg" aria-hidden="true"><use href="#i-chevron-right"></use></svg>
+            </div>
+            <p class="mt-4 text-sm leading-6 text-muted-fg">
+              Companies, warehouses, and currencies are first-class. Access is
+              scoped to the ones each person actually works with.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  {% comment %} ============================== STATS ============================== {% endcomment %}
+  <section class="mx-auto w-full max-w-6xl px-6 py-16 sm:py-20">
+    <div class="lp-stagger grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div class="lp-reveal lp-stat">
+        <p class="lp-stat-num">4</p>
+        <p class="lp-stat-label">Connected workflows — sales, purchasing, warehouse, finance.</p>
+      </div>
+      <div class="lp-reveal lp-stat">
+        <p class="lp-stat-num">1</p>
+        <p class="lp-stat-label">Financial record — no re-keying between modules.</p>
+      </div>
+      <div class="lp-reveal lp-stat">
+        <p class="lp-stat-num">Role-based</p>
+        <p class="lp-stat-label">Access control — permissions match responsibility.</p>
+      </div>
+      <div class="lp-reveal lp-stat">
+        <p class="lp-stat-num">Full</p>
+        <p class="lp-stat-label">Audit trail — every sign-in and change is recorded.</p>
+      </div>
+    </div>
+  </section>
+
+  {% comment %} ============================== WORKBENCH PREVIEW ============================== {% endcomment %}
+  <section class="mx-auto w-full max-w-6xl px-6 py-4 sm:py-8">
+    <div class="lp-reveal">
+      <p class="eyebrow">See it before you sign in</p>
+      <h2 class="mt-3 max-w-2xl text-2xl font-extrabold tracking-tight text-ink sm:text-3xl">A closer look at the workbench.</h2>
+    </div>
+
+    <div class="lp-stagger mt-8 grid gap-4 sm:grid-cols-2">
+      <a href="{% url 'login' %}" class="lp-reveal cashflow-panel group block p-6 text-white transition-transform duration-200 hover:-translate-y-1">
+        <span class="grid h-10 w-10 place-items-center rounded-xl bg-white/10 text-emerald-300"><svg class="icon" aria-hidden="true"><use href="#i-nav-dashboard"></use></svg></span>
+        <p class="mt-4 text-lg font-bold text-white">Live dashboard</p>
+        <p class="mt-1.5 text-sm leading-6 text-slate-400">Cash position, open orders, and what needs attention today.</p>
+        <div class="lp-thumb-dash mt-5">
+          <span style="height:38%"></span><span style="height:62%"></span><span style="height:48%"></span>
+          <span style="height:80%"></span><span style="height:55%"></span><span style="height:70%"></span><span style="height:44%"></span>
+        </div>
+        <p class="mt-5 inline-flex items-center gap-1.5 text-sm font-semibold text-emerald-300">Sign in to explore <svg class="icon h-4 w-4 transition-transform group-hover:translate-x-0.5" aria-hidden="true"><use href="#i-arrow-right"></use></svg></p>
+      </a>
+
+      <a href="{% url 'login' %}" class="lp-reveal cashflow-panel group block p-6 text-white transition-transform duration-200 hover:-translate-y-1">
+        <span class="grid h-10 w-10 place-items-center rounded-xl bg-white/10 text-emerald-300"><svg class="icon" aria-hidden="true"><use href="#i-nav-trial-balance"></use></svg></span>
+        <p class="mt-4 text-lg font-bold text-white">Trial balance &amp; close</p>
+        <p class="mt-1.5 text-sm leading-6 text-slate-400">Every account, every period, reconciled and ready to close.</p>
+        <div class="lp-thumb-ledger mt-5">
+          <span class="is-accent w-full"></span><span class="w-4/5"></span><span class="is-accent w-11/12"></span><span class="w-2/3"></span>
+        </div>
+        <p class="mt-5 inline-flex items-center gap-1.5 text-sm font-semibold text-emerald-300">Sign in to explore <svg class="icon h-4 w-4 transition-transform group-hover:translate-x-0.5" aria-hidden="true"><use href="#i-arrow-right"></use></svg></p>
+      </a>
+    </div>
+  </section>
+
+  {% comment %} ============================== FAQ ============================== {% endcomment %}
+  <section id="faq" class="mx-auto w-full max-w-3xl px-6 py-16 sm:py-20">
+    <div class="lp-reveal text-center">
+      <p class="eyebrow">Questions we hear a lot</p>
+      <h2 class="mt-3 text-2xl font-extrabold tracking-tight text-ink sm:text-3xl">Answered straight.</h2>
+    </div>
+
+    <div class="lp-reveal mt-9">
+      <details class="lp-faq" open>
+        <summary>Who is Ledgerwise built for?
+          <svg class="lp-faq-chev icon" aria-hidden="true"><use href="#i-chevron-right"></use></svg>
+        </summary>
+        <p class="lp-faq-body">Wholesale distributors, importers, and multi-warehouse teams who need sales, purchasing, warehouse, and finance to share one record instead of four disconnected tools.</p>
+      </details>
+      <details class="lp-faq">
+        <summary>Can it handle multiple companies or warehouses?
+          <svg class="lp-faq-chev icon" aria-hidden="true"><use href="#i-chevron-right"></use></svg>
+        </summary>
+        <p class="lp-faq-body">Yes. Companies, warehouses, and currencies are first-class, and each person's access is scoped to the ones they actually work with.</p>
+      </details>
+      <details class="lp-faq">
+        <summary>How does role-based access work?
+          <svg class="lp-faq-chev icon" aria-hidden="true"><use href="#i-chevron-right"></use></svg>
+        </summary>
+        <p class="lp-faq-body">Each person is assigned a role — owner, accountant, sales, purchasing, or warehouse — that decides which companies, documents, and posting actions they can use.</p>
+      </details>
+      <details class="lp-faq">
+        <summary>Is this a live product I can sign in to?
+          <svg class="lp-faq-chev icon" aria-hidden="true"><use href="#i-chevron-right"></use></svg>
+        </summary>
+        <p class="lp-faq-body">Yes — sign in to explore the connected workbench if you already have an account, or request access if you don't yet.</p>
+      </details>
+      <details class="lp-faq">
+        <summary>How is my data protected?
+          <svg class="lp-faq-chev icon" aria-hidden="true"><use href="#i-chevron-right"></use></svg>
+        </summary>
+        <p class="lp-faq-body">Every sign-in and every change to an account is recorded, and sensitive financial actions stay restricted to the roles responsible for them.</p>
+      </details>
+    </div>
+  </section>
+
+  {% comment %} ============================== FINAL CTA ============================== {% endcomment %}
+  <section class="mx-auto w-full max-w-6xl px-6 pb-16 sm:pb-20">
+    <div class="lp-reveal cashflow-panel text-white">
+      <div class="grid gap-8 lg:grid-cols-2">
+        <div class="p-2 sm:p-4">
+          <p class="eyebrow text-emerald-300!">Ready when you are</p>
+          <h2 class="mt-3 text-2xl font-extrabold tracking-tight sm:text-3xl">See the whole operation on one record.</h2>
+          <p class="mt-3 max-w-md text-base leading-6 text-slate-400">
+            We'll map Ledgerwise to your roles, documents, approvals, and close
+            process — then set up access for your team.
+          </p>
+          <ul class="mt-6 space-y-2.5 text-sm text-slate-200">
+            <li class="flex items-center gap-2.5"><svg class="icon shrink-0 text-emerald-300" aria-hidden="true"><use href="#i-check"></use></svg> One ledger across every module</li>
+            <li class="flex items-center gap-2.5"><svg class="icon shrink-0 text-emerald-300" aria-hidden="true"><use href="#i-check"></use></svg> Role-based access from day one</li>
+            <li class="flex items-center gap-2.5"><svg class="icon shrink-0 text-emerald-300" aria-hidden="true"><use href="#i-check"></use></svg> Every change recorded, always reviewable</li>
+          </ul>
+          <a href="{% url 'signup' %}" class="btn-accent mt-7">Request access <svg class="icon" aria-hidden="true"><use href="#i-arrow-right"></use></svg></a>
+        </div>
         <div class="flex flex-col justify-center gap-4">
-          <div class="rounded-2xl border border-white/10 bg-white/[.06] p-5">
+          <div class="rounded-2xl border border-white/10 bg-white/6 p-5">
             <svg class="icon text-emerald-300" aria-hidden="true"><use href="#i-shield"></use></svg>
             <strong class="mt-3 block text-lg text-white">Give every team a cleaner handoff.</strong>
             <p class="mt-1 text-sm leading-6 text-slate-400">
-              We’ll map Ledgerwise to your roles, documents, approvals, and close process.
+              From the first sales order to the closed period, on one financial record.
             </p>
-            <a href="{% url 'signup' %}" class="btn-accent mt-5">Book a walkthrough</a>
           </div>
-          <div class="rounded-2xl border border-white/10 bg-white/[.06] p-5">
+          <div class="rounded-2xl border border-white/10 bg-white/6 p-5">
             <strong class="block text-sm text-emerald-300">Live product</strong>
-            <p class="mt-1 text-sm leading-6 text-slate-400">Sign in to explore the connected workbench and the financial record behind it.</p>
-            <a href="{% url 'login' %}" class="mt-4 inline-block text-sm font-semibold text-brand-deep">Sign in to the workbench →</a>
+            <p class="mt-1 text-sm leading-6 text-slate-400">Already have an account? Sign in to explore the connected workbench.</p>
+            <a href="{% url 'login' %}" class="mt-4 inline-flex items-center gap-1.5 text-sm font-semibold text-white hover:text-emerald-300">Sign in to the workbench <svg class="icon h-4 w-4" aria-hidden="true"><use href="#i-arrow-right"></use></svg></a>
           </div>
         </div>
-      </div>
-    </div>
-  </section>
-
-  <section class="mx-auto w-full max-w-6xl px-6 py-12">
-    <div class="surface grid gap-5 p-6 sm:grid-cols-2 lg:grid-cols-3">
-      <div>
-        <p class="eyebrow">Everything on one record</p>
-        <p class="mt-3 text-base leading-6 text-muted-fg">A financial operating system for wholesale businesses that need control without slowing down.</p>
-      </div>
-      <div>
-        <p class="eyebrow">The connected flow</p>
-        <ul class="mt-3 space-y-2 text-sm text-slate-600">
-          <li>Sales &amp; receivables</li>
-          <li>Purchasing &amp; payables</li>
-          <li>Inventory &amp; costing</li>
-          <li>Reporting &amp; close</li>
-        </ul>
-      </div>
-      <div>
-        <p class="eyebrow">Get started</p>
-        <ul class="mt-3 space-y-2 text-sm text-slate-600">
-          <li><a class="font-semibold text-brand-deep" href="{% url 'login' %}">Sign in</a></li>
-          <li><a class="font-semibold text-brand-deep" href="{% url 'signup' %}">Request access</a></li>
-          <li><a class="font-semibold text-brand-deep" href="#roles">How the roles work</a></li>
-          <li><a class="font-semibold text-brand-deep" href="#workflows">Wholesale workflows</a></li>
-        </ul>
       </div>
     </div>
   </section>
 </main>
 
-<footer class="border-t border-line bg-white py-8">
+<footer class="border-t border-line bg-white py-12">
   <div class="mx-auto w-full max-w-6xl px-6">
-    <p class="auth-privacy">
-      <svg class="icon" aria-hidden="true"><use href="#i-shield"></use></svg>
-      Every sign-in and every change to an account is recorded. We value your privacy and security.
-    </p>
-    <p class="mt-4 text-center text-xs text-muted-fg">© 2026 Ledgerwise. Product prototype. Accounting policy and jurisdiction-specific compliance require qualified professional validation.</p>
+    <div class="grid gap-10 sm:grid-cols-2 lg:grid-cols-[1.3fr_1fr_1fr_1fr]">
+      <div>
+        <a href="/" class="flex items-center gap-3" style="text-decoration:none">
+          <span class="logo-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+          <span class="auth-wordmark"><strong>ledgerwise</strong><small>Wholesale finance</small></span>
+        </a>
+        <p class="mt-4 max-w-xs text-sm leading-6 text-muted-fg">
+          A financial operating system for wholesale businesses that need
+          control without slowing down.
+        </p>
+      </div>
+      <div>
+        <p class="eyebrow">Product</p>
+        <ul class="mt-3 space-y-2.5 text-sm">
+          <li><a class="font-semibold text-muted-fg hover:text-brand-deep" href="#roles">Roles</a></li>
+          <li><a class="font-semibold text-muted-fg hover:text-brand-deep" href="#workflows">Workflows</a></li>
+          <li><a class="font-semibold text-muted-fg hover:text-brand-deep" href="#access">Access</a></li>
+          <li><a class="font-semibold text-muted-fg hover:text-brand-deep" href="#faq">FAQ</a></li>
+        </ul>
+      </div>
+      <div>
+        <p class="eyebrow">Account</p>
+        <ul class="mt-3 space-y-2.5 text-sm">
+          <li><a class="font-semibold text-muted-fg hover:text-brand-deep" href="{% url 'login' %}">Sign in</a></li>
+          <li><a class="font-semibold text-muted-fg hover:text-brand-deep" href="{% url 'signup' %}">Request access</a></li>
+        </ul>
+      </div>
+      <div>
+        <p class="eyebrow">Trust</p>
+        <p class="auth-privacy mt-3 text-left">
+          <svg class="icon" aria-hidden="true"><use href="#i-shield"></use></svg>
+          Every sign-in and every change to an account is recorded.
+        </p>
+      </div>
+    </div>
+
+    <p class="mt-10 border-t border-line pt-6 text-center text-xs text-muted-fg">© 2026 Ledgerwise. Product prototype. Accounting policy and jurisdiction-specific compliance require qualified professional validation.</p>
   </div>
 </footer>
+
+<script>
+(function () {
+  var els = document.querySelectorAll(".lp-reveal");
+  if (!els.length) { return; }
+  if (!("IntersectionObserver" in window)) {
+    els.forEach(function (el) { el.classList.add("is-visible"); });
+    return;
+  }
+  var io = new IntersectionObserver(function (entries) {
+    entries.forEach(function (entry) {
+      if (entry.isIntersecting) {
+        entry.target.classList.add("is-visible");
+        io.unobserve(entry.target);
+      }
+    });
+  }, { threshold: 0.15, rootMargin: "0px 0px -40px 0px" });
+  els.forEach(function (el) { io.observe(el); });
+})();
+</script>
 
 </body>
 </html>

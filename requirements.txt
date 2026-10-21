@@ -10,7 +10,7 @@
 Django==6.1.*
 psycopg[binary]==3.3.*
 # Required at runtime by Company.logo (ImageField), including production.
-Pillow==12.3.*
+Pillow==13.0.*
 # Only reached when Stripe is switched on (STRIPE_SECRET_KEY set). The import is
 # deliberately lazy and confined to apps/payments/stripe_gateway.py, so an
 # installation that has not run this file yet still boots and still posts
